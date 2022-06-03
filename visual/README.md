@@ -1,1 +1,1 @@
-this folder will store the visualization code
+This folder will store the visualization code.
