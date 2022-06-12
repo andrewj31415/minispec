@@ -4,6 +4,7 @@
 *.pyc
 *.bak
 *.swp
+*.vscode
 
 .sconsign.dblite
 antlr4.jar
@@ -15,6 +16,8 @@ minispec-combine
 msc
 
 synth/yosys
+
+visual/antlr4
 
 # Documentation
 *.aux
