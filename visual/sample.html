@@ -28,20 +28,47 @@
     <body onclick="document.documentElement.requestFullscreen()">
         <div id="root">
             <div id="source-div">Hello!</div>
-            <svg id="display-svg" onmousedown="event.preventDefault();" viewBox="0 0 100 100">
-                <rect
-                    x="10"
-                    y="10"
-                    width="80"
-                    height="80"
-                    stroke="black"
-                    stroke-width="1"
-                    fill="white"
-                    ondblclick="this.style.visibility = 'hidden'"
-                ></rect>
-            </svg>
+            <svg id="display-svg" onmousedown="event.preventDefault();" viewBox="0 0 100 100"></svg>
         </div>
         <script defer>
+            /* Globals */
+            sourceDisplay = document.getElementById("source-div"); //The div with the source code
+            svgDisplay = document.getElementById("display-svg"); //The svg with the diagram
+            startingFontSize = 100; //in pt
+            fontShrinkFactor = 0.75; //all fonts will have size startingFontSize*(fontShrinkFactor)^k for some integer k
+
+            /* Takes in a line of text and an object with x, y, width, and height attributes.
+            Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
+            DOM object.
+            Shrinks the font size to fit vertically. */
+            fitText = (text, element) => {
+                let textBox = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                textBox.innerHTML = text;
+                textBox.setAttribute("x", element.x + element.width / 2);
+                textBox.setAttribute("y", element.y + element.height / 2);
+                textBox.setAttribute("dominant-baseline", "middle");
+                textBox.setAttribute("text-anchor", "middle");
+                textBox.setAttribute("font-size", String(startingFontSize) + "pt");
+                svgDisplay.appendChild(textBox);
+
+                //fix the font size to fit vertically
+                let currentSize = startingFontSize;
+                while (textBox.getBBox().height > element.height) {
+                    currentSize = currentSize * fontShrinkFactor;
+                    textBox.setAttribute("font-size", String(currentSize) + "pt");
+                }
+
+                //use ellipses to shrink the text horizontally, leaving at least two letters behind
+                if (textBox.getBBox().width > element.width) {
+                    textBox.innerHTML += "...";
+                    while (textBox.getBBox().width > element.width && textBox.innerHTML.length > 5) {
+                        //remove the last letter before the ellipses
+                        textBox.innerHTML = textBox.innerHTML.slice(0, -4) + "...";
+                    }
+                }
+                return textBox;
+            };
+
             source = `import ProcTypes;
 
             import RegisterFile;
@@ -646,7 +673,8 @@
                 method Word getPc = fetch.getPc;
             endmodule`;
             /* An element to place has type
-                            element = { name: string, type: "Module" | "Wire",
+                            element = { name: string, type: string, variant: "Module" | "Wire",
+                                        uniqueId: string
                                         source: Array<[number, number]>, typeSource: Array<[number, number]> }
                             Module = element & {x: number, y: number, width: number, height: number,
                                                 children: Array<element>}
@@ -654,8 +682,10 @@
                         */
             elementsToPlace = [
                 {
-                    name: "Box",
-                    type: "Module",
+                    name: "Box of Latkes",
+                    type: "Box#(5)",
+                    variant: "Module",
+                    uniqueId: "asdf",
                     source: [
                         [5, 10],
                         [30, 40],
@@ -664,11 +694,13 @@
                     x: 10,
                     y: 10,
                     width: 80,
-                    height: 90,
+                    height: 60,
                     children: [
                         {
                             name: "SubBox Blah Blah Blah",
-                            type: "Module",
+                            type: "LittleBox#(3)",
+                            variant: "Module",
+                            uniqueId: "jkl",
                             source: [[60, 100]],
                             typeSource: [],
                             x: 40,
@@ -680,47 +712,65 @@
                     ],
                 },
             ];
-            sourceDisplay = document.getElementById("source-div");
-            svgDisplay = document.getElementById("display-svg");
             sourceDisplay.innerHTML = source;
             placeElement = (element) => {
-                console.log(element);
-                if (element.type === "Module") {
+                if (element.variant === "Module") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                     let underRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                    let overText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                    overText.innerHTML = element.name;
-                    for (let [attr, val] of [
-                        ["x", element.x + element.width / 2],
-                        ["y", element.y + element.height / 2],
-                        ["font-size", "14pt"],
-                        ["dominant-baseline", "middle"],
-                        ["text-anchor", "middle"],
-                    ]) {
-                        overText.setAttribute(attr, val);
-                    }
                     for (rect of [overRect, underRect]) {
                         rect.setAttribute("x", element.x);
                         rect.setAttribute("y", element.y);
                         rect.setAttribute("width", element.width);
                         rect.setAttribute("height", element.height);
                         rect.setAttribute("stroke", "black");
-                        rect.setAttribute("stroke-width", 1);
+                        rect.setAttribute("stroke-width", element.height / 50); //make the thickness proportional to the height so that it does not cover the under text
                         rect.setAttribute("fill", "white");
                     }
-                    overRect.setAttribute("ondblclick", 'this.style.visibility = "hidden"');
                     svgDisplay.appendChild(underRect);
                     for (childElement of element.children) {
                         placeElement(childElement);
                     }
                     svgDisplay.appendChild(overRect);
-                    svgDisplay.appendChild(overText);
-                    //fix the font size to fit vertically
-                    console.log(overText.getBBox());
-                    while (overText.getBBox().height > element.height / 2) {
-                        let current = overText.getAttribute("font-size").slice(0, -2);
-                        overText.setAttribute("font-size", String((3 * current) / 4) + "pt");
-                    }
+                    //place text
+                    let overName = fitText(element.name, {
+                        x: element.x,
+                        y: element.y,
+                        width: element.width,
+                        height: element.height / 2,
+                    });
+                    let overType = fitText(element.type, {
+                        x: element.x,
+                        y: element.y + element.height / 2,
+                        width: element.width,
+                        height: element.height / 2,
+                    });
+                    let underName = fitText(element.name, {
+                        x: element.x,
+                        y: element.y + element.height,
+                        width: element.width / 2,
+                        height: element.height / 8,
+                    });
+                    let underType = fitText(element.type, {
+                        x: element.x,
+                        y: element.y + element.height + element.height / 8,
+                        width: element.width / 2,
+                        height: element.height / 8,
+                    });
+                    underName.style.visibility = "hidden";
+                    underType.style.visibility = "hidden";
+                    //handle opening the module
+                    let open = () => {
+                        console.log("opening", element.uniqueId);
+                        overRect.style.visibility = "hidden";
+                        overName.style.visibility = "hidden";
+                        overType.style.visibility = "hidden";
+                        underName.style.visibility = "";
+                        underType.style.visibility = "";
+                    };
+                    eval("open" + element.uniqueId + "= open");
+                    overRect.setAttribute("ondblclick", "open" + element.uniqueId + "()");
+                    overName.setAttribute("ondblclick", "open" + element.uniqueId + "()");
+                    overType.setAttribute("ondblclick", "open" + element.uniqueId + "()");
                 }
             };
             for (let element of elementsToPlace) {
