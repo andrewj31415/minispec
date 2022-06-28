@@ -33,6 +33,7 @@
             #display-svg {
                 object-fit: contain;
                 flex: 2;
+                cursor: default;
             }
             mark {
                 background-color: rgb(130, 255, 157);
@@ -52,6 +53,11 @@
             svgDisplay = document.getElementById("display-svg"); //The svg with the diagram
             startingFontSize = 100; //in pt
             fontShrinkFactor = 0.75; //all fonts will have size startingFontSize*(fontShrinkFactor)^k for some integer k
+            getSVGViewBox = () =>
+                svgDisplay
+                    .getAttribute("viewBox")
+                    .split(" ")
+                    .map((item) => Number(item)); //returns the viewbox of svgDisplay as an array of four numbers.
 
             /* Given a mouse event from an event listener, returns {x: number, y: number}
                 where x and y are the svg coordinates of the click on svgDisplay.
@@ -65,8 +71,7 @@
                 return cursorpt;
             };
 
-            /* Allow the user to zoom in/out on the svg by scrolling */
-            currentSVGViewBox = [0, 0, 100, 100];
+            /* Allow the user to zoom in/out on the svg by scrolling. */
             svgDisplay.addEventListener("wheel", (e) => {
                 let coords = getSVGCoordinates(e);
 
@@ -80,10 +85,7 @@
                 svgDisplay.appendChild(rect);*/
 
                 let rescaleFactor = 2 ** (e.deltaY / 100);
-                console.log(rescaleFactor);
-
-                console.log(coords);
-                console.log(currentSVGViewBox);
+                let currentSVGViewBox = getSVGViewBox();
                 currentSVGViewBox = [
                     currentSVGViewBox[0] * rescaleFactor + coords.x * (1 - rescaleFactor),
                     currentSVGViewBox[1] * rescaleFactor + coords.y * (1 - rescaleFactor),
@@ -109,6 +111,32 @@
                 See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
                 TODO
             */
+            isSVGDragging = false;
+            startSVGDragging = (event) => {
+                event.preventDefault();
+                isSVGDragging = true;
+                let coords = getSVGCoordinates(event);
+                svgDraggingX = coords.x;
+                svgDraggingY = coords.y;
+            };
+            stopSVGDragging = () => {
+                isSVGDragging = false;
+            };
+            svgDisplay.addEventListener("mousedown", startSVGDragging);
+            window.addEventListener("mouseup", stopSVGDragging);
+            window.addEventListener("mousemove", (event) => {
+                if (isSVGDragging) {
+                    let newCoords = getSVGCoordinates(event);
+                    let currentSVGViewBox = getSVGViewBox();
+                    currentSVGViewBox = [
+                        currentSVGViewBox[0] + svgDraggingX - newCoords.x,
+                        currentSVGViewBox[1] + svgDraggingY - newCoords.y,
+                        currentSVGViewBox[2],
+                        currentSVGViewBox[3],
+                    ];
+                    svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                }
+            });
 
             /* Allow the user to resize the text display/svg display.
                 See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
@@ -124,7 +152,6 @@
             window.addEventListener("mouseup", stopResize);
             window.addEventListener("mousemove", (event) => {
                 if (isResizing) {
-                    isResizing = true;
                     sourceDisplay.style.width = event.pageX + "px";
                 }
             });
