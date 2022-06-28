@@ -2,6 +2,9 @@
 <html>
     <head>
         <style>
+            :root {
+                --button-gray: rgb(192, 192, 192);
+            }
             html {
                 height: 100vh;
                 width: 100vw;
@@ -19,10 +22,40 @@
                 flex-direction: row;
             }
             #source-div {
-                white-space: pre;
-                overflow: auto;
+                position: relative;
                 height: 100%;
                 width: 35vw;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+            #source-filenames-div {
+                z-index: 100;
+                width: 100%;
+                background-color: rgb(220, 220, 220);
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                flex-shrink: 0;
+            }
+            .source-filename-div {
+                padding: 10px;
+                background-color: var(--button-gray);
+                cursor: pointer;
+            }
+            #source-filetexts-div {
+                position: relative;
+                width: 100%;
+                flex-grow: 1;
+            }
+            .source-file-div {
+                z-index: 0;
+                position: absolute;
+                white-space: pre;
+                overflow: auto;
+                width: 100%;
+                height: 100%;
+                background-color: white;
             }
             #resize-div {
                 height: 100%;
@@ -49,7 +82,7 @@
                 height: 40px;
                 top: 5px;
                 left: 55px;
-                background-color: rgb(192, 192, 192);
+                background-color: var(--button-gray);
             }
             #button-fullscreen-image-embed {
                 z-index: 2;
@@ -83,7 +116,7 @@
                 height: 40px;
                 top: 5px;
                 left: 5px;
-                background-color: rgb(192, 192, 192);
+                background-color: var(--button-gray);
             }
             #button-resetzoom-click-div {
                 z-index: 3;
@@ -101,7 +134,10 @@
     </head>
     <body>
         <div id="root">
-            <div id="source-div">Hello!</div>
+            <div id="source-div">
+                <div id="source-filenames-div"></div>
+                <div id="source-filetexts-div"></div>
+            </div>
             <div id="resize-div"></div>
             <svg id="display-svg" onmousedown="event.preventDefault();" viewBox="0 0 100 100"></svg>
             <div id="fullscreen-button-div" onmousedown="event.preventDefault();">
@@ -124,6 +160,8 @@
         <script defer>
             /* Globals */
             sourceDisplay = document.getElementById("source-div"); //The div with the source code
+            sourceFilenameDisplay = document.getElementById("source-filenames-div"); //The div with the clickable filenames
+            sourceFiletextDisplay = document.getElementById("source-filetexts-div"); //The div with the text of the files
             resizeDiv = document.getElementById("resize-div"); //The bar for resizing the display
             svgDisplay = document.getElementById("display-svg"); //The svg with the diagram
             startingFontSize = 100; //in pt
@@ -135,9 +173,9 @@
                     .map((item) => Number(item)); //returns the viewbox of svgDisplay as an array of four numbers.
 
             /* Given a mouse event from an event listener, returns {x: number, y: number}
-                where x and y are the svg coordinates of the click on svgDisplay.
-                See https://stackoverflow.com/questions/29261304/how-to-get-the-click-coordinates-relative-to-svg-element-holding-the-onclick-lis
-            */
+                            where x and y are the svg coordinates of the click on svgDisplay.
+                            See https://stackoverflow.com/questions/29261304/how-to-get-the-click-coordinates-relative-to-svg-element-holding-the-onclick-lis
+                        */
             getSVGCoordinates = (event) => {
                 let pt = svgDisplay.createSVGPoint();
                 pt.x = event.clientX;
@@ -161,8 +199,8 @@
             });
 
             /* Allow the user to click to zoom and drag to move
-                See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
-            */
+                            See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
+                        */
             isSVGDragging = false;
             startSVGDragging = (event) => {
                 event.preventDefault();
@@ -191,7 +229,7 @@
             });
 
             /* Allow the user to resize the text display/svg display.
-                See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
+                            See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
             isResizing = false;
             startResize = (event) => {
                 event.preventDefault();
@@ -209,9 +247,9 @@
             });
 
             /* Takes in a line of text and an object with x, y, width, and height attributes.
-            Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
-            DOM object.
-            Shrinks the font size to fit vertically. */
+                        Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
+                        DOM object.
+                        Shrinks the font size to fit vertically. */
             fitText = (text, element) => {
                 let textBox = document.createElementNS("http://www.w3.org/2000/svg", "text");
                 textBox.innerHTML = text;
@@ -240,7 +278,18 @@
                 return textBox;
             };
 
-            source = `import ProcTypes;
+            /* Sources will be stored using sources: Array<{ filename: string, text: string }> */
+
+            sources = [
+                { filename: "anotherFile", text: "some random text lol" },
+                {
+                    filename: "anotherFile183649283740982374809273890472389047239804728903740892374",
+                    text: "some random text lol",
+                },
+                { filename: "anotherFile2", text: "some random text lol" },
+                {
+                    filename: "myFile",
+                    text: `import ProcTypes;
 
             import RegisterFile;
             import Decode;
@@ -842,15 +891,60 @@
                 // This method gives a non-trivial output that depends on execution so that
                 // synth doesn't optimize out the whole processor :)
                 method Word getPc = fetch.getPc;
-            endmodule`;
+            endmodule`,
+                },
+                { filename: "anotherFile3", text: "some random text lol" },
+            ];
+
+            /* Put the sources into the document */
+            sourceDivs = [];
+            sourceTitleDivs = [];
+
+            /* Given an index into the source array, pulls out the given source. */
+            pullGivenSource = (index) => {
+                sourceDivs.map((sourceDiv) => {
+                    sourceDiv.style.zIndex = 0;
+                });
+                sourceTitleDivs.map((sourceTitle) => {
+                    sourceTitle.style.backgroundColor = "var(--button-gray)";
+                });
+                sourceDivs[index].style.zIndex = 1;
+                sourceTitleDivs[index].style.backgroundColor = "white";
+            };
+
+            for (let source of sources) {
+                let newSource = document.createElement("div");
+                newSource.classList.add("source-file-div");
+                newSource.innerHTML = source.text;
+                sourceFiletextDisplay.appendChild(newSource);
+                sourceDivs.push(newSource);
+
+                let newSourceTitle = document.createElement("div");
+                newSourceTitle.classList.add("source-filename-div");
+                newSourceTitle.innerHTML = source.filename;
+                newSourceTitle.addEventListener("mousedown", (event) => {
+                    event.preventDefault();
+                });
+                newSourceTitle.addEventListener("click", (event) => {
+                    sourceDivs.map((sourceDiv, index) => {
+                        if (sources[index].filename === source.filename) {
+                            pullGivenSource(index);
+                        }
+                    });
+                });
+                sourceFilenameDisplay.appendChild(newSourceTitle);
+                sourceTitleDivs.push(newSourceTitle);
+            }
+            pullGivenSource(0); //Pull out the first source file to start
+
             /* An element to place has type
-                            element = { name: string, type: string, variant: "Module" | "Wire",
-                                        uniqueId: string
-                                        source: Array<[number, number]>, typeSource: Array<[number, number]> }
-                            Module = element & {x: number, y: number, width: number, height: number,
-                                                children: Array<element>}
-                            Wire = element & {startx, starty, endx, endy, x1, x2, height (all numbers)}
-                        */
+                                        element = { name: string, type: string, variant: "Module" | "Wire",
+                                                    uniqueId: string
+                                                    source: Array<[number, number]>, typeSource: Array<[number, number]> }
+                                        Module = element & {x: number, y: number, width: number, height: number,
+                                                            children: Array<element>}
+                                        Wire = element & {startx, starty, endx, endy, x1, x2, height (all numbers)}
+                                    */
             elementsToPlace = [
                 {
                     name: "Box of Latkes",
@@ -883,7 +977,6 @@
                     ],
                 },
             ];
-            sourceDisplay.innerHTML = source;
             placeElement = (element) => {
                 if (element.variant === "Module") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -960,11 +1053,11 @@
                 text += source.slice(current);
                 sourceDisplay.innerHTML = text;
             };
-            highlightValues([
-                [1, 2],
-                [3, 4],
-                [5, 6],
-            ]);
+            /*highlightValues([
+                            [1, 2],
+                            [3, 4],
+                            [5, 6],
+                        ]);*/
         </script>
     </body>
 </html>
