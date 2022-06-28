@@ -35,16 +35,91 @@
                 flex: 2;
                 cursor: default;
             }
+            #fullscreen-button-div {
+                width: 100px;
+                height: 50px;
+                position: absolute;
+                bottom: 0;
+                right: 0;
+            }
+            #button-fullscreen-background-div {
+                z-index: 1;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 55px;
+                background-color: rgb(192, 192, 192);
+            }
+            #button-fullscreen-image-embed {
+                z-index: 2;
+                position: absolute;
+                width: 50px;
+                height: 50px;
+                top: 0px;
+                left: 50px;
+            }
+            #button-fullscreen-click-div {
+                z-index: 3;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 55px;
+                background-color: transparent;
+            }
+            #button-resetzoom-image-embed {
+                z-index: 2;
+                position: absolute;
+                width: 50px;
+                height: 50px;
+                top: 0px;
+                left: 0px;
+            }
+            #button-resetzoom-background-div {
+                z-index: 1;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 5px;
+                background-color: rgb(192, 192, 192);
+            }
+            #button-resetzoom-click-div {
+                z-index: 3;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 5px;
+                background-color: transparent;
+            }
             mark {
                 background-color: rgb(130, 255, 157);
             }
         </style>
     </head>
-    <body onclick="document.documentElement.requestFullscreen()">
+    <body>
         <div id="root">
             <div id="source-div">Hello!</div>
             <div id="resize-div"></div>
             <svg id="display-svg" onmousedown="event.preventDefault();" viewBox="0 0 100 100"></svg>
+            <div id="fullscreen-button-div" onmousedown="event.preventDefault();">
+                <div id="button-fullscreen-background-div"></div>
+                <div id="button-resetzoom-background-div"></div>
+                <!-- Source: https://thenounproject.com/icon/reset-zoom-54041/ -->
+                <embed
+                    id="button-resetzoom-image-embed"
+                    src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB3aWR0aD0iNzUycHQiIGhlaWdodD0iNzUycHQiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDc1MiA3NTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiA8ZGVmcz4KICA8Y2xpcFBhdGggaWQ9ImEiPgogICA8cGF0aCBkPSJtMTQyIDE2OGg0NzAuNzl2NDMxaC00NzAuNzl6Ii8+CiAgPC9jbGlwUGF0aD4KIDwvZGVmcz4KIDxnIGNsaXAtcGF0aD0idXJsKCNhKSI+CiAgPHBhdGggZD0ibTYwNCA1MjQuNzVjLTAuMzA4NTktMC4yODUxNi0wLjY0NDUzLTAuNDMzNTktMC45MjE4OC0wLjY3OTY5bC04NS40MzgtODMuOTY5LTIxLjU1NS0yMS4xNzZjMjIuMDI3LTQ4LjQ3NyAyMi4xNDEtMTA2LjMtNC43OTY5LTE1Ni44LTQ2LjAwNC04Ni4xNTItMTUzLjUyLTExOC44NS0yMzkuNjctNzIuODc5LTEuODIwMyAwLjk2NDg0LTMuNTM5MSAyLjA1ODYtNS4zMTY0IDMuMDk3Ny0yNy43ODEgMTYuMDc4LTQ5LjY5NSAzOC42MzctNjQuNzE5IDY0LjgwNS05Ljk4NDQtNS4xMjUtMTcuMjE1LTkuNTcwMy0xOC4yNTQtMTAuMjM0IDAuOTgwNDcgMC42MzY3MiAwLjMxMjUgMC4wMzEyNS0wLjkxNzk3LTAuODQzNzUtMC44ODY3Mi0wLjc0MjE5LTEuODk0NS0xLjMyMDMtMi45OTIyLTEuODA4Ni0wLjQxNDA2LTAuMjEwOTQtMC44NTkzNy0wLjM4NjcyLTEuMjE0OC0wLjUwNzgxLTAuOTQ5MjItMC4yOTY4OC0xLjkyNTgtMC40MTQwNi0yLjg3NS0wLjQ0MTQxLTAuMjM0MzgtMC4wMzEyNS0wLjQxNDA2LTAuMDE1NjI1LTAuNjgzNTktMC4wMTU2MjUtMC44MjgxMiAwLjAxNTYyNS0xLjY1NjIgMC4xMDE1Ni0yLjQ2MDkgMC4yODEyNS0wLjA4OTg0NCAwLjAzMTI1LTAuMTc1NzggMC4wMzEyNS0wLjI2NTYzIDAuMDU4NTk0LTMuODc4OSAwLjk2NDg0LTcuMTk5MiAzLjg1MTYtOC40NTcgOC0wLjQ4ODI4IDEuNTI3My0wLjU3ODEyIDMuMDgyLTAuNDQxNDEgNC41OTM4IDAgMC0wLjA0Njg3NSAwLjA0Njg3NS0wLjAxNTYyNSAwLjA1ODU5M3YwLjAzMTI1YzAuMDMxMjUgMS4zMzIgMC4xNzU3OCAyLjc1MzkgMC41MzEyNSA0LjI2NTZsMTUuMzk4IDY2LjIwNyA0LjgxMjUgMjAuNzg1IDQuMjgxMiAxOC4zNDQgMS4zNzUgNS44OTQ1YzIuODE2NCAxMi4yNDIgMTIuNjUyIDE1LjIzIDIxLjg0IDYuNjQwNmwyMC41MDQtMTkuMTU2IDUuODA4Ni01LjQ1MzEgMTMuMzU5LTEyLjQ4OCA0MS4wNy0zOC40MTggMi42NTIzLTIuNDc2NmMwLjMxMjUtMC4yOTY4OCAwLjUxOTUzLTAuNTkzNzUgMC43ODUxNi0wLjg4NjcybDEuNzIyNy0xLjY5MTQtMC4xMjEwOS0wLjAzMTI1YzEuMDcwMy0xLjIxNDggMS45ODgzLTIuNjA1NSAyLjQ4ODMtNC4yMzgzIDAuMTM2NzItMC40Mjk2OSAwLjE3OTY5LTAuODU5MzggMC4yNjU2My0xLjI3MzQgMC43OTY4Ny0zLjE3MTkgMC4xNzU3OC02LjE5MTQtMS44MDg2LTguNzM4My0xLjQ2NDgtMi4xNzk3LTMuNjEzMy0zLjkxMDItNi4zMTI1LTQuNzI2NiAwIDAtMTUuOTY5IDEuMTA5NC0zOC45MzQtMy40ODQ0IDUuMzA0Ny03LjczMDUgMTEuNDk2LTE0LjkwMiAxOC41NDctMjEuMzc5IDcuNDk2MS02Ljg1OTQgMTUuOTQxLTEyLjkzNCAyNS4zMDUtMTcuOTI2IDE3LjU3NC05LjM2MzMgMzYuMzg3LTE0LjA0NyA1NS4wMjctMTQuNTIgNDUuNDg0LTEuMTY4IDg5Ljk4OCAyMi43NTQgMTEyLjg0IDY1LjU1OSAyOC45MTggNTQuMjIzIDEzLjM2MyAxMjAuNDgtMzMuODY3IDE1Ni43My0xLjY0MDYgMS4yNDYxLTMuMjg5MSAyLjQ3NjYtNC45NzY2IDMuNjQ4NC0wLjY1MjM0IDAuNDQxNDEtMS4zMDQ3IDAuODg2NzItMS45NTMxIDEuMzIwMy0wLjQxNDA2IDAuMjk2ODgtMC44NTkzOCAwLjU2MjUtMS4zMDQ3IDAuODQzNzUtMi4yMjI3IDEuNDQxNC00LjUzNTIgMi43NTM5LTYuODc1IDQuMDc0Mi0zMy45MyAxOC43MTUtNzYuMTIxIDIxLjM2My0xMTMuNjYgMy4zNTE2LTQuODkwNi0yLjM1OTQtOS41NDMtNS4wMzkxLTEzLjk4NC03Ljk0MTQtMS4yNzM0LTAuODMyMDMtMi41NjY0LTEuNjg3NS0zLjgyMDMtMi41NzgxLTAuOTE3OTctMC4yOTY4OC0xLjg2NzItMC41MDc4MS0yLjg5MDYtMC41MDc4MS0xLjY3NTggMC4wMzEyNS0zLjIxNDggMC41MTk1My00LjUzMTIgMS4zMzJsLTEuNzA3IDEuMzUxNi0yNy4xNDEgMjEuMTU2LTMuMTA5NCAyLjQxNDFjLTEuMjczNCAxLjUzOTEtMi4wNDY5IDMuNDg0NC0yLjA0NjkgNS42NDg0IDAuMDMxMjUgMS44MjAzIDAuNTkzNzUgMy41MTE3IDEuNTM5MSA0LjkxOCAxLjMzMiAxLjA4MiAyLjY5NTMgMi4xNjQxIDQuMDYyNSAzLjIxNDggOS4zOTA2IDcuMTg3NSAxOS42MTMgMTMuNTM5IDMwLjY4IDE4Ljg0NCAzOS4xMzMgMTguNzg5IDgxLjc3IDIxLjgyIDEyMC44MiAxMS43MzQgMC4xMTcxOSAwIDAuMjM0MzggMC4wNTg1OTQgMC4zODY3MiAwLjA1ODU5NCAxLjY1NjItMC40NDUzMSAzLjMzNTktMC44ODY3MiA0Ljk4MDUtMS4zNTk0IDExLjM0OC0zLjMyMDMgMjIuNTItNy43OTY5IDMzLjM2My0xMy41NzQgNC4zNjcyLTIuMzM5OCA4LjU2MjUtNC44NzUgMTIuNjgtNy41MjM0IDAuNTYyNS0wLjM1NTQ3IDEuMTQ0NS0wLjcwNzAzIDEuNzA3LTEuMDgyIDEuMTk5Mi0wLjc4NTE2IDIuMzU1NS0xLjYxNzIgMy41MzkxLTIuNDE0MSAwLjQxNDA2LTAuMjkyOTcgMC44MDg1OS0wLjU4NTk0IDEuMjE4OC0wLjg3MTA5bDE4LjE1MiAxNy44NzkgODIuNzM0IDgxLjI1NGMwLjE4MzU5IDAuMTg3NSAwLjMzNTk0IDAuNTAzOTEgMC41MjM0NCAwLjcwNzAzIDE0LjE1NiAxNC4wOTggNDAuMTA5IDEwLjk3MyA1OC4wMTItNyAxNy45NjUtMTcuOTQ1IDIxLjA5NC00My45NDUgNy4wMzEyLTU4LjAxMnoiLz4KIDwvZz4KPC9zdmc+Cg=="
+                />
+                <!-- Source: https://thenounproject.com/icon/fullscreen-1337699/ -->
+                <embed
+                    id="button-fullscreen-image-embed"
+                    src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB3aWR0aD0iNzUycHQiIGhlaWdodD0iNzUycHQiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDc1MiA3NTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiA8Zz4KICA8cGF0aCBkPSJtMTc4LjY4IDE3OC42OHYzOTQuNjVoMzk0LjY1di0zOTQuNjV6bTM1NS4xOSAzNTUuMTloLTMxNS43MnYtMzE1LjcyaDMxNS43MnoiLz4KICA8cGF0aCBkPSJtMzM2LjU0IDQ3NC42NmgtMzEuMjkzbDQ1LjI0Ni00NS4yNDYtMjcuOTAyLTI3LjkwMi00NS4yNDYgNDUuMjQ2di0zMS4yOTdoLTM5LjQ2NXY5OC42NjRoOTguNjZ6Ii8+CiAgPHBhdGggZD0ibTQyOS40MiAzNTAuNDkgNDUuMjQ2LTQ1LjI0NnYzMS4yOTNoMzkuNDY1di05OC42NmgtOTguNjY0djM5LjQ2NWgzMS4yOTdsLTQ1LjI0NiA0NS4yNDZ6Ii8+CiA8L2c+Cjwvc3ZnPgo="
+                />
+                <div id="button-fullscreen-click-div" onclick="document.documentElement.requestFullscreen()"></div>
+                <div id="button-resetzoom-click-div" onclick="svgDisplay.setAttribute('viewBox', '0 0 100 100')"></div>
+            </div>
         </div>
         <script defer>
             /* Globals */
@@ -74,16 +149,6 @@
             /* Allow the user to zoom in/out on the svg by scrolling. */
             svgDisplay.addEventListener("wheel", (e) => {
                 let coords = getSVGCoordinates(e);
-
-                /* //creates a black box at the location of the scroll
-                let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                rect.setAttribute("x", coords.x);
-                rect.setAttribute("y", coords.y);
-                rect.setAttribute("width", 10);
-                rect.setAttribute("height", 10);
-                rect.setAttribute("fill", "black");
-                svgDisplay.appendChild(rect);*/
-
                 let rescaleFactor = 2 ** (e.deltaY / 100);
                 let currentSVGViewBox = getSVGViewBox();
                 currentSVGViewBox = [
@@ -95,21 +160,8 @@
                 svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
             });
 
-            /*  //creates a black box at the location of a click
-            svgDisplay.addEventListener("mousedown", (event) => {
-                let coords = getSVGCoordinates(event);
-                let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                rect.setAttribute("x", coords.x);
-                rect.setAttribute("y", coords.y);
-                rect.setAttribute("width", 10);
-                rect.setAttribute("height", 10);
-                rect.setAttribute("fill", "black");
-                svgDisplay.appendChild(rect);
-            });*/
-
             /* Allow the user to click to zoom and drag to move
                 See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
-                TODO
             */
             isSVGDragging = false;
             startSVGDragging = (event) => {
