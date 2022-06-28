@@ -13,20 +13,26 @@
                 margin: 0;
             }
             #root {
-                display: flex;
-                flex-direction: row;
                 height: 100%;
                 width: 100%;
+                display: flex;
+                flex-direction: row;
             }
             #source-div {
-                flex: 1;
                 white-space: pre;
                 overflow: auto;
                 height: 100%;
+                width: 35vw;
+            }
+            #resize-div {
+                height: 100%;
+                width: 2px;
+                background-color: black;
+                cursor: e-resize;
             }
             #display-svg {
-                flex: 2;
                 object-fit: contain;
+                flex: 2;
             }
             mark {
                 background-color: rgb(130, 255, 157);
@@ -36,18 +42,85 @@
     <body onclick="document.documentElement.requestFullscreen()">
         <div id="root">
             <div id="source-div">Hello!</div>
-            <svg id="display-svg" onmousedown="event.preventDefault();" viewBox="0 0 100 100""></svg>
+            <div id="resize-div"></div>
+            <svg id="display-svg" onmousedown="event.preventDefault();" viewBox="0 0 100 100"></svg>
         </div>
         <script defer>
             /* Globals */
             sourceDisplay = document.getElementById("source-div"); //The div with the source code
+            resizeDiv = document.getElementById("resize-div"); //The bar for resizing the display
             svgDisplay = document.getElementById("display-svg"); //The svg with the diagram
             startingFontSize = 100; //in pt
             fontShrinkFactor = 0.75; //all fonts will have size startingFontSize*(fontShrinkFactor)^k for some integer k
 
-            /* Allow the user to zoom in/out on the svg by scrolling TODO */
+            /* Given a mouse event from an event listener, returns {x: number, y: number}
+                where x and y are the svg coordinates of the click on svgDisplay.
+                See https://stackoverflow.com/questions/29261304/how-to-get-the-click-coordinates-relative-to-svg-element-holding-the-onclick-lis
+            */
+            getSVGCoordinates = (event) => {
+                let pt = svgDisplay.createSVGPoint();
+                pt.x = event.clientX;
+                pt.y = event.clientY;
+                let cursorpt = pt.matrixTransform(svgDisplay.getScreenCTM().inverse());
+                return cursorpt;
+            };
+
+            /* Allow the user to zoom in/out on the svg by scrolling */
+            currentSVGViewBox = [0, 0, 100, 100];
             svgDisplay.addEventListener("wheel", (e) => {
-                console.log(e);
+                let coords = getSVGCoordinates(e);
+                console.log(coords);
+
+                let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                rect.setAttribute("x", coords.x);
+                rect.setAttribute("y", coords.y);
+                rect.setAttribute("width", 10);
+                rect.setAttribute("height", 10);
+                rect.setAttribute("fill", "black");
+                svgDisplay.appendChild(rect);
+
+                console.log(coords);
+                console.log(currentSVGViewBox);
+                if (e.deltaY < 0) {
+                    currentSVGViewBox = [
+                        (currentSVGViewBox[0] + coords.x) / 2,
+                        (currentSVGViewBox[1] + coords.y) / 2,
+                        currentSVGViewBox[2] / 2,
+                        currentSVGViewBox[3] / 2,
+                    ];
+                } else if (e.deltaY > 0) {
+                    currentSVGViewBox = [
+                        2 * currentSVGViewBox[0] - coords.x,
+                        (2 * currentSVGViewBox[1] - coords.y) / 2,
+                        currentSVGViewBox[2] * 2,
+                        currentSVGViewBox[3] * 2,
+                    ];
+                }
+                svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+            });
+
+            /* Allow the user to click to zoom and drag to move
+                See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
+                TODO
+            */
+
+            /* Allow the user to resize the text display/svg display.
+                See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
+            isResizing = false;
+            startResize = (event) => {
+                event.preventDefault();
+                isResizing = true;
+            };
+            stopResize = () => {
+                isResizing = false;
+            };
+            resizeDiv.addEventListener("mousedown", startResize);
+            window.addEventListener("mouseup", stopResize);
+            window.addEventListener("mousemove", (event) => {
+                if (isResizing) {
+                    isResizing = true;
+                    sourceDisplay.style.width = event.pageX + "px";
+                }
             });
 
             /* Takes in a line of text and an object with x, y, width, and height attributes.
