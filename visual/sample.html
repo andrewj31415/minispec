@@ -69,8 +69,33 @@
             currentSVGViewBox = [0, 0, 100, 100];
             svgDisplay.addEventListener("wheel", (e) => {
                 let coords = getSVGCoordinates(e);
-                console.log(coords);
 
+                /* //creates a black box at the location of the scroll
+                let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                rect.setAttribute("x", coords.x);
+                rect.setAttribute("y", coords.y);
+                rect.setAttribute("width", 10);
+                rect.setAttribute("height", 10);
+                rect.setAttribute("fill", "black");
+                svgDisplay.appendChild(rect);*/
+
+                let rescaleFactor = 2 ** (e.deltaY / 100);
+                console.log(rescaleFactor);
+
+                console.log(coords);
+                console.log(currentSVGViewBox);
+                currentSVGViewBox = [
+                    currentSVGViewBox[0] * rescaleFactor + coords.x * (1 - rescaleFactor),
+                    currentSVGViewBox[1] * rescaleFactor + coords.y * (1 - rescaleFactor),
+                    currentSVGViewBox[2] * rescaleFactor,
+                    currentSVGViewBox[3] * rescaleFactor,
+                ];
+                svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+            });
+
+            /*  //creates a black box at the location of a click
+            svgDisplay.addEventListener("mousedown", (event) => {
+                let coords = getSVGCoordinates(event);
                 let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                 rect.setAttribute("x", coords.x);
                 rect.setAttribute("y", coords.y);
@@ -78,26 +103,7 @@
                 rect.setAttribute("height", 10);
                 rect.setAttribute("fill", "black");
                 svgDisplay.appendChild(rect);
-
-                console.log(coords);
-                console.log(currentSVGViewBox);
-                if (e.deltaY < 0) {
-                    currentSVGViewBox = [
-                        (currentSVGViewBox[0] + coords.x) / 2,
-                        (currentSVGViewBox[1] + coords.y) / 2,
-                        currentSVGViewBox[2] / 2,
-                        currentSVGViewBox[3] / 2,
-                    ];
-                } else if (e.deltaY > 0) {
-                    currentSVGViewBox = [
-                        2 * currentSVGViewBox[0] - coords.x,
-                        (2 * currentSVGViewBox[1] - coords.y) / 2,
-                        currentSVGViewBox[2] * 2,
-                        currentSVGViewBox[3] * 2,
-                    ];
-                }
-                svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-            });
+            });*/
 
             /* Allow the user to click to zoom and drag to move
                 See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
