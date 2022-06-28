@@ -4,6 +4,7 @@
         <style>
             :root {
                 --button-gray: rgb(192, 192, 192);
+                font-size: 12pt;
             }
             html {
                 height: 100vh;
@@ -139,8 +140,8 @@
                 <div id="source-filetexts-div"></div>
             </div>
             <div id="resize-div"></div>
-            <svg id="display-svg" onmousedown="event.preventDefault();" viewBox="0 0 100 100"></svg>
-            <div id="fullscreen-button-div" onmousedown="event.preventDefault();">
+            <svg id="display-svg" viewBox="0 0 100 100"></svg>
+            <div id="fullscreen-button-div">
                 <div id="button-fullscreen-background-div"></div>
                 <div id="button-resetzoom-background-div"></div>
                 <!-- Source: https://thenounproject.com/icon/reset-zoom-54041/ -->
@@ -203,7 +204,6 @@
                         */
             isSVGDragging = false;
             startSVGDragging = (event) => {
-                event.preventDefault();
                 isSVGDragging = true;
                 let coords = getSVGCoordinates(event);
                 svgDraggingX = coords.x;
@@ -232,7 +232,6 @@
                             See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
             isResizing = false;
             startResize = (event) => {
-                event.preventDefault();
                 isResizing = true;
             };
             stopResize = () => {
@@ -258,6 +257,7 @@
                 textBox.setAttribute("dominant-baseline", "middle");
                 textBox.setAttribute("text-anchor", "middle");
                 textBox.setAttribute("font-size", String(startingFontSize) + "pt");
+                textBox.style.userSelect = "none";
                 svgDisplay.appendChild(textBox);
 
                 //fix the font size to fit vertically
@@ -922,9 +922,7 @@
                 let newSourceTitle = document.createElement("div");
                 newSourceTitle.classList.add("source-filename-div");
                 newSourceTitle.innerHTML = source.filename;
-                newSourceTitle.addEventListener("mousedown", (event) => {
-                    event.preventDefault();
-                });
+                newSourceTitle.addEventListener("mousedown", (event) => {});
                 newSourceTitle.addEventListener("click", (event) => {
                     sourceDivs.map((sourceDiv, index) => {
                         if (sources[index].filename === source.filename) {
@@ -1024,17 +1022,21 @@
                     underType.style.visibility = "hidden";
                     //handle opening the module
                     let open = () => {
-                        console.log("opening", element.uniqueId);
                         overRect.style.visibility = "hidden";
                         overName.style.visibility = "hidden";
                         overType.style.visibility = "hidden";
                         underName.style.visibility = "";
                         underType.style.visibility = "";
                     };
-                    eval("open" + element.uniqueId + "= open");
-                    overRect.setAttribute("ondblclick", "open" + element.uniqueId + "()");
-                    overName.setAttribute("ondblclick", "open" + element.uniqueId + "()");
-                    overType.setAttribute("ondblclick", "open" + element.uniqueId + "()");
+                    overRect.addEventListener("dblclick", () => {
+                        open();
+                    });
+                    overName.addEventListener("dblclick", () => {
+                        open();
+                    });
+                    overType.addEventListener("dblclick", () => {
+                        open();
+                    });
                 }
             };
             for (let element of elementsToPlace) {
