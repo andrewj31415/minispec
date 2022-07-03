@@ -18,6 +18,7 @@ msc
 synth/yosys
 
 visual/antlr4
+visual/sample.html
 
 # Documentation
 *.aux

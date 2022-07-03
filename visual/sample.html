@@ -161,9 +161,6 @@
                 /* See https://codepen.io/imprakash/pen/GgNMXO */
                 position: absolute;
             }
-            mark {
-                background-color: rgb(130, 255, 157);
-            }
         </style>
     </head>
     <body>
@@ -367,8 +364,7 @@ endmodule
                 ],
             });
             sources.set("twobitcounter", {
-                text: `
-module TwoBitCounter;
+                text: `module TwoBitCounter;
     Reg#(Bit#(2)) count(0);
     method Bit#(2) getCount = count;
     input Bool enable;
@@ -995,6 +991,7 @@ endmodule
             /* Put the sources into the document */
             sourceDivs = new Map(); //each of these maps filenames to DOM elements.
             sourceTitleDivs = new Map();
+            sourceLetterSpanArrays = new Map(); //this one maps filenames to an array of DOM elements.
 
             /* Given a filename, pulls out the given source. */
             pullGivenSource = (filename) => {
@@ -1018,7 +1015,7 @@ endmodule
                     if (color === undefined) {
                         color = "pink";
                     }
-                    let littleLetter = document.createElement("mark");
+                    let littleLetter = document.createElement("span");
                     littleLetter.innerHTML = letter;
                     littleLetter.style.color = color;
                     sourceLetters.push(littleLetter);
@@ -1028,6 +1025,7 @@ endmodule
                 }
                 sourceFiletextDisplay.appendChild(newSource);
                 sourceDivs.set(sourceFileName, newSource);
+                sourceLetterSpanArrays.set(sourceFileName, sourceLetters);
 
                 let newSourceTitle = document.createElement("div");
                 newSourceTitle.classList.add("source-filename-div");
@@ -1041,11 +1039,22 @@ endmodule
             }
             pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
 
-            highlightLocation = (source, index) => {};
+            highlightIndex = (filename, index) => {
+                sourceLetterSpanArrays.get(filename)[index].style.backgroundColor = "rgb(130, 255, 157)";
+            };
+            /* start inclusive, end exclusive
+             * requires start <= end
+             */
+            highlightRange = (filename, start, end) => {
+                for (let i = start; i < end; i += 1) {
+                    highlightIndex(filename, i);
+                }
+            };
+
+            highlightRange("twobitcounter", 5, 10);
 
             /* An element to place has type
                                         element = { name: string, type: string, variant: "Module" | "Wire",
-                                                    uniqueId: string
                                                     source: Array<[number, number]>, typeSource: Array<[number, number]> }
                                         Module = element & {x: number, y: number, width: number, height: number,
                                                             children: Array<element>}
@@ -1053,14 +1062,10 @@ endmodule
                                     */
             elementsToPlace = [
                 {
-                    name: "Box of Latkes",
-                    type: "Box#(5)",
+                    name: "FourBitCounter",
+                    type: "FourBitCounter",
                     variant: "Module",
-                    uniqueId: "asdf",
-                    source: [
-                        [5, 10],
-                        [30, 40],
-                    ],
+                    source: [["fourbitcounter", 5, 10]],
                     typeSource: [],
                     x: 10,
                     y: 10,
@@ -1068,21 +1073,70 @@ endmodule
                     height: 60,
                     children: [
                         {
-                            name: "SubBox Blah Blah Blah",
-                            type: "LittleBox#(3)",
+                            name: "lower",
+                            type: "TwoBitCounter",
                             variant: "Module",
-                            uniqueId: "jkl",
-                            source: [[60, 100]],
-                            typeSource: [],
+                            source: [["fourbitcounter", 49, 69]],
+                            typeSource: ["twobitcounter", 1, 4],
                             x: 40,
                             y: 40,
                             width: 10,
                             height: 10,
                             children: [],
                         },
+                        {
+                            name: "upper",
+                            type: "TwoBitCounter",
+                            variant: "Module",
+                            source: [[60, 100]],
+                            typeSource: [],
+                            x: 40,
+                            y: 80,
+                            width: 10,
+                            height: 10,
+                            children: [
+                                {
+                                    name: "count",
+                                    type: "Reg#(Bit#(2))",
+                                    variant: "Module",
+                                    source: [[60, 100]],
+                                    typeSource: [],
+                                    x: 40,
+                                    y: 80,
+                                    width: 10,
+                                    height: 10,
+                                    children: [],
+                                },
+                                {
+                                    name: "+",
+                                    variant: "Function",
+                                    source: [[60, 100]],
+                                    x: 40,
+                                    y: 80,
+                                    width: 10,
+                                    height: 10,
+                                    children: [],
+                                },
+                                {
+                                    variant: "Mux",
+                                    source: [[60, 100]],
+                                    typeSource: [],
+                                    x: 40,
+                                    y: 80,
+                                    width: 10,
+                                    height: 10,
+                                    children: [],
+                                },
+                            ],
+                        },
                     ],
                 },
             ];
+
+            elementsToPlace = [
+                {name: `upper`, type: `TwoBitCounter`, variant: 'Module', source: [], typeSource: [], x: 0, y: 0, width: 100, height: 100, children: [{variant: 'Mux', source: [], x: 40, y: 40, width: 10, height: 10}, {name: `+`, variant: 'Function', source: [], typeSource: [], x: 20, y: 20, width: 10, height: 10, children: []}, {name: `1'b1`, variant: 'Function', source: [], typeSource: [], x: 20, y: 60, width: 10, height: 10, children: []}, {name: `count`, type: `Bit#(2)`, variant: 'Register', source: [], typeSource: [], x: 60, y: 40, width: 10, height: 10}, {}, {}, {}, {}, {}, {}, {}]}
+            ];
+
             placeElement = (element) => {
                 if (element.variant === "Module") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1145,29 +1199,66 @@ endmodule
                     overType.addEventListener("dblclick", () => {
                         open();
                     });
+                    //handle mouse click
+                    let highlightSource = () => {
+                        for (let item of element.source) {
+                            highlightRange(item[0], item[1], item[2]);
+                        }
+                    };
+                    overRect.addEventListener("mouseenter", () => {
+                        highlightSource();
+                    });
+                } else if (element.variant === "Function") {
+                    let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    let underRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    for (rect of [overRect, underRect]) {
+                        rect.setAttribute("x", element.x);
+                        rect.setAttribute("y", element.y);
+                        rect.setAttribute("width", element.width);
+                        rect.setAttribute("height", element.height);
+                        rect.setAttribute("stroke", "black");
+                        rect.setAttribute("stroke-width", element.height / 50); //make the thickness proportional to the height so that it does not cover the under text
+                        rect.setAttribute("fill", "white");
+                    }
+                    svgDisplay.appendChild(underRect);
+                    for (childElement of element.children) {
+                        placeElement(childElement);
+                    }
+                    svgDisplay.appendChild(overRect);
+                    //place text
+                    let overName = fitText(element.name, {
+                        x: element.x,
+                        y: element.y + element.height / 4,
+                        width: element.width,
+                        height: element.height / 2,
+                    });
+                    let underName = fitText(element.name, {
+                        x: element.x,
+                        y: element.y + element.height,
+                        width: element.width / 2,
+                        height: element.height / 4,
+                    });
+                    underName.style.visibility = "hidden";
+                    //handle opening the function
+                    let open = () => {
+                        overRect.style.visibility = "hidden";
+                        overName.style.visibility = "hidden";
+                        underName.style.visibility = "";
+                    };
+                    overRect.addEventListener("dblclick", () => {
+                        open();
+                    });
+                    overName.addEventListener("dblclick", () => {
+                        open();
+                    });
+                } else {
+                    //we do not handle the component
+                    console.log(element.variant);
                 }
             };
             for (let element of elementsToPlace) {
                 placeElement(element);
             }
-            highlightValues = (locations) => {
-                //locations is a list of pairs of coordinates.
-                let current = 0;
-                let text = "";
-                for (let selection of locations) {
-                    start = selection[0];
-                    end = selection[1];
-                    text += source.slice(current, start) + "<mark>" + source.slice(start, end) + "</mark>";
-                    current = end;
-                }
-                text += source.slice(current);
-                sourceDisplay.innerHTML = text;
-            };
-            /*highlightValues([
-                            [1, 2],
-                            [3, 4],
-                            [5, 6],
-                        ]);*/
         </script>
     </body>
 </html>
