@@ -1138,6 +1138,7 @@ endmodule
             ];
 
             placeElement = (element) => {
+                console.log(element.variant);
                 if (element.variant === "Module") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                     let underRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1251,6 +1252,37 @@ endmodule
                     overName.addEventListener("dblclick", () => {
                         open();
                     });
+                } else if (element.variant === "Wire") {
+                    let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line1.setAttribute("x1", element.startx);
+                    line1.setAttribute("y1", element.starty);
+                    line1.setAttribute("x2", element.x1);
+                    line1.setAttribute("y2", element.starty);
+                    let line2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line2.setAttribute("x1", element.x1);
+                    line2.setAttribute("y1", element.starty);
+                    line2.setAttribute("x2", element.x1);
+                    line2.setAttribute("y2", element.height);
+                    let line3 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line3.setAttribute("x1", element.x1);
+                    line3.setAttribute("y1", element.height);
+                    line3.setAttribute("x2", element.x2);
+                    line3.setAttribute("y2", element.height);
+                    let line4 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line4.setAttribute("x1", element.x2);
+                    line4.setAttribute("y1", element.height);
+                    line4.setAttribute("x2", element.x2);
+                    line4.setAttribute("y2", element.endy);
+                    let line5 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line5.setAttribute("x1", element.x2);
+                    line5.setAttribute("y1", element.endy);
+                    line5.setAttribute("x2", element.endx);
+                    line5.setAttribute("y2", element.endy);
+                    for (let line of [line1, line2, line3, line4, line5]) {
+                        line.setAttribute("stroke", "red");
+                        line.setAttribute("stroke-width", 1);
+                        svgDisplay.appendChild(line);
+                    }
                 } else {
                     //we do not handle the component
                     console.log(element.variant);

@@ -18,8 +18,8 @@ class Component:
 
 class Node:
     '''
-    x is the height from the top of the innermost component containing the node.
     name is just for convenience.
+    (x, y) are the coordinates of the node.
     '''
     def __init__(self, name=None):
         self.name = name
@@ -27,6 +27,12 @@ class Node:
         if self.name != None:
             return self.name
         return "n"
+    def placeAt(self, x, y):
+        self.x = x
+        self.y = y
+    def translate(self, dx, dy):
+        self.x += dx
+        self.y += dy
 
 class Module(Component):
     '''
@@ -42,6 +48,15 @@ class Module(Component):
         self.outputs = outputs
     def __str__(self):
         return "Module " + self.name + " with children " + " | ".join(str(x) for x in self.children)
+    def translate(self, dx, dy):
+        self.x += dx
+        self.y += dy
+        for child in self.children:
+            child.translate(dx, dy)
+        for node in self.inputs:
+            node.translate(dx, dy)
+        for node in self.outputs:
+            node.translate(dx, dy)
     def toJavaScript(self):
         d = { 'name': "`" + self.name + "`", 'type': "`" + self.type + "`", 'variant': "'Module'", 'source': [],
                 'typeSource': [], 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height,
@@ -59,6 +74,14 @@ class Function(Component):
         if (len(self.children) == 0):
             return "Function " + self.name
         return "Function " + self.name + " with children " + " | ".join(str(x) for x in self.children)
+    def translate(self, dx, dy):
+        self.x += dx
+        self.y += dy
+        for child in self.children:
+            child.translate(dx, dy)
+        for node in self.inputs:
+            node.translate(dx, dy)
+        self.output.translate(dx, dy)
     def toJavaScript(self):
         d = { 'name': "`" + self.name + "`", 'variant': "'Function'", 'source': '[]',
                 'typeSource': '[]', 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height,
@@ -73,6 +96,11 @@ class Register(Component):
         self.output = Node('_' + name + '_output')
     def __str__(self):
         return "Register " + self.name
+    def translate(self, dx, dy):
+        self.x += dx
+        self.y += dy
+        self.input.translate(dx, dy)
+        self.output.translate(dx, dy)
     def toJavaScript(self):
         d = { 'name': "`" + self.name + "`", 'type': "`" + self.type + "`", 'variant': "'Register'", 'source': [],
                 'typeSource': [], 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height }
@@ -86,25 +114,64 @@ class Mux(Component):
         self.control = Node('_' + name + '_control')
     def __str__(self):
         return "mux " + self.name
+    def translate(self, dx, dy):
+        self.x += dx
+        self.y += dy
+        for node in self.inputs:
+            node.translate(dx, dy)
+        self.output.translate(dx, dy)
+        self.control.translate(dx, dy)
     def toJavaScript(self):
         d = { 'variant': "'Mux'", 'source': [],
                 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
 class Wire(Component):
-    ''' src and dst are Nodes. '''
+    ''' src and dst are Nodes.
+    The wire starts horizontal from src, goes up at x1, across at height, down at x2, and ends at dst.
+    src is at (startx, starty) and dst is at (endx, endy). '''
     def __init__(self, src, dst):
         self.src = src
         self.dst = dst
     def __str__(self):
         return "wire from " + str(self.src) + " to " + str(self.dst)
+    def translate(self, dx, dy):
+        #wires are not responsible for moving their endpoints--the modules/functions do that.
+        self.x1 += dx
+        self.height += dy
+        self.x2 += dx
+    def placeAt(self, x1, height, x2):
+        self.x1 = x1
+        self.height = height
+        self.x2 = x2
     def toJavaScript(self):
-        return "{}"
+        print(self.src)
+        print(self.dst)
+        d = { 'variant': "'Wire'", 'source': [], 'startx': self.src.x, 'starty': self.src.y,
+                'x1': self.x1, 'height': self.height, 'x2': self.x2, 'endx': self.dst.x, 'endy': self.dst.y}
+        return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
 uMux = Mux("uMux", [Node("m1"), Node("m2")])
+uMux.x, uMux.y, uMux.width, uMux.height = 0, 0, 10, 10
+uMux.inputs[0].placeAt(0, 3)
+uMux.inputs[1].placeAt(0, 7)
+uMux.output.placeAt(10, 5)
+uMux.control.placeAt(5, 10)
+
 uAdder = Function("+", [], [Node("a1"), Node("a2")])
+uAdder.x, uAdder.y, uAdder.width, uAdder.height = 0, 0, 10, 10
+uAdder.inputs[0].placeAt(0, 3)
+uAdder.inputs[1].placeAt(0, 6)
+uAdder.output.placeAt(10, 5)
+
 uConst1 = Function("1'b1", [], [])
+uConst1.x, uConst1.y, uConst1.width, uConst1.height = 0, 0, 10, 10
+uConst1.output.placeAt(10, 5)
+
 uReg = Register("count", "Bit#(2)")
+uReg.x, uReg.y, uReg.width, uReg.height = 0, 0, 10, 10
+uReg.input.placeAt(0, 5)
+uReg.output.placeAt(10, 5)
 
 u = Module('upper', 'TwoBitCounter', [uMux, uAdder, uConst1, uReg], [Node("enable")], [Node("getCount")])
 u.children.extend([ Wire(u.inputs[0], uMux.control), Wire(uMux.output, uReg.input),
@@ -113,11 +180,27 @@ u.children.extend([ Wire(u.inputs[0], uMux.control), Wire(uMux.output, uReg.inpu
                     Wire(uAdder.output, uMux.inputs[1]) ]) #add wires to u
 
 u.x, u.y, u.width, u.height = 0, 0, 100, 100
+u.inputs[0].placeAt(0, 50)
+u.outputs[0].placeAt(100, 50)
 
-uMux.x, uMux.y, uMux.width, uMux.height = 40, 40, 10, 10
-uAdder.x, uAdder.y, uAdder.width, uAdder.height = 20, 20, 10, 10
-uConst1.x, uConst1.y, uConst1.width, uConst1.height = 20, 60, 10, 10
-uReg.x, uReg.y, uReg.width, uReg.height = 60, 40, 10, 10
+uAdder.translate(20, 30)
+uConst1.translate(20, 70)
+uMux.translate(40, 40)
+uReg.translate(60, 40)
+
+u.children[4].placeAt(20, 50, 30)
+u.children[5].placeAt(45, 40, 55)
+u.children[6].placeAt(80, 40, 90)
+u.children[7].placeAt(80, 10, 10)
+u.children[8].placeAt(5, 70, 15)
+u.children[9].placeAt(0, 0, 0)
+u.children[10].placeAt(0, 0, 0)
+
+
+
+
+
+
 
 print(u)
 print(u.toJavaScript())
