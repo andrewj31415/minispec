@@ -151,27 +151,38 @@ class Wire(Component):
                 'x1': self.x1, 'height': self.height, 'x2': self.x2, 'endx': self.dst.x, 'endy': self.dst.y}
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
+
+uWidth, uHeight = 100, 80
+uMuxWidth, uMuxHeight = 6, 10 #Height of the longer side
+uAdderWidth, uAdderHeight = 10, 10
+uConst1Width, uConst1Height = 10, 5
+uRegWidth, uRegHeight = 10, 20
+
+#upper left corner Coords
+uMuxC = [uWidth/2, uHeight/2 - uMuxHeight/2]
+uRegC = [4*uWidth/5, uHeight/2]
+
 uMux = Mux("uMux", [Node("m1"), Node("m2")])
-uMux.x, uMux.y, uMux.width, uMux.height = 0, 0, 10, 10
-uMux.inputs[0].placeAt(0, 3)
-uMux.inputs[1].placeAt(0, 7)
-uMux.output.placeAt(10, 5)
-uMux.control.placeAt(5, 10)
+uMux.x, uMux.y, uMux.width, uMux.height = 0, 0, uMuxWidth, uMuxHeight
+uMux.inputs[0].placeAt(0, uMuxHeight/3)
+uMux.inputs[1].placeAt(0, 2*uMuxHeight/3)
+uMux.output.placeAt(uMuxWidth, uMuxHeight/2)
+uMux.control.placeAt(uMuxWidth/2, uMuxHeight/2)
 
 uAdder = Function("+", [], [Node("a1"), Node("a2")])
-uAdder.x, uAdder.y, uAdder.width, uAdder.height = 0, 0, 10, 10
-uAdder.inputs[0].placeAt(0, 3)
-uAdder.inputs[1].placeAt(0, 6)
-uAdder.output.placeAt(10, 5)
+uAdder.x, uAdder.y, uAdder.width, uAdder.height = 0, 0, uAdderWidth, uAdderHeight
+uAdder.inputs[0].placeAt(0, uAdderHeight/3)
+uAdder.inputs[1].placeAt(0, 2*uAdderHeight/3)
+uAdder.output.placeAt(uAdderWidth, uAdderHeight/2)
 
 uConst1 = Function("1'b1", [], [])
-uConst1.x, uConst1.y, uConst1.width, uConst1.height = 0, 0, 10, 10
-uConst1.output.placeAt(10, 5)
+uConst1.x, uConst1.y, uConst1.width, uConst1.height = 0, 0, uConst1Width, uConst1Height
+uConst1.output.placeAt(uConst1Width, uConst1Height/2)
 
 uReg = Register("count", "Bit#(2)")
-uReg.x, uReg.y, uReg.width, uReg.height = 0, 0, 10, 10
-uReg.input.placeAt(0, 5)
-uReg.output.placeAt(10, 5)
+uReg.x, uReg.y, uReg.width, uReg.height = 0, 0, uRegWidth, uRegHeight
+uReg.input.placeAt(0, uRegHeight/2)
+uReg.output.placeAt(uRegWidth, uRegHeight/2)
 
 u = Module('upper', 'TwoBitCounter', [uMux, uAdder, uConst1, uReg], [Node("enable")], [Node("getCount")])
 u.children.extend([ Wire(u.inputs[0], uMux.control), Wire(uMux.output, uReg.input),
@@ -179,14 +190,14 @@ u.children.extend([ Wire(u.inputs[0], uMux.control), Wire(uMux.output, uReg.inpu
                     Wire(uConst1.output, uAdder.inputs[1]), Wire(uReg.output, uMux.inputs[0]),
                     Wire(uAdder.output, uMux.inputs[1]) ]) #add wires to u
 
-u.x, u.y, u.width, u.height = 0, 0, 100, 100
-u.inputs[0].placeAt(0, 50)
-u.outputs[0].placeAt(100, 50)
+u.x, u.y, u.width, u.height = 0, 0, uWidth, uHeight
+u.inputs[0].placeAt(0, uHeight/2)
+u.outputs[0].placeAt(uWidth, uHeight/2)
 
-uAdder.translate(20, 30)
-uConst1.translate(20, 70)
-uMux.translate(40, 40)
-uReg.translate(60, 40)
+uAdder.translate(2*uWidth/5, 2*uHeight/3)
+uConst1.translate(uWidth/5, 3*uHeight/4)
+uMux.translate(*uMuxC)
+uReg.translate(*uRegC)
 
 u.children[4].placeAt(20, 50, 30)
 u.children[5].placeAt(45, 40, 55)
@@ -218,6 +229,9 @@ l.children.extend([ Wire(l.inputs[0], lMux.control), Wire(lMux.output, lReg.inpu
 
 m = Module('FourBitCounter', [u, l])'''
 
+
+# Graph drawing algorithms:
+# https://en.wikipedia.org/wiki/Layered_graph_drawing
 
 import pathlib
 
