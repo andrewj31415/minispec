@@ -430,6 +430,26 @@
                 return textBox;
             };
 
+            createTriangle = (x, y, width, height, thickness) => {
+                let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line1.setAttribute("x1", x);
+                line1.setAttribute("y1", y);
+                line1.setAttribute("x2", x + width);
+                line1.setAttribute("y2", y + height / 2);
+                let line2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line2.setAttribute("x1", x);
+                line2.setAttribute("y1", y + height);
+                line2.setAttribute("x2", x + width);
+                line2.setAttribute("y2", y + height / 2);
+                for (let line of [line1, line2]) {
+                    line.setAttribute("stroke", "black");
+                    line.setAttribute("stroke-width", thickness);
+                }
+                svgDisplay.appendChild(line1);
+                svgDisplay.appendChild(line2);
+                return [line1, line2];
+            };
+
             /* Sources will be stored using sources: Map<filename: string, { text: string, color: Array<string> }> */
 
             sources = new Map();
@@ -1297,6 +1317,14 @@ endmodule
                         width: element.width / 2,
                         height: element.height / 8,
                     });
+                    //create the module triangle
+                    let triangle = createTriangle(
+                        element.x,
+                        element.y + (7 * element.height) / 8 - (element.width + element.height) / 16 / 2,
+                        (element.width + element.height) / 30,
+                        (element.width + element.height) / 16,
+                        element.height / 100
+                    );
                     underName.style.visibility = "hidden";
                     underType.style.visibility = "hidden";
                     //handle opening the module
@@ -1304,6 +1332,8 @@ endmodule
                         overRect.style.visibility = "hidden";
                         overName.style.visibility = "hidden";
                         overType.style.visibility = "hidden";
+                        triangle[0].style.visibility = "hidden";
+                        triangle[1].style.visibility = "hidden";
                         underName.style.visibility = "";
                         underType.style.visibility = "";
                     };
@@ -1397,6 +1427,14 @@ endmodule
                             height: element.height / 2,
                         },
                         { dominantBaseline: "top" }
+                    );
+                    //create the module triangle
+                    let triangle = createTriangle(
+                        element.x,
+                        element.y + (7 * element.height) / 8 - (element.width + element.height) / 16 / 2,
+                        (element.width + element.height) / 30,
+                        (element.width + element.height) / 16,
+                        element.height / 100
                     );
                 } else if (element.variant === "Mux") {
                     let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");

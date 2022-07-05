@@ -283,18 +283,18 @@ l.children[8].autoPlace()
 l.children[9].placeAt(ulRegC[0] + ulRegWidth + 5, ulHeight/6, ulMuxC[0] - 10)
 l.children[10].autoPlace()
 
-mWidth, mHeight = 230, 150
+mWidth, mHeight = 230, 180
 mConcatWidth, mConcatHeight = 10, 10
 mAndWidth, mAndHeight = 10, 10
 mEqWidth, mEqHeight = 10, 10
 mConst3Width, mConst3Height = 10, 5
 
-uC = [mWidth/2 - ulWidth/2, mHeight/4 - ulHeight/2]
-lC = [mWidth/2 - ulWidth/2, 3*mHeight/4 - ulHeight/2]
-mConcatC = [7*mWidth/8 - mConcatWidth/2, mHeight/2 - mConcatHeight/2]
-mAndC = [50, 40]
-mEqC = [30, 50]
-mConst3C = [10, 45]
+uC = [5*mWidth/8 - ulWidth/2, mHeight/4 - ulHeight/2]
+lC = [3*mWidth/8 - ulWidth/2, 3*mHeight/4 - ulHeight/2]
+mConcatC = [15*mWidth/16 - mConcatWidth/2, mHeight/2 - mConcatHeight/2]
+mAndC = [3*mWidth/10 - mAndWidth/2, 40]
+mEqC = [2*mWidth/10 - mEqWidth/2, 50]
+mConst3C = [mWidth/10 - mConst3Width/2, 45]
 
 mConcat = Function("{}", [], [Node("a1"), Node("a2")])
 mConcat.x, mConcat.y, mConcat.width, mConcat.height = 0, 0, mConcatWidth, mConcatHeight
@@ -330,9 +330,9 @@ mEq.translate(*mEqC)
 mConst3.translate(*mConst3C)
 
 m.children[6].autoPlace()
-m.children[7].autoPlace()
+m.children[7].placeAt(mWidth/20, mHeight/8, mWidth/6)
 m.children[8].autoPlace()
-m.children[9].autoPlace()
+m.children[9].placeAt(3*mWidth/4, mHeight/2, mWidth/8)
 m.children[10].autoPlace()
 m.children[11].autoPlace()
 m.children[12].autoPlace()
