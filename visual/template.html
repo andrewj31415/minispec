@@ -296,7 +296,7 @@
                 textBox.innerHTML = text;
                 textBox.setAttribute("x", element.x + element.width / 2);
                 textBox.setAttribute("y", element.y + element.height / 2);
-                textBox.setAttribute("dominant-baseline", "middle");
+                textBox.setAttribute("dominant-baseline", "central");
                 textBox.setAttribute("text-anchor", "middle");
                 textBox.setAttribute("font-size", String(startingFontSize) + "pt");
                 textBox.style.userSelect = "none";
@@ -304,9 +304,25 @@
 
                 //fix the font size to fit vertically
                 let currentSize = startingFontSize;
+
+                //grow the text until it just barely does not fit vertically
+                while (textBox.getBBox().height < element.height) {
+                    currentSize = currentSize / fontShrinkFactor;
+                    textBox.setAttribute("font-size", String(currentSize) + "pt");
+                }
+
+                //shrink the text vertically until it fits vertically
                 while (textBox.getBBox().height > element.height) {
                     currentSize = currentSize * fontShrinkFactor;
                     textBox.setAttribute("font-size", String(currentSize) + "pt");
+                }
+
+                //shrink the text horizontally by a little if necessary
+                for (let i of [1, 2, 3, 4]) {
+                    if (textBox.getBBox().width > element.width) {
+                        currentSize = currentSize * fontShrinkFactor;
+                        textBox.setAttribute("font-size", String(currentSize) + "pt");
+                    }
                 }
 
                 //use ellipses to shrink the text horizontally, leaving at least two letters behind
@@ -1230,9 +1246,9 @@ endmodule
                     //place text
                     let overName = fitText(element.name, {
                         x: element.x,
-                        y: element.y + element.height / 4,
+                        y: element.y,
                         width: element.width,
-                        height: element.height / 2,
+                        height: element.height,
                     });
                     let underName = fitText(element.name, {
                         x: element.x,
