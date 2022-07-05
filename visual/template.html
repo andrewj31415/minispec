@@ -276,6 +276,35 @@
                     svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
                 }
             });
+            svgDisplay.addEventListener("touchstart", (event) => {
+                isSVGDragging = true;
+                let coords = getSVGCoordinates(event.touches[0]);
+                svgDraggingX = coords.x;
+                svgDraggingY = coords.y;
+            });
+            svgDisplay.addEventListener("touchend", (event) => {
+                isSVGDragging = false;
+            });
+            window.addEventListener(
+                "touchmove",
+                (event) => {
+                    if (isSVGDragging && event.touches.length === 1 /*only one finger should drag svg */) {
+                        event.preventDefault(); //prevent the touch from dragging the entire window
+                        let newCoords = getSVGCoordinates(event.touches[0]);
+                        let currentSVGViewBox = getSVGViewBox();
+                        currentSVGViewBox = [
+                            currentSVGViewBox[0] + svgDraggingX - newCoords.x,
+                            currentSVGViewBox[1] + svgDraggingY - newCoords.y,
+                            currentSVGViewBox[2],
+                            currentSVGViewBox[3],
+                        ];
+                        svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                    } else if (event.touches.length === 2) {
+                        console.log("Two fingers TODO");
+                    }
+                },
+                { passive: false } //necessary to allow svg dragging to prevent default
+            );
 
             /* Allow the user to resize the text display/svg display.
                             See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */

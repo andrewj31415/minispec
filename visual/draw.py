@@ -283,18 +283,41 @@ l.children[8].autoPlace()
 l.children[9].placeAt(ulRegC[0] + ulRegWidth + 5, ulHeight/6, ulMuxC[0] - 10)
 l.children[10].autoPlace()
 
-mWidth, mHeight = 200, 200
+mWidth, mHeight = 230, 150
 mConcatWidth, mConcatHeight = 10, 10
+mAndWidth, mAndHeight = 10, 10
+mEqWidth, mEqHeight = 10, 10
+mConst3Width, mConst3Height = 10, 5
 
-uC = [30, 20]
-lC = [10, 120]
-mConcatC = [150, 100]
+uC = [mWidth/2 - ulWidth/2, mHeight/4 - ulHeight/2]
+lC = [mWidth/2 - ulWidth/2, 3*mHeight/4 - ulHeight/2]
+mConcatC = [7*mWidth/8 - mConcatWidth/2, mHeight/2 - mConcatHeight/2]
+mAndC = [50, 40]
+mEqC = [30, 50]
+mConst3C = [10, 45]
 
 mConcat = Function("{}", [], [Node("a1"), Node("a2")])
 mConcat.x, mConcat.y, mConcat.width, mConcat.height = 0, 0, mConcatWidth, mConcatHeight
 mConcat.autoPlace()
 
-m = Module('stuff', 'FourBitCounter', [u, l, mConcat], [Node("enable")], [Node("getCount")])
+mAnd = Function("&&", [], [Node("a1"), Node("a2")])
+mAnd.x, mAnd.y, mAnd.width, mAnd.height = 0, 0, mAndWidth, mAndHeight
+mAnd.autoPlace()
+
+mEq = Function("==", [], [Node("a1"), Node("a2")])
+mEq.x, mEq.y, mEq.width, mEq.height = 0, 0, mEqWidth, mEqHeight
+mEq.autoPlace()
+
+mConst3 = Function("2b'3", [], [])
+mConst3.x, mConst3.y, mConst3.width, mConst3.height = 0, 0, mConst3Width, mConst3Height
+mConst3.autoPlace()
+
+m = Module('stuff', 'FourBitCounter', [u, l, mConcat, mAnd, mEq, mConst3], [Node("enable")], [Node("getCount")])
+m.children.extend([ Wire(m.inputs[0], l.inputs[0]), Wire(m.inputs[0], mAnd.inputs[0]),
+                    Wire(mConst3.output, mEq.inputs[0]), Wire(l.outputs[0], mEq.inputs[1]),
+                    Wire(mEq.output, mAnd.inputs[1]), Wire(mAnd.output, u.inputs[0]),
+                    Wire(u.outputs[0], mConcat.inputs[0]), Wire(l.outputs[0], mConcat.inputs[1]),
+                    Wire(mConcat.output, m.outputs[0]) ])
 
 m.x, m.y, m.width, m.height = 0, 0, mWidth, mHeight
 m.autoPlace()
@@ -302,6 +325,19 @@ m.autoPlace()
 u.translate(*uC)
 l.translate(*lC)
 mConcat.translate(*mConcatC)
+mAnd.translate(*mAndC)
+mEq.translate(*mEqC)
+mConst3.translate(*mConst3C)
+
+m.children[6].autoPlace()
+m.children[7].autoPlace()
+m.children[8].autoPlace()
+m.children[9].autoPlace()
+m.children[10].autoPlace()
+m.children[11].autoPlace()
+m.children[12].autoPlace()
+m.children[13].autoPlace()
+m.children[14].autoPlace()
 
 print(m)
 print(m.toJavaScript())
