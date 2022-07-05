@@ -144,6 +144,10 @@ class Wire(Component):
         self.x1 = x1
         self.height = height
         self.x2 = x2
+    def autoPlace(self):
+        self.x1 = self.src.x + (self.dst.x - self.src.x)/2
+        self.height = (self.src.y + self.dst.y)/2
+        self.x2 = self.src.x + (self.dst.x - self.src.x)/2
     def toJavaScript(self):
         print(self.src)
         print(self.dst)
@@ -159,15 +163,17 @@ uConst1Width, uConst1Height = 10, 5
 uRegWidth, uRegHeight = 10, 20
 
 #upper left corner Coords
-uMuxC = [uWidth/2, uHeight/2 - uMuxHeight/2]
-uRegC = [4*uWidth/5, uHeight/2]
+uMuxC = [3*uWidth/5, uHeight/2 - uMuxHeight/2]
+uRegC = [4*uWidth/5, uHeight/2 - uRegHeight/2]
+uConst1C = [uWidth/5, 3*uHeight/4 - uConst1Height/2]
+uAdderC = [2*uWidth/5, 5*uHeight/8 - uAdderHeight/2]
 
 uMux = Mux("uMux", [Node("m1"), Node("m2")])
 uMux.x, uMux.y, uMux.width, uMux.height, uMux.shortHeight = 0, 0, uMuxWidth, uMuxHeight, uMuxHeight*5/8
 uMux.inputs[0].placeAt(0, uMuxHeight/3)
 uMux.inputs[1].placeAt(0, 2*uMuxHeight/3)
 uMux.output.placeAt(uMuxWidth, uMuxHeight/2)
-uMux.control.placeAt(uMuxWidth/2, uMuxHeight/2)
+uMux.control.placeAt(uMuxWidth/2, uMuxHeight - (uMuxHeight-uMux.shortHeight)/4)
 
 uAdder = Function("+", [], [Node("a1"), Node("a2")])
 uAdder.x, uAdder.y, uAdder.width, uAdder.height = 0, 0, uAdderWidth, uAdderHeight
@@ -194,23 +200,18 @@ u.x, u.y, u.width, u.height = 0, 0, uWidth, uHeight
 u.inputs[0].placeAt(0, uHeight/2)
 u.outputs[0].placeAt(uWidth, uHeight/2)
 
-uAdder.translate(2*uWidth/5, 2*uHeight/3)
-uConst1.translate(uWidth/5, 3*uHeight/4)
+uAdder.translate(*uAdderC)
+uConst1.translate(*uConst1C)
 uMux.translate(*uMuxC)
 uReg.translate(*uRegC)
 
-u.children[4].placeAt(20, 50, 30)
-u.children[5].placeAt(45, 40, 55)
-u.children[6].placeAt(80, 40, 90)
-u.children[7].placeAt(80, 10, 10)
-u.children[8].placeAt(5, 70, 15)
-u.children[9].placeAt(0, 0, 0)
-u.children[10].placeAt(0, 0, 0)
-
-
-
-
-
+u.children[4].placeAt(uMuxC[0]/8, 7*uHeight/8, uMuxC[0] + uMuxWidth/2)
+u.children[5].autoPlace()
+u.children[6].autoPlace()
+u.children[7].placeAt(uRegC[0] + uRegWidth + 5, uHeight/6, uAdderC[0] - 10)
+u.children[8].autoPlace()
+u.children[9].placeAt(uRegC[0] + uRegWidth + 5, uHeight/6, uMuxC[0] - 10)
+u.children[10].autoPlace()
 
 
 print(u)

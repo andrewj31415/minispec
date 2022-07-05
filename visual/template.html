@@ -200,6 +200,12 @@
             </div>
         </div>
         <script defer>
+            assert = (condition, message = "Assertion Error.") => {
+                if (!condition) {
+                    throw new Error(message);
+                }
+            };
+
             /* Globals */
             sourceDisplay = document.getElementById("source-div"); //The div with the source code
             sourceFilenameDisplay = document.getElementById("source-filenames-div"); //The div with the clickable filenames
@@ -258,6 +264,7 @@
             window.addEventListener("mouseup", stopSVGDragging);
             window.addEventListener("mousemove", (event) => {
                 if (isSVGDragging) {
+                    event.preventDefault(); //prevent dragging the svg from highlighting the source text
                     let newCoords = getSVGCoordinates(event);
                     let currentSVGViewBox = getSVGViewBox();
                     currentSVGViewBox = [
@@ -290,14 +297,39 @@
             /* Takes in a line of text and an object with x, y, width, and height attributes.
                         Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
                         DOM object.
-                        Shrinks the font size to fit vertically. */
-            fitText = (text, element) => {
+                        Shrinks the font size to fit inside the box.
+                        details = {dominantBaseline, textAnchor} defaults to centering the text on both axes. */
+            fitText = (text, element, details = {}) => {
+                assert([undefined, "left", "center", "right"].includes(details.textAnchor), details.textAnchor);
+                assert([undefined, "top", "center", "bottom"].includes(details.dominantBaseline), details.dominantBaseline);
                 let textBox = document.createElementNS("http://www.w3.org/2000/svg", "text");
                 textBox.innerHTML = text;
-                textBox.setAttribute("x", element.x + element.width / 2);
-                textBox.setAttribute("y", element.y + element.height / 2);
-                textBox.setAttribute("dominant-baseline", "central");
-                textBox.setAttribute("text-anchor", "middle");
+                switch (details.textAnchor ?? "center") {
+                    case "center":
+                        textBox.setAttribute("x", element.x + element.width / 2);
+                        textBox.setAttribute("text-anchor", "middle");
+                        break;
+                    case "left":
+                        textBox.setAttribute("x", element.x);
+                        textBox.setAttribute("text-anchor", "start");
+                        break;
+                    case "right":
+                        textBox.setAttribute("x", element.x + element.width);
+                        textBox.setAttribute("text-anchor", "end");
+                }
+                switch (details.dominantBaseline ?? "centered") {
+                    case "centered":
+                        textBox.setAttribute("y", element.y + element.height / 2);
+                        textBox.setAttribute("dominant-baseline", "central");
+                        break;
+                    case "top":
+                        textBox.setAttribute("y", element.y);
+                        textBox.setAttribute("dominant-baseline", "text-before-edge");
+                        break;
+                    case "bottom":
+                        textBox.setAttribute("y", element.y + element.height);
+                        textBox.setAttribute("dominant-baseline", "text-after-edge");
+                }
                 textBox.setAttribute("font-size", String(startingFontSize) + "pt");
                 textBox.style.userSelect = "none";
                 svgDisplay.appendChild(textBox);
@@ -1174,18 +1206,26 @@ endmodule
                     }
                     svgDisplay.appendChild(overRect);
                     //place text
-                    let overName = fitText(element.name, {
-                        x: element.x,
-                        y: element.y,
-                        width: element.width,
-                        height: element.height / 2,
-                    });
-                    let overType = fitText(element.type, {
-                        x: element.x,
-                        y: element.y + element.height / 2,
-                        width: element.width,
-                        height: element.height / 2,
-                    });
+                    let overName = fitText(
+                        element.name,
+                        {
+                            x: element.x,
+                            y: element.y,
+                            width: element.width,
+                            height: element.height / 2,
+                        },
+                        { dominantBaseline: "bottom" }
+                    );
+                    let overType = fitText(
+                        element.type,
+                        {
+                            x: element.x,
+                            y: element.y + element.height / 2,
+                            width: element.width,
+                            height: element.height / 2,
+                        },
+                        { dominantBaseline: "top" }
+                    );
                     let underName = fitText(element.name, {
                         x: element.x,
                         y: element.y + element.height,
@@ -1279,18 +1319,26 @@ endmodule
                     rect.setAttribute("stroke-width", element.height / 50);
                     rect.setAttribute("fill", "white");
                     svgDisplay.appendChild(rect);
-                    let overName = fitText(element.name, {
-                        x: element.x,
-                        y: element.y,
-                        width: element.width,
-                        height: element.height / 2,
-                    });
-                    let overType = fitText(element.type, {
-                        x: element.x,
-                        y: element.y + element.height / 2,
-                        width: element.width,
-                        height: element.height / 2,
-                    });
+                    let overName = fitText(
+                        element.name,
+                        {
+                            x: element.x,
+                            y: element.y,
+                            width: element.width,
+                            height: element.height / 2,
+                        },
+                        { dominantBaseline: "bottom" }
+                    );
+                    let overType = fitText(
+                        element.type,
+                        {
+                            x: element.x,
+                            y: element.y + element.height / 2,
+                            width: element.width,
+                            height: element.height / 2,
+                        },
+                        { dominantBaseline: "top" }
+                    );
                 } else if (element.variant === "Mux") {
                     let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
                     polygon.setAttribute(
