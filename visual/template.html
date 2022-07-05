@@ -221,9 +221,9 @@
                     .map((item) => Number(item)); //returns the viewbox of svgDisplay as an array of four numbers.
 
             /* Given a mouse event from an event listener, returns {x: number, y: number}
-                            where x and y are the svg coordinates of the click on svgDisplay.
-                            See https://stackoverflow.com/questions/29261304/how-to-get-the-click-coordinates-relative-to-svg-element-holding-the-onclick-lis
-                        */
+                                        where x and y are the svg coordinates of the click on svgDisplay.
+                                        See https://stackoverflow.com/questions/29261304/how-to-get-the-click-coordinates-relative-to-svg-element-holding-the-onclick-lis
+                                    */
             getSVGCoordinates = (event) => {
                 let pt = svgDisplay.createSVGPoint();
                 pt.x = event.clientX;
@@ -234,6 +234,7 @@
 
             /* Allow the user to zoom in/out on the svg by scrolling. */
             svgDisplay.addEventListener("wheel", (e) => {
+                console.log(e);
                 e.preventDefault();
                 let coords = getSVGCoordinates(e);
                 let rescaleFactor = 2 ** (e.deltaY / 100);
@@ -248,8 +249,8 @@
             });
 
             /* Allow the user to click to zoom and drag to move
-                            See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
-                        */
+                                        See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
+                                    */
             isSVGDragging = false;
             startSVGDragging = (event) => {
                 isSVGDragging = true;
@@ -276,14 +277,24 @@
                     svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
                 }
             });
+            mobileRecalculateSvgDragging = (touches) => {
+                /* computes the point that the SVG is being dragged from as the centroid of the fingers */
+                let coordsArray = [...touches].map((touch) => getSVGCoordinates(touch));
+                svgDraggingX = coordsArray.map((coords) => coords.x).reduce((prev, cur) => prev + cur) / coordsArray.length;
+                svgDraggingY = coordsArray.map((coords) => coords.y).reduce((prev, cur) => prev + cur) / coordsArray.length;
+            };
             svgDisplay.addEventListener("touchstart", (event) => {
                 isSVGDragging = true;
-                let coords = getSVGCoordinates(event.touches[0]);
-                svgDraggingX = coords.x;
-                svgDraggingY = coords.y;
+                //let coords = getSVGCoordinates(event.touches[0]);
+                mobileRecalculateSvgDragging(event.touches);
             });
             svgDisplay.addEventListener("touchend", (event) => {
-                isSVGDragging = false;
+                if (event.touches.length === 0) {
+                    //stop the dragging if no fingers are left
+                    isSVGDragging = false;
+                } else {
+                    mobileRecalculateSvgDragging(event.touches);
+                }
             });
             window.addEventListener(
                 "touchmove",
@@ -299,15 +310,25 @@
                             currentSVGViewBox[3],
                         ];
                         svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                    } else if (event.touches.length === 2) {
-                        console.log("Two fingers TODO");
+                    } else if (isSVGDragging && event.touches.length === 2) {
+                        event.preventDefault(); //prevent the touch from resizing the entire window
+                        let newCoords1 = getSVGCoordinates(event.touches[0]);
+                        let newCoords2 = getSVGCoordinates(event.touches[1]);
+                        let currentSVGViewBox = getSVGViewBox();
+                        currentSVGViewBox = [
+                            currentSVGViewBox[0] + svgDraggingX - (newCoords1.x + newCoords2.x) / 2,
+                            currentSVGViewBox[1] + svgDraggingY - (newCoords1.y + newCoords2.y) / 2,
+                            currentSVGViewBox[2],
+                            currentSVGViewBox[3],
+                        ];
+                        svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
                     }
                 },
                 { passive: false } //necessary to allow svg dragging to prevent default
             );
 
             /* Allow the user to resize the text display/svg display.
-                            See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
+                                        See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
             isResizing = false;
             startResize = (event) => {
                 isResizing = true;
@@ -324,10 +345,10 @@
             });
 
             /* Takes in a line of text and an object with x, y, width, and height attributes.
-                        Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
-                        DOM object.
-                        Shrinks the font size to fit inside the box.
-                        details = {dominantBaseline, textAnchor} defaults to centering the text on both axes. */
+                                    Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
+                                    DOM object.
+                                    Shrinks the font size to fit inside the box.
+                                    details = {dominantBaseline, textAnchor} defaults to centering the text on both axes. */
             fitText = (text, element, details = {}) => {
                 assert([undefined, "left", "center", "right"].includes(details.textAnchor), details.textAnchor);
                 assert([undefined, "top", "center", "bottom"].includes(details.dominantBaseline), details.dominantBaseline);
@@ -403,19 +424,19 @@
             sources.set("fourbitcounter", {
                 text: `import twobitcounter
 
-module FourBitCounter;
-    TwoBitCounter lower;
-    TwoBitCounter upper;
-    method Bit#(4) getCount;
-        return {upper.getCount, lower.getCount};
-    endmethod
-    input Bool enable;
-    rule increment;
-        lower.enable = enable;
-        upper.enable = enable && (lower.getCount == 3);
-    endrule
-endmodule
-`,
+            module FourBitCounter;
+                TwoBitCounter lower;
+                TwoBitCounter upper;
+                method Bit#(4) getCount;
+                    return {upper.getCount, lower.getCount};
+                endmethod
+                input Bool enable;
+                rule increment;
+                    lower.enable = enable;
+                    upper.enable = enable && (lower.getCount == 3);
+                endrule
+            endmodule
+            `,
                 color: [
                     ...Array(6).fill("blue"),
                     "pink",
@@ -443,624 +464,624 @@ endmodule
             });
             sources.set("twobitcounter", {
                 text: `module TwoBitCounter;
-    Reg#(Bit#(2)) count(0);
-    method Bit#(2) getCount = count;
-    input Bool enable;
-    rule increment;
-        if (enable)
-            count <= count + 1;
-    endrule
-endmodule
-`,
+                Reg#(Bit#(2)) count(0);
+                method Bit#(2) getCount = count;
+                input Bool enable;
+                rule increment;
+                    if (enable)
+                        count <= count + 1;
+                endrule
+            endmodule
+            `,
                 color: [],
             });
             sources.set("big file", {
                 text: `import ProcTypes;
 
-import RegisterFile;
-import Decode;
-import Execute;
-
-import ALU;
-
-// MainMemory includes the MainMemory port
-// and the SingleCycleMemory modules
-import MainMemory;
-
-// Milestone 2: Select which cache(s) to import
-import DirectMappedCache;
-import TwoWayCache;
-import SimpleCache;
-
-// Types associated with the fetch stage
-typedef enum {
-    Dequeue, // Consume instruction at the f2d output, if any
-    Stall, // Do not consume instruction at f2d
-    Redirect,  // Redirect fetch to another PC, annulling any fetched instructions
-    Shuffle
-} FetchAction;
-
-typedef struct {
-    FetchAction fetchAction;
-    Word redirectPC;  // PC to fetch from, used only if fetchAction is Redirect
-} FetchInput;
-
-
-typedef struct {
-    Word pc;
-    Word inst;
-} F2D;
-
-typedef struct {
-    Word pc;
-    DecodedInst dInst;
-    Word rVal1;
-    Word rVal2;
-    // Add anything you need
-} D2E;
-
-typedef struct {
-    Word pc;
-    DecodedInst dInst;
-    Word rVal1;
-    Word rVal2;
-    // Add anything you need
-    RIndx src1;
-    RIndx src2;
-} D2E2;
-
-typedef struct {
-    Word pc;
-    IType iType;
-    Maybe#(RIndx) dst;
-    Word data;
-    // Add anything you need
-} E2W;
-
-
-// Fetch stage, including pc and instruction memory/cache
-// 
-// See handout for the structure of the recommended fetch stage. You can test
-// this module using FetchTB (ms sim FetchTB.ms FetchTB).
-//
-// Implementing this module is optional: you can place the fetch logic and
-// iMem/iCache inside the processor instead. We recommend you use a separate
-// module at least during Part 2 to ease debugging.
-module Fetch;
-    Reg#(Word) pc(0);
-
-    Reg#(Bool) skipNextInsts(False);
-    Reg#(Bool) atCacheLineEnd(False);
-
-    // Single-cycle Instruction Memory
-    // Milestone 2: comment this declaration out
-    //SingleCycleMemory iMem;
-    
-    // Line-based Main Memory to use with caches
-    // Milestone 2: uncomment this declaration
-    MainMemory iMem;
-
-    // Milestone 2: choose which type of iCache to use
-    //DirectMappedCache iCache(iMem);
-    //TwoWayCache iCache(iMem);
-    SimpleCache iCache(iMem);
-
-    input FetchInput in;
-
-    // Milestone 2: Modify to use iCache instead
-    method Maybe#(F2D) f2d = skipNextInsts ? Invalid : (isValid(iCache.data)?
-        Valid(F2D{pc: pc, inst: fromMaybe(?, iCache.data)}) : Invalid);
-
-    method Maybe#(F2D) f2d2 = skipNextInsts ? Invalid : (isValid(iCache.data2)?
-        Valid(F2D{pc: fastAdd#(32)(pc, 4, 0), inst: fromMaybe(?, iCache.data2)}) : Invalid);
-
-
-    rule fetch;
-        // Fetch instructions from iMem/iCache and update PC according to in.
-        //////////////////////////
-        // TODO: Your code here //
-        //////////////////////////
-//$display("Offset: %h", getWordOffset(pc));
-        case (in.fetchAction)
-            Dequeue: begin
-//$display("Dequeue pc = %h", pc);
-              if (iCache.reqEnabled) begin
-                iCache.req = Valid(MemReq{addr: fastAdd#(32)(pc, atCacheLineEnd ? 4:8, 0), op: Ld, data: ?});
-              end
-              pc <= fastAdd#(32)(pc, atCacheLineEnd ? 4:8, 0);
-              atCacheLineEnd <= getWordOffset(fastAdd#(32)(pc, atCacheLineEnd ? 4:8, 0)) == wordsPerLine-1;
-//$display("next pc: %h", fastAdd#(32)(pc, getWordOffset(pc) != wordsPerLine-1 ? 8:4, 0));
-            end
-            Stall: begin
-//$display("Stall pc = %h", pc);
-              if (iCache.reqEnabled) begin
-                iCache.req = Valid(MemReq{addr: pc, op: Ld, data: ?});
-              end
-            end
-            Shuffle: begin
-              if (iCache.reqEnabled) begin
-                iCache.req = Valid(MemReq{addr: fastAdd#(32)(pc, 4, 0), op: Ld, data: ?});
-              end
-              pc <= fastAdd#(32)(pc, 4, 0); 
-              atCacheLineEnd <= getWordOffset(fastAdd#(32)(pc, 4, 0)) == wordsPerLine-1;
-            end
-            Redirect: begin
-              if (iCache.reqEnabled) begin
-                iCache.req = Valid(MemReq{addr: in.redirectPC, op: Ld, data: ?});
-              end
-              pc <= in.redirectPC;
-              atCacheLineEnd <= getWordOffset(in.redirectPC) == wordsPerLine-1;
-            end
-        endcase
-
-if (in.fetchAction == Redirect) skipNextInsts <= True;
-else if (isValid(iCache.data)) skipNextInsts <= False;
-
-    endrule
-
-    // Used only for pipeline debugging; you should not use this method
-    // elsewhere in your code (assume the fetch stage can run ahead)
-    method Word getPc = pc;
-    method Word getPc2 = fastAdd#(32)(pc, 4, 0); 
-endmodule
-
-
-module Processor;
-    Fetch fetch;
-
-    RegisterFile rf;
-
-    // Single-cycle data memory
-    // Milestone 2: comment this declaration out
-    //SingleCycleMemory dMem;
-
-    // Line-based Main Memory to use with caches
-    // Milestone 2: uncomment this declaration
-    MainMemory dMem;
-
-    // Milestone 2: choose which type of data cache to use
-    // NOTE: The CacheWrapper#() type of the dCache is critical, as it is used
-    // for detecting that the program has finished running
-    CacheWrapper#(DirectMappedCache) dCache(dMem);
-    //CacheWrapper#(TwoWayCache) dCache(dMem);
-
-    //Print printer;
-    //Print printer2;
-
-    // Pipeline Registers
-    Reg#(Maybe#(D2E)) d2e(Invalid);
-    Reg#(Maybe#(E2W)) e2w(Invalid);
-
-    Reg#(Maybe#(D2E2)) d2e2(Invalid);
-    Reg#(Maybe#(E2W)) e2w2(Invalid);
-
-
-    // Performance counters
-    // These are used in the processor rule for debugging help, by tracking the
-    // cycles and instructions completed. They are not needed for correctness
-    // and you may remove them, but doing so is unlikely to reduce cycle time.
-    Reg#(Bit#(32)) cycle(0);
-    Reg#(Bit#(32)) instrs(0);
-    Reg#(Bit#(32)) instrs1(0);
-    Reg#(Bit#(32)) instrs2(0);
-
-    rule tick;
-        //////////////////////
-        // Debugging Helper //
-        //////////////////////
-        cycle <= cycle + 1;
-        // Uncomment the code below to print pipeline state each cycle
-        begin
-            $write("[%d] F|D|E|W PCs: ", cycle);
-            $write("%x|", fetch.getPc);
-            if (isValid(fetch.f2d)) $write("%x|", fromMaybe(?, fetch.f2d).pc); else $write("%8s|", "NOP");
-            if (isValid(d2e)) $write("%x|", fromMaybe(?, d2e).pc); else $write("%8s|", "NOP");
-            if (isValid(e2w)) $write("%x", fromMaybe(?, e2w).pc); else $write("%8s", "NOP");
-            $display("  instrs: %d", instrs);
-        end
-        begin
-            $write("[%d] F|D|E|W PCs: ", cycle);
-            $write("%x|", fetch.getPc2);
-            if (isValid(fetch.f2d2)) $write("%x|", fromMaybe(?, fetch.f2d2).pc); else $write("%8s|", "NOP");
-            if (isValid(d2e2)) $write("%x|", fromMaybe(?, d2e2).pc); else $write("%8s|", "NOP");
-            if (isValid(e2w2)) $write("%x", fromMaybe(?, e2w2).pc); else $write("%8s", "NOP");
-            $display("  instrs: %d", instrs);
-        end
-
-
-        /////////////////////
-        // Writeback Stage //
-        /////////////////////
-        // Signals used by decode to handle data hazards
-        RIndx dstW = 0;
-        Word dataW = 0;
-        RIndx dstW2 = 0;
-        Word dataW2 = 0;
-
-        // Signal for dCache-induced stalls
-        Bool dStall = False;
-        Bool dStall2 = False;
-
-
-        if (isValid(e2w)) begin
-            let e2w_v = fromMaybe(?, e2w);
-            //////////////////
-            // Writeback #1 //
-            //////////////////
-//$display("Writing back for instruction of type: ", fshow(e2w_v.iType));
-
-            Word dataToWrite = e2w_v.data;
-            //Pick up data from a load if necessary
-            if (e2w_v.iType == LOAD) begin
-                if (isValid(dCache.data)) begin
-                    dataToWrite = fromMaybe(0, dCache.data);  //get the data from memory if we are loading
-//$display("Loaded data: %h to store in %h", dataToWrite, fromMaybe(0, e2w_v.dst));
-                end else begin
-                    dStall = True;  //if our dCache has not returned any data, we need to stall until it does.
-//$display("Read stalling");
-                end
-            end
-
-            // Write to a register if the instruction requires it
-            if (isValid(e2w_v.dst)) begin
-                rf.wr = Valid(RegWriteArgs{index: fromMaybe(?, e2w_v.dst), data: dataToWrite});
-//$display("Writing %h to %d", dataToWrite, fromMaybe(?, e2w_v.dst));
-                dstW = fromMaybe(0, e2w_v.dst);  //note the register being written to for the purpose of data hazards
-                dataW = dstW == 0 ? 0 : dataToWrite;
-            end
-
-            // Count every instruction that leaves the writeback stage
-            // (for debugging help)
-            instrs1 <= instrs1 + 1;
-
-            // BEGIN: DO NOT REMOVE OR MODIFY THIS CODE
-            // If unsupported instruction, stops simulation and print the state of the processor
-            if (e2w_v.iType == Unsupported) begin
-                $display("Reached unsupported instruction");
-                $display("Dumping the state of the processor");
-                $display("pc = 0x%x", e2w_v.pc);
-                $display(rf.fshow);
-                $display("Quitting simulation.");
-                $finish;
-            end
-            // END: DO NOT REMOVE OR MODIFY THIS CODE
-        end
-
-        if (isValid(e2w2)) begin
-            let e2w2_v = fromMaybe(?, e2w2);
-            //////////////////
-            // Writeback #2 //
-            //////////////////
-//$display("Writing back for instruction of type: ", fshow(e2w2_v.iType));
-
-            Word dataToWrite2 = e2w2_v.data;
-            //Pick up data from a load if necessary
-            if (e2w2_v.iType == LOAD && !dStall ) begin  //if the other pipeline is dStalled, we can't load data
-                if (isValid(dCache.data)) begin
-                    dataToWrite2 = fromMaybe(0, dCache.data);  //get the data from memory if we are loading
-//$display("Loaded data2: %h to store in %h", dataToWrite2, fromMaybe(0, e2w2_v.dst));
-                end else begin
-                    dStall2 = True;  //if our dCache has not returned any data, we need to stall until it does.
-//$display("Read stalling");
-                end
-            end
-
-            //write to a register if necessary
-            if (isValid(e2w2_v.dst)) begin
-                rf.wr2 = Valid(RegWriteArgs{index: fromMaybe(?, e2w2_v.dst), data: dataToWrite2});
-//$display("Writing2 %h to %d", dataToWrite2, fromMaybe(?, e2w2_v.dst));
-                dstW2 = fromMaybe(0, e2w2_v.dst);  //note the register being written to for the purpose of data hazards
-                dataW2 = dstW2 == 0 ? 0 : dataToWrite2;
-            end
-
-            // Count every instruction that leaves the writeback stage
-            // (for debugging help)
-            instrs2 <= instrs2 + 1;
-
-        end
-        instrs <= instrs1 + instrs2;
-
-        ///////////////////
-        // Execute Stage //
-        ///////////////////
-        // Signal for decode stalls or 2nd exec stall
-        Bool stall = False;
-
-        // Signals used to handle mispredictions
-        Bool annulAfterExec = False;
-        Bool annulAfterExec2 = False;
-        Word redirectPC = ?;
-
-        // Signals used by decode to handle data hazards
-        RIndx dstE = 0;
-        Word dataE = 0;
-        RIndx dstE2 = 0;
-        Word dataE2 = 0;
-        RIndx loadInto = 0;  //stall a cycle if loading
-        RIndx loadInto2 = 0;  //stall a cycle if loading on the second instruction
-        Bool reqStall = False; //exec is waiting for the dCache to have reqEnable.
-        Bool reqStall2 = False; //exec2 is waiting for the dCache to have reqEnable.
-        Bool makingReq = False; //exec is sending a request to the dCache
-
-        if (isValid(d2e)) begin
-            let d2e_v = fromMaybe(?, d2e);
-            ////////////////
-            // Execute #1 //
-            ////////////////
-            Word rVal1 = d2e_v.rVal1;
-            Word rVal2 = d2e_v.rVal2;
-            ExecInst eInst = execute( d2e_v.dInst, rVal1, rVal2, d2e_v.pc);
-
-//$display("Using: ", fshow(eInst.iType));
-//$display("Combined rVal1: %h, rVal2: %h, imm: %h to get %h to put into %h", rVal1, rVal2, d2e_v.dInst.imm, eInst.data, fromMaybe(0, eInst.dst));
-
-            //send load and store requests to memory
-            if (eInst.iType == LOAD) begin
-                loadInto = fromMaybe(0, eInst.dst);
-                if (dCache.reqEnabled) begin
-                    dCache.req = Valid(MemReq{addr: eInst.addr, op: Ld, data: ?});
-                    makingReq = True;
-//$display("Requesting load data from %h", eInst.addr);
-                end else begin
-                    reqStall = True;
-//$display("Req stalling to load");
-                end
-            end else if (eInst.iType == STORE) begin
-                if (dCache.reqEnabled) begin
-                    dCache.req = Valid(MemReq{addr: eInst.addr, op: St, data: eInst.data});
-                    makingReq = True;
-//$display("Requesting store data: %h into %h", eInst.data, eInst.addr);
-                end else begin
-                    reqStall = True;
-//$display("Req stalling to store");
-                end
-            end
-
-
-            //assign e2w
-            if (dStall) begin
-                //do nothing
-            end else if (dStall2 || reqStall) begin
-                e2w <= Invalid;
-            end else if (isValid(e2w2) && fromMaybe(?, e2w2).iType == Unsupported) begin  //handle end of program
-                e2w <= Valid(E2W{pc: fromMaybe(?, e2w2).pc, iType: Unsupported, dst: ?, data: ?});
-//$display("Second pipeline crash detected");
-            end else begin
-                e2w <= Valid(E2W{pc: d2e_v.pc, iType: eInst.iType, dst: eInst.dst, data: eInst.data});
-            end
-
-            dstE = fromMaybe(0, d2e_v.dInst.dst);  //note the register being written to for the purpose of data hazards
-            dataE = dstE == 0 ? 0 : eInst.data;
-
-
-            if (eInst.nextPc != (fastAdd#(32)(d2e_v.pc,4,0))) begin  //if we are going somewhere other than pc+4, annul.
-                annulAfterExec = True;
-                redirectPC = eInst.nextPc;
-            end
-
-
-        end else begin
-            //assign e2w
-            if (dStall) begin
-                //do nothing
-            end else if (isValid(e2w2) && fromMaybe(?, e2w2).iType == Unsupported) begin  //handle end of program
-                e2w <= Valid(E2W{pc: fromMaybe(?, e2w2).pc, iType: Unsupported, dst: ?, data: ?});
-//$display("Second pipeline crash detected");
-            end else begin
-                e2w <= Invalid;
-            end
-        end
-
-        if (isValid(d2e2)) begin
-            let d2e2_v = fromMaybe(?, d2e2);
-            ////////////////
-            // Execute #2 //
-            ////////////////
-            Word rVal12 = d2e2_v.rVal1;
-            Word rVal22 = d2e2_v.rVal2;
-
-            ExecInst eInst2 = execute( d2e2_v.dInst, rVal12, rVal22, d2e2_v.pc);
-//$display("Using: ", fshow(eInst2.iType));
-//$display("Combined2 rVal1: %h, rVal2: %h, imm: %h to get %h to put into %h", rVal12, rVal22, d2e2_v.dInst.imm, eInst2.data, fromMaybe(?, eInst2.dst));
-            //send load and store requests to memory
-            if (eInst2.iType == LOAD) begin
-                loadInto2 = fromMaybe(0, eInst2.dst);
-                if (dCache.reqEnabled && !makingReq) begin
-                    dCache.req = Valid(MemReq{addr: eInst2.addr, op: Ld, data: ?});
-//$display("Requesting load data2");
-                end else begin
-                    reqStall2 = True;
-//$display("Req stalling2");
-                end
-            end else if (eInst2.iType == STORE) begin
-                if (dCache.reqEnabled && !makingReq) begin
-                    dCache.req = Valid(MemReq{addr: eInst2.addr, op: St, data: eInst2.data});
-//$display("Requesting store data2: %h", eInst2.data);
-                end else begin
-                    reqStall2 = True;
-//$display("Req stalling2");
-                end
-            end
-
-            //assign e2w2
-            if (dStall || dStall2) begin
-                //do nothing, just wait
-            end else if (reqStall || reqStall2 || annulAfterExec) begin
-                e2w2 <= Invalid;
-            end else begin
-                e2w2 <= Valid(E2W{pc: d2e2_v.pc, iType: eInst2.iType, dst: eInst2.dst, data: eInst2.data});
-            end
-
-            dstE2 = fromMaybe(0, d2e2_v.dInst.dst);  //note the register being written to for the purpose of data hazards
-            dataE2 = dstE2 == 0 ? 0 : eInst2.data;
-
-            if (eInst2.nextPc != (fastAdd#(32)(d2e2_v.pc,4,0)) && !annulAfterExec ) begin  //if we are going somewhere other than pc+4, annul.
-                annulAfterExec2 = True;
-                redirectPC = eInst2.nextPc;
-            end
-
-        end else begin
-            if (dStall || dStall2) begin
-                //do nothing
-            end else begin
-                e2w2 <= Invalid;
-            end
-        end
-
-
-        //////////////////
-        // Decode Stage //
-        //////////////////
-        Bool decodeStall = False;  //if decode does not receive an instruction, stall fetch.
-
-        //for detecting conflicting instructions
-        Bool consecExecStall = False;  //if we have two instructions whose execute stages depend on each other
-        RIndx dstD = 0;  //the destination of the first instruction, or 0 if there is no destination
-
-        //for handling a stall for load cycles
-        Bool loadStall = False;  //true if we are executing a load in exec and we need the data in decode
-        Bool loadStall2 = False;  //""  "" need the data in decode2
-
-        Bool branchOrJumpInDecode = False; //true if there is a branch instruction in decode, since we do not allow a branch followed by a store.
-
-        if (isValid(fetch.f2d)) begin
-            let f2d_v = fromMaybe(?, fetch.f2d);
-            ///////////////
-            // Decode #1 //
-            ///////////////
-
-            DecodedInst dInst = decode(f2d_v.inst);
-            Word rVal1 = rf.rd1(dInst.src1);
-            Word rVal2 = rf.rd2(dInst.src2);
-
-//$display("DECODED: src1: %d, src2: %d, dst: %d", dInst.src1, dInst.src2, fromMaybe(0, dInst.dst));
-//$display("ITYPE: ", fshow(dInst.iType));
-//$display("inst: %b", f2d_v.inst);
-//printer.toString = Valid(dInst);
-
-            //bypass logic
-            if (dstW == dInst.src1) rVal1 = dataW;
-            if (dstW == dInst.src2) rVal2 = dataW;
-            if (dstW2 == dInst.src1) rVal1 = dataW2;
-            if (dstW2 == dInst.src2) rVal2 = dataW2;
-            if (dstE == dInst.src1) rVal1 = dataE;
-            if (dstE == dInst.src2) rVal2 = dataE;
-            if (dstE2 == dInst.src1) rVal1 = dataE2;
-            if (dstE2 == dInst.src2) rVal2 = dataE2;
-
-            if (loadInto != 0 && (loadInto == dInst.src1 || loadInto == dInst.src2)) loadStall = True;
-            if (loadInto2 != 0 && (loadInto2 == dInst.src1 || loadInto2 == dInst.src2)) loadStall = True;
-
-            //destination for decode
-            dstD = fromMaybe(0, dInst.dst);
-
-            //might our instruction cause a jump?
-            if (dInst.iType == BRANCH || dInst.iType == JAL || dInst.iType == JALR) branchOrJumpInDecode = True;
-
-            //assign d2e
-            if (dStall || dStall2 || reqStall || annulAfterExec2) begin  //note that loadStall2 is not yet determined/known.
-                //do nothing, just wait
-            end else if (loadStall || reqStall2 || annulAfterExec) begin
-                d2e <= Invalid;
-            end else begin
-                d2e <= Valid(D2E{pc: f2d_v.pc, dInst: dInst, rVal1: rVal1, rVal2: rVal2});
-            end
-
-        end else begin
-            //assign d2e
-            if (dStall || dStall2 || reqStall) begin
-                //do nothing
-            end else if (reqStall2) begin
-                d2e <= Invalid;
-            end else begin
-                decodeStall = True;  //if no instruction has been fetched, then fetch should not move on to the next instruction.
-                d2e <= Invalid;
-            end
-        end
-
-        if (isValid(fetch.f2d2)) begin
-            let f2d2_v = fromMaybe(?, fetch.f2d2);
-            ///////////////
-            // Decode #2 //
-            ///////////////
-
-            DecodedInst dInst2 = decode(f2d2_v.inst);
-            Word rVal12 = rf.rd1(dInst2.src1);
-            Word rVal22 = rf.rd2(dInst2.src2);
-
-//$display("DECODED: src12: %d, src22: %d, dst2: %d", dInst2.src1, dInst2.src2, fromMaybe(0, dInst2.dst));
-//$display("ITYPE: ", fshow(dInst2.iType));
-//$display("inst: %b", f2d2_v.inst);
-//printer2.toString = Valid(dInst2);
-
-            if (dstW == dInst2.src1) rVal12 = dataW;
-            if (dstW == dInst2.src2) rVal22 = dataW;
-            if (dstW2 == dInst2.src1) rVal12 = dataW2;
-            if (dstW2 == dInst2.src2) rVal22 = dataW2;
-            if (dstE == dInst2.src1) rVal12 = dataE;
-            if (dstE == dInst2.src2) rVal22 = dataE;
-            if (dstE2 == dInst2.src1) rVal12 = dataE2;
-            if (dstE2 == dInst2.src2) rVal22 = dataE2;
-
-            if (loadInto != 0 && (loadInto == dInst2.src1 || loadInto == dInst2.src2)) loadStall2 = True;
-            if (loadInto2 != 0 && (loadInto2 == dInst2.src1 || loadInto2 == dInst2.src2)) loadStall2 = True;
-
-            if (dstD != 0 && (dstD == dInst2.src1 || dstD == dInst2.src2)) consecExecStall = True;
-
-            if (dInst2.iType == STORE && branchOrJumpInDecode) consecExecStall = True;
-
-            //if (dInst2.iType == STORE || dInst2.iType == LOAD || dInst2.iType == BRANCH || dInst2.iType == JAL || dInst2.iType == JALR) consecExecStall = True;
-            //if (dInst2.iType == BRANCH || dInst2.iType == JAL || dInst2.iType == JALR) consecExecStall = True;
-            //consecExecStall = True;
-
-            //assign d2e2
-            if (dStall || dStall2 || reqStall || reqStall2) begin
-                //do nothing, just wait
-            end else if (loadStall || loadStall2 || consecExecStall || annulAfterExec || annulAfterExec2) begin
-                d2e2 <= Invalid;
-            end else begin
-                d2e2 <= Valid(D2E2{pc: f2d2_v.pc, dInst: dInst2, rVal1: rVal12, rVal2: rVal22, src1: dInst2.src1, src2: dInst2.src2});
-            end
-
-        end else begin
-            //assign d2e2
-            if (dStall || dStall2 || reqStall || reqStall2 || loadStall || loadStall2) begin
-                //do nothing
-            end else begin
-                d2e2 <= Invalid;
-            end
-        end
-
-
-        ///////////////////////
-        // Drive fetch stage //
-        ///////////////////////
-
-        if (dStall || dStall2 || reqStall || reqStall2 || loadStall) begin
-            fetch.in = FetchInput{fetchAction: Stall, redirectPC: ?};
-        end else if (annulAfterExec || annulAfterExec2) begin
-            fetch.in = FetchInput{fetchAction: Redirect, redirectPC: redirectPC};
-        end else if (reqStall2) begin
-            fetch.in = FetchInput{fetchAction: Stall, redirectPC: ?};
-        end else if (consecExecStall || loadStall2) begin  //only one instruction made it through, so we increment the pc by 4.
-            fetch.in = FetchInput{fetchAction: Shuffle, redirectPC: ?};
-        end else if (decodeStall) begin
-            fetch.in = FetchInput{fetchAction: Stall, redirectPC: ?};
-        end else begin
-            fetch.in = FetchInput{fetchAction: Dequeue, redirectPC: ?};
-        end
-
-//$display("Stalls: dStall %h dStall2 %h reqStall %h reqStall2 %h loadStall %h loadStall2 %h consecExecStall %h decodeStall %h", dStall, dStall2, reqStall, reqStall2, loadStall, loadStall2, consecExecStall, decodeStall);
-//$display("Stalls:", dStall ? " dStall" : "", dStall2 ? " dStall2" : "", reqStall ? " reqStall" : "", reqStall2 ? " reqStall2" : "", loadStall ? " loadStall" : "", loadStall2 ? " loadStall2" : "", consecExecStall ? " consecExecStall" : "", decodeStall ? " decodeStall" : "");
-    endrule
-
-    // This method gives a non-trivial output that depends on execution so that
-    // synth doesn't optimize out the whole processor :)
-    method Word getPc = fetch.getPc;
-endmodule
-
-
-`,
+            import RegisterFile;
+            import Decode;
+            import Execute;
+
+            import ALU;
+
+            // MainMemory includes the MainMemory port
+            // and the SingleCycleMemory modules
+            import MainMemory;
+
+            // Milestone 2: Select which cache(s) to import
+            import DirectMappedCache;
+            import TwoWayCache;
+            import SimpleCache;
+
+            // Types associated with the fetch stage
+            typedef enum {
+                Dequeue, // Consume instruction at the f2d output, if any
+                Stall, // Do not consume instruction at f2d
+                Redirect,  // Redirect fetch to another PC, annulling any fetched instructions
+                Shuffle
+            } FetchAction;
+
+            typedef struct {
+                FetchAction fetchAction;
+                Word redirectPC;  // PC to fetch from, used only if fetchAction is Redirect
+            } FetchInput;
+
+
+            typedef struct {
+                Word pc;
+                Word inst;
+            } F2D;
+
+            typedef struct {
+                Word pc;
+                DecodedInst dInst;
+                Word rVal1;
+                Word rVal2;
+                // Add anything you need
+            } D2E;
+
+            typedef struct {
+                Word pc;
+                DecodedInst dInst;
+                Word rVal1;
+                Word rVal2;
+                // Add anything you need
+                RIndx src1;
+                RIndx src2;
+            } D2E2;
+
+            typedef struct {
+                Word pc;
+                IType iType;
+                Maybe#(RIndx) dst;
+                Word data;
+                // Add anything you need
+            } E2W;
+
+
+            // Fetch stage, including pc and instruction memory/cache
+            //
+            // See handout for the structure of the recommended fetch stage. You can test
+            // this module using FetchTB (ms sim FetchTB.ms FetchTB).
+            //
+            // Implementing this module is optional: you can place the fetch logic and
+            // iMem/iCache inside the processor instead. We recommend you use a separate
+            // module at least during Part 2 to ease debugging.
+            module Fetch;
+                Reg#(Word) pc(0);
+
+                Reg#(Bool) skipNextInsts(False);
+                Reg#(Bool) atCacheLineEnd(False);
+
+                // Single-cycle Instruction Memory
+                // Milestone 2: comment this declaration out
+                //SingleCycleMemory iMem;
+
+                // Line-based Main Memory to use with caches
+                // Milestone 2: uncomment this declaration
+                MainMemory iMem;
+
+                // Milestone 2: choose which type of iCache to use
+                //DirectMappedCache iCache(iMem);
+                //TwoWayCache iCache(iMem);
+                SimpleCache iCache(iMem);
+
+                input FetchInput in;
+
+                // Milestone 2: Modify to use iCache instead
+                method Maybe#(F2D) f2d = skipNextInsts ? Invalid : (isValid(iCache.data)?
+                    Valid(F2D{pc: pc, inst: fromMaybe(?, iCache.data)}) : Invalid);
+
+                method Maybe#(F2D) f2d2 = skipNextInsts ? Invalid : (isValid(iCache.data2)?
+                    Valid(F2D{pc: fastAdd#(32)(pc, 4, 0), inst: fromMaybe(?, iCache.data2)}) : Invalid);
+
+
+                rule fetch;
+                    // Fetch instructions from iMem/iCache and update PC according to in.
+                    //////////////////////////
+                    // TODO: Your code here //
+                    //////////////////////////
+            //$display("Offset: %h", getWordOffset(pc));
+                    case (in.fetchAction)
+                        Dequeue: begin
+            //$display("Dequeue pc = %h", pc);
+                          if (iCache.reqEnabled) begin
+                            iCache.req = Valid(MemReq{addr: fastAdd#(32)(pc, atCacheLineEnd ? 4:8, 0), op: Ld, data: ?});
+                          end
+                          pc <= fastAdd#(32)(pc, atCacheLineEnd ? 4:8, 0);
+                          atCacheLineEnd <= getWordOffset(fastAdd#(32)(pc, atCacheLineEnd ? 4:8, 0)) == wordsPerLine-1;
+            //$display("next pc: %h", fastAdd#(32)(pc, getWordOffset(pc) != wordsPerLine-1 ? 8:4, 0));
+                        end
+                        Stall: begin
+            //$display("Stall pc = %h", pc);
+                          if (iCache.reqEnabled) begin
+                            iCache.req = Valid(MemReq{addr: pc, op: Ld, data: ?});
+                          end
+                        end
+                        Shuffle: begin
+                          if (iCache.reqEnabled) begin
+                            iCache.req = Valid(MemReq{addr: fastAdd#(32)(pc, 4, 0), op: Ld, data: ?});
+                          end
+                          pc <= fastAdd#(32)(pc, 4, 0);
+                          atCacheLineEnd <= getWordOffset(fastAdd#(32)(pc, 4, 0)) == wordsPerLine-1;
+                        end
+                        Redirect: begin
+                          if (iCache.reqEnabled) begin
+                            iCache.req = Valid(MemReq{addr: in.redirectPC, op: Ld, data: ?});
+                          end
+                          pc <= in.redirectPC;
+                          atCacheLineEnd <= getWordOffset(in.redirectPC) == wordsPerLine-1;
+                        end
+                    endcase
+
+            if (in.fetchAction == Redirect) skipNextInsts <= True;
+            else if (isValid(iCache.data)) skipNextInsts <= False;
+
+                endrule
+
+                // Used only for pipeline debugging; you should not use this method
+                // elsewhere in your code (assume the fetch stage can run ahead)
+                method Word getPc = pc;
+                method Word getPc2 = fastAdd#(32)(pc, 4, 0);
+            endmodule
+
+
+            module Processor;
+                Fetch fetch;
+
+                RegisterFile rf;
+
+                // Single-cycle data memory
+                // Milestone 2: comment this declaration out
+                //SingleCycleMemory dMem;
+
+                // Line-based Main Memory to use with caches
+                // Milestone 2: uncomment this declaration
+                MainMemory dMem;
+
+                // Milestone 2: choose which type of data cache to use
+                // NOTE: The CacheWrapper#() type of the dCache is critical, as it is used
+                // for detecting that the program has finished running
+                CacheWrapper#(DirectMappedCache) dCache(dMem);
+                //CacheWrapper#(TwoWayCache) dCache(dMem);
+
+                //Print printer;
+                //Print printer2;
+
+                // Pipeline Registers
+                Reg#(Maybe#(D2E)) d2e(Invalid);
+                Reg#(Maybe#(E2W)) e2w(Invalid);
+
+                Reg#(Maybe#(D2E2)) d2e2(Invalid);
+                Reg#(Maybe#(E2W)) e2w2(Invalid);
+
+
+                // Performance counters
+                // These are used in the processor rule for debugging help, by tracking the
+                // cycles and instructions completed. They are not needed for correctness
+                // and you may remove them, but doing so is unlikely to reduce cycle time.
+                Reg#(Bit#(32)) cycle(0);
+                Reg#(Bit#(32)) instrs(0);
+                Reg#(Bit#(32)) instrs1(0);
+                Reg#(Bit#(32)) instrs2(0);
+
+                rule tick;
+                    //////////////////////
+                    // Debugging Helper //
+                    //////////////////////
+                    cycle <= cycle + 1;
+                    // Uncomment the code below to print pipeline state each cycle
+                    begin
+                        $write("[%d] F|D|E|W PCs: ", cycle);
+                        $write("%x|", fetch.getPc);
+                        if (isValid(fetch.f2d)) $write("%x|", fromMaybe(?, fetch.f2d).pc); else $write("%8s|", "NOP");
+                        if (isValid(d2e)) $write("%x|", fromMaybe(?, d2e).pc); else $write("%8s|", "NOP");
+                        if (isValid(e2w)) $write("%x", fromMaybe(?, e2w).pc); else $write("%8s", "NOP");
+                        $display("  instrs: %d", instrs);
+                    end
+                    begin
+                        $write("[%d] F|D|E|W PCs: ", cycle);
+                        $write("%x|", fetch.getPc2);
+                        if (isValid(fetch.f2d2)) $write("%x|", fromMaybe(?, fetch.f2d2).pc); else $write("%8s|", "NOP");
+                        if (isValid(d2e2)) $write("%x|", fromMaybe(?, d2e2).pc); else $write("%8s|", "NOP");
+                        if (isValid(e2w2)) $write("%x", fromMaybe(?, e2w2).pc); else $write("%8s", "NOP");
+                        $display("  instrs: %d", instrs);
+                    end
+
+
+                    /////////////////////
+                    // Writeback Stage //
+                    /////////////////////
+                    // Signals used by decode to handle data hazards
+                    RIndx dstW = 0;
+                    Word dataW = 0;
+                    RIndx dstW2 = 0;
+                    Word dataW2 = 0;
+
+                    // Signal for dCache-induced stalls
+                    Bool dStall = False;
+                    Bool dStall2 = False;
+
+
+                    if (isValid(e2w)) begin
+                        let e2w_v = fromMaybe(?, e2w);
+                        //////////////////
+                        // Writeback #1 //
+                        //////////////////
+            //$display("Writing back for instruction of type: ", fshow(e2w_v.iType));
+
+                        Word dataToWrite = e2w_v.data;
+                        //Pick up data from a load if necessary
+                        if (e2w_v.iType == LOAD) begin
+                            if (isValid(dCache.data)) begin
+                                dataToWrite = fromMaybe(0, dCache.data);  //get the data from memory if we are loading
+            //$display("Loaded data: %h to store in %h", dataToWrite, fromMaybe(0, e2w_v.dst));
+                            end else begin
+                                dStall = True;  //if our dCache has not returned any data, we need to stall until it does.
+            //$display("Read stalling");
+                            end
+                        end
+
+                        // Write to a register if the instruction requires it
+                        if (isValid(e2w_v.dst)) begin
+                            rf.wr = Valid(RegWriteArgs{index: fromMaybe(?, e2w_v.dst), data: dataToWrite});
+            //$display("Writing %h to %d", dataToWrite, fromMaybe(?, e2w_v.dst));
+                            dstW = fromMaybe(0, e2w_v.dst);  //note the register being written to for the purpose of data hazards
+                            dataW = dstW == 0 ? 0 : dataToWrite;
+                        end
+
+                        // Count every instruction that leaves the writeback stage
+                        // (for debugging help)
+                        instrs1 <= instrs1 + 1;
+
+                        // BEGIN: DO NOT REMOVE OR MODIFY THIS CODE
+                        // If unsupported instruction, stops simulation and print the state of the processor
+                        if (e2w_v.iType == Unsupported) begin
+                            $display("Reached unsupported instruction");
+                            $display("Dumping the state of the processor");
+                            $display("pc = 0x%x", e2w_v.pc);
+                            $display(rf.fshow);
+                            $display("Quitting simulation.");
+                            $finish;
+                        end
+                        // END: DO NOT REMOVE OR MODIFY THIS CODE
+                    end
+
+                    if (isValid(e2w2)) begin
+                        let e2w2_v = fromMaybe(?, e2w2);
+                        //////////////////
+                        // Writeback #2 //
+                        //////////////////
+            //$display("Writing back for instruction of type: ", fshow(e2w2_v.iType));
+
+                        Word dataToWrite2 = e2w2_v.data;
+                        //Pick up data from a load if necessary
+                        if (e2w2_v.iType == LOAD && !dStall ) begin  //if the other pipeline is dStalled, we can't load data
+                            if (isValid(dCache.data)) begin
+                                dataToWrite2 = fromMaybe(0, dCache.data);  //get the data from memory if we are loading
+            //$display("Loaded data2: %h to store in %h", dataToWrite2, fromMaybe(0, e2w2_v.dst));
+                            end else begin
+                                dStall2 = True;  //if our dCache has not returned any data, we need to stall until it does.
+            //$display("Read stalling");
+                            end
+                        end
+
+                        //write to a register if necessary
+                        if (isValid(e2w2_v.dst)) begin
+                            rf.wr2 = Valid(RegWriteArgs{index: fromMaybe(?, e2w2_v.dst), data: dataToWrite2});
+            //$display("Writing2 %h to %d", dataToWrite2, fromMaybe(?, e2w2_v.dst));
+                            dstW2 = fromMaybe(0, e2w2_v.dst);  //note the register being written to for the purpose of data hazards
+                            dataW2 = dstW2 == 0 ? 0 : dataToWrite2;
+                        end
+
+                        // Count every instruction that leaves the writeback stage
+                        // (for debugging help)
+                        instrs2 <= instrs2 + 1;
+
+                    end
+                    instrs <= instrs1 + instrs2;
+
+                    ///////////////////
+                    // Execute Stage //
+                    ///////////////////
+                    // Signal for decode stalls or 2nd exec stall
+                    Bool stall = False;
+
+                    // Signals used to handle mispredictions
+                    Bool annulAfterExec = False;
+                    Bool annulAfterExec2 = False;
+                    Word redirectPC = ?;
+
+                    // Signals used by decode to handle data hazards
+                    RIndx dstE = 0;
+                    Word dataE = 0;
+                    RIndx dstE2 = 0;
+                    Word dataE2 = 0;
+                    RIndx loadInto = 0;  //stall a cycle if loading
+                    RIndx loadInto2 = 0;  //stall a cycle if loading on the second instruction
+                    Bool reqStall = False; //exec is waiting for the dCache to have reqEnable.
+                    Bool reqStall2 = False; //exec2 is waiting for the dCache to have reqEnable.
+                    Bool makingReq = False; //exec is sending a request to the dCache
+
+                    if (isValid(d2e)) begin
+                        let d2e_v = fromMaybe(?, d2e);
+                        ////////////////
+                        // Execute #1 //
+                        ////////////////
+                        Word rVal1 = d2e_v.rVal1;
+                        Word rVal2 = d2e_v.rVal2;
+                        ExecInst eInst = execute( d2e_v.dInst, rVal1, rVal2, d2e_v.pc);
+
+            //$display("Using: ", fshow(eInst.iType));
+            //$display("Combined rVal1: %h, rVal2: %h, imm: %h to get %h to put into %h", rVal1, rVal2, d2e_v.dInst.imm, eInst.data, fromMaybe(0, eInst.dst));
+
+                        //send load and store requests to memory
+                        if (eInst.iType == LOAD) begin
+                            loadInto = fromMaybe(0, eInst.dst);
+                            if (dCache.reqEnabled) begin
+                                dCache.req = Valid(MemReq{addr: eInst.addr, op: Ld, data: ?});
+                                makingReq = True;
+            //$display("Requesting load data from %h", eInst.addr);
+                            end else begin
+                                reqStall = True;
+            //$display("Req stalling to load");
+                            end
+                        end else if (eInst.iType == STORE) begin
+                            if (dCache.reqEnabled) begin
+                                dCache.req = Valid(MemReq{addr: eInst.addr, op: St, data: eInst.data});
+                                makingReq = True;
+            //$display("Requesting store data: %h into %h", eInst.data, eInst.addr);
+                            end else begin
+                                reqStall = True;
+            //$display("Req stalling to store");
+                            end
+                        end
+
+
+                        //assign e2w
+                        if (dStall) begin
+                            //do nothing
+                        end else if (dStall2 || reqStall) begin
+                            e2w <= Invalid;
+                        end else if (isValid(e2w2) && fromMaybe(?, e2w2).iType == Unsupported) begin  //handle end of program
+                            e2w <= Valid(E2W{pc: fromMaybe(?, e2w2).pc, iType: Unsupported, dst: ?, data: ?});
+            //$display("Second pipeline crash detected");
+                        end else begin
+                            e2w <= Valid(E2W{pc: d2e_v.pc, iType: eInst.iType, dst: eInst.dst, data: eInst.data});
+                        end
+
+                        dstE = fromMaybe(0, d2e_v.dInst.dst);  //note the register being written to for the purpose of data hazards
+                        dataE = dstE == 0 ? 0 : eInst.data;
+
+
+                        if (eInst.nextPc != (fastAdd#(32)(d2e_v.pc,4,0))) begin  //if we are going somewhere other than pc+4, annul.
+                            annulAfterExec = True;
+                            redirectPC = eInst.nextPc;
+                        end
+
+
+                    end else begin
+                        //assign e2w
+                        if (dStall) begin
+                            //do nothing
+                        end else if (isValid(e2w2) && fromMaybe(?, e2w2).iType == Unsupported) begin  //handle end of program
+                            e2w <= Valid(E2W{pc: fromMaybe(?, e2w2).pc, iType: Unsupported, dst: ?, data: ?});
+            //$display("Second pipeline crash detected");
+                        end else begin
+                            e2w <= Invalid;
+                        end
+                    end
+
+                    if (isValid(d2e2)) begin
+                        let d2e2_v = fromMaybe(?, d2e2);
+                        ////////////////
+                        // Execute #2 //
+                        ////////////////
+                        Word rVal12 = d2e2_v.rVal1;
+                        Word rVal22 = d2e2_v.rVal2;
+
+                        ExecInst eInst2 = execute( d2e2_v.dInst, rVal12, rVal22, d2e2_v.pc);
+            //$display("Using: ", fshow(eInst2.iType));
+            //$display("Combined2 rVal1: %h, rVal2: %h, imm: %h to get %h to put into %h", rVal12, rVal22, d2e2_v.dInst.imm, eInst2.data, fromMaybe(?, eInst2.dst));
+                        //send load and store requests to memory
+                        if (eInst2.iType == LOAD) begin
+                            loadInto2 = fromMaybe(0, eInst2.dst);
+                            if (dCache.reqEnabled && !makingReq) begin
+                                dCache.req = Valid(MemReq{addr: eInst2.addr, op: Ld, data: ?});
+            //$display("Requesting load data2");
+                            end else begin
+                                reqStall2 = True;
+            //$display("Req stalling2");
+                            end
+                        end else if (eInst2.iType == STORE) begin
+                            if (dCache.reqEnabled && !makingReq) begin
+                                dCache.req = Valid(MemReq{addr: eInst2.addr, op: St, data: eInst2.data});
+            //$display("Requesting store data2: %h", eInst2.data);
+                            end else begin
+                                reqStall2 = True;
+            //$display("Req stalling2");
+                            end
+                        end
+
+                        //assign e2w2
+                        if (dStall || dStall2) begin
+                            //do nothing, just wait
+                        end else if (reqStall || reqStall2 || annulAfterExec) begin
+                            e2w2 <= Invalid;
+                        end else begin
+                            e2w2 <= Valid(E2W{pc: d2e2_v.pc, iType: eInst2.iType, dst: eInst2.dst, data: eInst2.data});
+                        end
+
+                        dstE2 = fromMaybe(0, d2e2_v.dInst.dst);  //note the register being written to for the purpose of data hazards
+                        dataE2 = dstE2 == 0 ? 0 : eInst2.data;
+
+                        if (eInst2.nextPc != (fastAdd#(32)(d2e2_v.pc,4,0)) && !annulAfterExec ) begin  //if we are going somewhere other than pc+4, annul.
+                            annulAfterExec2 = True;
+                            redirectPC = eInst2.nextPc;
+                        end
+
+                    end else begin
+                        if (dStall || dStall2) begin
+                            //do nothing
+                        end else begin
+                            e2w2 <= Invalid;
+                        end
+                    end
+
+
+                    //////////////////
+                    // Decode Stage //
+                    //////////////////
+                    Bool decodeStall = False;  //if decode does not receive an instruction, stall fetch.
+
+                    //for detecting conflicting instructions
+                    Bool consecExecStall = False;  //if we have two instructions whose execute stages depend on each other
+                    RIndx dstD = 0;  //the destination of the first instruction, or 0 if there is no destination
+
+                    //for handling a stall for load cycles
+                    Bool loadStall = False;  //true if we are executing a load in exec and we need the data in decode
+                    Bool loadStall2 = False;  //""  "" need the data in decode2
+
+                    Bool branchOrJumpInDecode = False; //true if there is a branch instruction in decode, since we do not allow a branch followed by a store.
+
+                    if (isValid(fetch.f2d)) begin
+                        let f2d_v = fromMaybe(?, fetch.f2d);
+                        ///////////////
+                        // Decode #1 //
+                        ///////////////
+
+                        DecodedInst dInst = decode(f2d_v.inst);
+                        Word rVal1 = rf.rd1(dInst.src1);
+                        Word rVal2 = rf.rd2(dInst.src2);
+
+            //$display("DECODED: src1: %d, src2: %d, dst: %d", dInst.src1, dInst.src2, fromMaybe(0, dInst.dst));
+            //$display("ITYPE: ", fshow(dInst.iType));
+            //$display("inst: %b", f2d_v.inst);
+            //printer.toString = Valid(dInst);
+
+                        //bypass logic
+                        if (dstW == dInst.src1) rVal1 = dataW;
+                        if (dstW == dInst.src2) rVal2 = dataW;
+                        if (dstW2 == dInst.src1) rVal1 = dataW2;
+                        if (dstW2 == dInst.src2) rVal2 = dataW2;
+                        if (dstE == dInst.src1) rVal1 = dataE;
+                        if (dstE == dInst.src2) rVal2 = dataE;
+                        if (dstE2 == dInst.src1) rVal1 = dataE2;
+                        if (dstE2 == dInst.src2) rVal2 = dataE2;
+
+                        if (loadInto != 0 && (loadInto == dInst.src1 || loadInto == dInst.src2)) loadStall = True;
+                        if (loadInto2 != 0 && (loadInto2 == dInst.src1 || loadInto2 == dInst.src2)) loadStall = True;
+
+                        //destination for decode
+                        dstD = fromMaybe(0, dInst.dst);
+
+                        //might our instruction cause a jump?
+                        if (dInst.iType == BRANCH || dInst.iType == JAL || dInst.iType == JALR) branchOrJumpInDecode = True;
+
+                        //assign d2e
+                        if (dStall || dStall2 || reqStall || annulAfterExec2) begin  //note that loadStall2 is not yet determined/known.
+                            //do nothing, just wait
+                        end else if (loadStall || reqStall2 || annulAfterExec) begin
+                            d2e <= Invalid;
+                        end else begin
+                            d2e <= Valid(D2E{pc: f2d_v.pc, dInst: dInst, rVal1: rVal1, rVal2: rVal2});
+                        end
+
+                    end else begin
+                        //assign d2e
+                        if (dStall || dStall2 || reqStall) begin
+                            //do nothing
+                        end else if (reqStall2) begin
+                            d2e <= Invalid;
+                        end else begin
+                            decodeStall = True;  //if no instruction has been fetched, then fetch should not move on to the next instruction.
+                            d2e <= Invalid;
+                        end
+                    end
+
+                    if (isValid(fetch.f2d2)) begin
+                        let f2d2_v = fromMaybe(?, fetch.f2d2);
+                        ///////////////
+                        // Decode #2 //
+                        ///////////////
+
+                        DecodedInst dInst2 = decode(f2d2_v.inst);
+                        Word rVal12 = rf.rd1(dInst2.src1);
+                        Word rVal22 = rf.rd2(dInst2.src2);
+
+            //$display("DECODED: src12: %d, src22: %d, dst2: %d", dInst2.src1, dInst2.src2, fromMaybe(0, dInst2.dst));
+            //$display("ITYPE: ", fshow(dInst2.iType));
+            //$display("inst: %b", f2d2_v.inst);
+            //printer2.toString = Valid(dInst2);
+
+                        if (dstW == dInst2.src1) rVal12 = dataW;
+                        if (dstW == dInst2.src2) rVal22 = dataW;
+                        if (dstW2 == dInst2.src1) rVal12 = dataW2;
+                        if (dstW2 == dInst2.src2) rVal22 = dataW2;
+                        if (dstE == dInst2.src1) rVal12 = dataE;
+                        if (dstE == dInst2.src2) rVal22 = dataE;
+                        if (dstE2 == dInst2.src1) rVal12 = dataE2;
+                        if (dstE2 == dInst2.src2) rVal22 = dataE2;
+
+                        if (loadInto != 0 && (loadInto == dInst2.src1 || loadInto == dInst2.src2)) loadStall2 = True;
+                        if (loadInto2 != 0 && (loadInto2 == dInst2.src1 || loadInto2 == dInst2.src2)) loadStall2 = True;
+
+                        if (dstD != 0 && (dstD == dInst2.src1 || dstD == dInst2.src2)) consecExecStall = True;
+
+                        if (dInst2.iType == STORE && branchOrJumpInDecode) consecExecStall = True;
+
+                        //if (dInst2.iType == STORE || dInst2.iType == LOAD || dInst2.iType == BRANCH || dInst2.iType == JAL || dInst2.iType == JALR) consecExecStall = True;
+                        //if (dInst2.iType == BRANCH || dInst2.iType == JAL || dInst2.iType == JALR) consecExecStall = True;
+                        //consecExecStall = True;
+
+                        //assign d2e2
+                        if (dStall || dStall2 || reqStall || reqStall2) begin
+                            //do nothing, just wait
+                        end else if (loadStall || loadStall2 || consecExecStall || annulAfterExec || annulAfterExec2) begin
+                            d2e2 <= Invalid;
+                        end else begin
+                            d2e2 <= Valid(D2E2{pc: f2d2_v.pc, dInst: dInst2, rVal1: rVal12, rVal2: rVal22, src1: dInst2.src1, src2: dInst2.src2});
+                        end
+
+                    end else begin
+                        //assign d2e2
+                        if (dStall || dStall2 || reqStall || reqStall2 || loadStall || loadStall2) begin
+                            //do nothing
+                        end else begin
+                            d2e2 <= Invalid;
+                        end
+                    end
+
+
+                    ///////////////////////
+                    // Drive fetch stage //
+                    ///////////////////////
+
+                    if (dStall || dStall2 || reqStall || reqStall2 || loadStall) begin
+                        fetch.in = FetchInput{fetchAction: Stall, redirectPC: ?};
+                    end else if (annulAfterExec || annulAfterExec2) begin
+                        fetch.in = FetchInput{fetchAction: Redirect, redirectPC: redirectPC};
+                    end else if (reqStall2) begin
+                        fetch.in = FetchInput{fetchAction: Stall, redirectPC: ?};
+                    end else if (consecExecStall || loadStall2) begin  //only one instruction made it through, so we increment the pc by 4.
+                        fetch.in = FetchInput{fetchAction: Shuffle, redirectPC: ?};
+                    end else if (decodeStall) begin
+                        fetch.in = FetchInput{fetchAction: Stall, redirectPC: ?};
+                    end else begin
+                        fetch.in = FetchInput{fetchAction: Dequeue, redirectPC: ?};
+                    end
+
+            //$display("Stalls: dStall %h dStall2 %h reqStall %h reqStall2 %h loadStall %h loadStall2 %h consecExecStall %h decodeStall %h", dStall, dStall2, reqStall, reqStall2, loadStall, loadStall2, consecExecStall, decodeStall);
+            //$display("Stalls:", dStall ? " dStall" : "", dStall2 ? " dStall2" : "", reqStall ? " reqStall" : "", reqStall2 ? " reqStall2" : "", loadStall ? " loadStall" : "", loadStall2 ? " loadStall2" : "", consecExecStall ? " consecExecStall" : "", decodeStall ? " decodeStall" : "");
+                endrule
+
+                // This method gives a non-trivial output that depends on execution so that
+                // synth doesn't optimize out the whole processor :)
+                method Word getPc = fetch.getPc;
+            endmodule
+
+
+            `,
                 color: [],
             });
 
@@ -1132,12 +1153,12 @@ endmodule
             highlightRange("twobitcounter", 5, 10);
 
             /* An element to place has type
-                                        element = { name: string, type: string, variant: "Module" | "Wire",
-                                                    source: Array<[number, number]>, typeSource: Array<[number, number]> }
-                                        Module = element & {x: number, y: number, width: number, height: number,
-                                                            children: Array<element>}
-                                        Wire = element & {startx, starty, endx, endy, x1, x2, height (all numbers)}
-                                    */
+                                                    element = { name: string, type: string, variant: "Module" | "Wire",
+                                                                source: Array<[number, number]>, typeSource: Array<[number, number]> }
+                                                    Module = element & {x: number, y: number, width: number, height: number,
+                                                                        children: Array<element>}
+                                                    Wire = element & {startx, starty, endx, endy, x1, x2, height (all numbers)}
+                                                */
             elementsToPlace = [
                 {
                     name: "FourBitCounter",
