@@ -123,7 +123,7 @@ class Mux(Component):
         self.control.translate(dx, dy)
     def toJavaScript(self):
         d = { 'variant': "'Mux'", 'source': [],
-                'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height }
+                'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height, 'shortHeight': self.shortHeight }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
 class Wire(Component):
@@ -152,8 +152,8 @@ class Wire(Component):
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
 
-uWidth, uHeight = 100, 80
-uMuxWidth, uMuxHeight = 6, 10 #Height of the longer side
+uWidth, uHeight = 100, 60
+uMuxWidth, uMuxHeight = 3, 10 #Height of the longer side
 uAdderWidth, uAdderHeight = 10, 10
 uConst1Width, uConst1Height = 10, 5
 uRegWidth, uRegHeight = 10, 20
@@ -163,7 +163,7 @@ uMuxC = [uWidth/2, uHeight/2 - uMuxHeight/2]
 uRegC = [4*uWidth/5, uHeight/2]
 
 uMux = Mux("uMux", [Node("m1"), Node("m2")])
-uMux.x, uMux.y, uMux.width, uMux.height = 0, 0, uMuxWidth, uMuxHeight
+uMux.x, uMux.y, uMux.width, uMux.height, uMux.shortHeight = 0, 0, uMuxWidth, uMuxHeight, uMuxHeight*5/8
 uMux.inputs[0].placeAt(0, uMuxHeight/3)
 uMux.inputs[1].placeAt(0, 2*uMuxHeight/3)
 uMux.output.placeAt(uMuxWidth, uMuxHeight/2)

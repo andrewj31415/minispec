@@ -1253,6 +1253,52 @@ endmodule
                     overName.addEventListener("dblclick", () => {
                         open();
                     });
+                } else if (element.variant === "Register") {
+                    let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    rect.setAttribute("x", element.x);
+                    rect.setAttribute("y", element.y);
+                    rect.setAttribute("width", element.width);
+                    rect.setAttribute("height", element.height);
+                    rect.setAttribute("stroke", "black");
+                    rect.setAttribute("stroke-width", element.height / 50);
+                    rect.setAttribute("fill", "white");
+                    svgDisplay.appendChild(rect);
+                    let overName = fitText(element.name, {
+                        x: element.x,
+                        y: element.y,
+                        width: element.width,
+                        height: element.height / 2,
+                    });
+                    let overType = fitText(element.type, {
+                        x: element.x,
+                        y: element.y + element.height / 2,
+                        width: element.width,
+                        height: element.height / 2,
+                    });
+                } else if (element.variant === "Mux") {
+                    let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    polygon.setAttribute(
+                        "points",
+                        element.x +
+                            "," +
+                            element.y +
+                            " " +
+                            element.x +
+                            "," +
+                            (element.y + element.height) +
+                            " " +
+                            (element.x + element.width) +
+                            "," +
+                            (element.y + element.height - (element.height - element.shortHeight) / 2) +
+                            " " +
+                            (element.x + element.width) +
+                            "," +
+                            (element.y + (element.height - element.shortHeight) / 2)
+                    );
+                    polygon.setAttribute("stroke", "black");
+                    polygon.setAttribute("stroke-width", element.height / 50);
+                    polygon.setAttribute("fill", "white");
+                    svgDisplay.appendChild(polygon);
                 } else if (element.variant === "Wire") {
                     let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     line1.setAttribute("x1", element.startx);
@@ -1281,7 +1327,7 @@ endmodule
                     line5.setAttribute("y2", element.endy);
                     for (let line of [line1, line2, line3, line4, line5]) {
                         line.setAttribute("stroke", "red");
-                        line.setAttribute("stroke-width", 1);
+                        line.setAttribute("stroke-width", 0.1);
                         svgDisplay.appendChild(line);
                     }
                 } else {
