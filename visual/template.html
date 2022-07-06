@@ -201,11 +201,61 @@
             </div>
         </div>
         <script defer>
+            /* assertions and runtime type checking */
+            /* condition: boolean, message: string */
             assert = (condition, message = "Assertion Error.") => {
+                if (!isBoolean(condition)) {
+                    throw new Error(`assert statements may only take boolean conditions. Recieved: ${condition}`);
+                }
+                if (!isString(message)) {
+                    throw new Error(`assert statements must have a string as a message. Recieved: ${message}`);
+                }
                 if (!condition) {
                     throw new Error(message);
                 }
             };
+            /* n: any
+            Takes in any type and returns true if n is a number. */
+            isNumber = (n) => {
+                return typeof n === "number";
+            };
+            isString = (n) => {
+                return typeof n === "string";
+            };
+            isFunction = (n) => {
+                return typeof n === "function";
+            };
+            isBoolean = (n) => {
+                return typeof n === "boolean";
+            };
+            isArray = (arr) => {
+                return arr instanceof Array;
+            };
+            /* property: (any) => bool
+            returns a function */
+            isArrayWith = (property) => {
+                /* arr: any
+                Takes in any type and returns true if arr is an array such that every element has the given property. */
+                return (arr) => {
+                    if (!isArray(arr)) {
+                        return false;
+                    }
+                    return arr.reduce((prev, cur) => prev && property(cur), true);
+                };
+            };
+            /* Takes any number of function arguments. Returns a function that checks if an array is a tuple
+            with the correct properties. */
+            function isTupleWith() {
+                for (let func of arguments) {
+                    assert(isFunction(func), "isTupleWith can only be called on functions");
+                }
+                return (arr) => {
+                    if (!isArray(arr)) {
+                        return false;
+                    }
+                    return arr.reduce((prev, cur, index) => prev && arguments[index](cur), true);
+                };
+            }
 
             /* Globals */
             sourceDisplay = document.getElementById("source-div"); //The div with the source code
@@ -432,6 +482,11 @@
             };
 
             createTriangle = (x, y, width, height, thickness) => {
+                assert(isNumber(x));
+                assert(isNumber(y));
+                assert(isNumber(width));
+                assert(isNumber(height));
+                assert(isNumber(thickness));
                 let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 line1.setAttribute("x1", x);
                 line1.setAttribute("y1", y);
@@ -1093,7 +1148,7 @@ endmodule
                 color: [],
             });
 
-            sources.delete("big file");
+            //sources.delete("big file");
 
             k = "blue"; //keyword and syntax marks
             s = "pink"; //whitespace
@@ -1467,6 +1522,11 @@ endmodule
                 sourceTitleDivs.get(filename).style.backgroundColor = "white";
             };
 
+            noHighlightColor = "white";
+            tempHighlightColor = "rgb(130, 255, 157)";
+            permanentHighlightColor = "rgb(253, 255, 50)";
+            bothHighlightColor = "rgb(222, 255, 77)";
+
             for (let [sourceFileName, source] of sources) {
                 let newSource = document.createElement("div");
                 newSource.classList.add("source-file-div");
@@ -1480,6 +1540,7 @@ endmodule
                     let littleLetter = document.createElement("span");
                     littleLetter.innerHTML = letter;
                     littleLetter.style.color = color;
+                    littleLetter.style.backgroundColor = noHighlightColor;
                     sourceLetters.push(littleLetter);
                 }
                 for (let mark of sourceLetters) {
@@ -1501,36 +1562,173 @@ endmodule
             }
             pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
 
-            highlightIndex = (filename, index) => {
-                sourceLetterSpanArrays.get(filename)[index].style.backgroundColor = "rgb(130, 255, 157)";
+            /* filename: string, index: number, newColorsObj: {temp: bool, permanent: bool} */
+            setIndexHighlight = (filename, index, newColorsObj) => {
+                assert(isString(filename));
+                assert(isNumber(index));
+                let letterSpan = sourceLetterSpanArrays.get(filename)[index];
+                if (newColorsObj.temp) {
+                    if (newColorsObj.permanent) {
+                        letterSpan.style.backgroundColor = bothHighlightColor;
+                    } else {
+                        letterSpan.style.backgroundColor = tempHighlightColor;
+                    }
+                } else {
+                    if (newColorsObj.permanent) {
+                        letterSpan.style.backgroundColor = permanentHighlightColor;
+                    } else {
+                        letterSpan.style.backgroundColor = noHighlightColor;
+                    }
+                }
             };
-            dehighlightIndex = (filename, index) => {
-                sourceLetterSpanArrays.get(filename)[index].style.backgroundColor = "white";
+            /* filename: string, index: number, newColorsObj: {temp, permanent} 
+            temp, permanent may be true, false, or undefined. */
+            updateIndexHighlight = (filename, index, newColorsObj) => {
+                assert(isString(filename));
+                assert(isNumber(index));
+                let letterSpan = sourceLetterSpanArrays.get(filename)[index];
+                let currentColor = letterSpan.style.backgroundColor;
+                let currentColorsObj = {
+                    temp: currentColor === bothHighlightColor || currentColor === tempHighlightColor,
+                    permanent: currentColor === bothHighlightColor || currentColor === permanentHighlightColor,
+                };
+                if (newColorsObj.temp === undefined) {
+                    newColorsObj.temp = currentColorsObj.temp;
+                }
+                if (newColorsObj.permanent === undefined) {
+                    newColorsObj.permanent = currentColorsObj.permanent;
+                }
+                setIndexHighlight(filename, index, newColorsObj);
             };
+
             /* start inclusive, end exclusive
              * requires start <= end
              */
-            highlightRange = (filename, start, end) => {
+            highlightRangeTemp = (filename, start, end) => {
+                assert(isString(filename));
+                assert(isNumber(start));
+                assert(isNumber(end));
                 for (let i = start; i < end; i += 1) {
-                    highlightIndex(filename, i);
+                    updateIndexHighlight(filename, i, { temp: true });
                 }
             };
-            dehighlightRange = (filename, start, end) => {
+            dehighlightRangeTemp = (filename, start, end) => {
+                assert(isString(filename));
+                assert(isNumber(start));
+                assert(isNumber(end));
                 for (let i = start; i < end; i += 1) {
-                    dehighlightIndex(filename, i);
+                    updateIndexHighlight(filename, i, { temp: false });
+                }
+            };
+            highlightRangePermanent = (filename, start, end) => {
+                assert(isString(filename));
+                assert(isNumber(start));
+                assert(isNumber(end));
+                for (let i = start; i < end; i += 1) {
+                    updateIndexHighlight(filename, i, { permanent: true });
+                }
+            };
+            dehighlightRangePermanent = (filename, start, end) => {
+                assert(isString(filename));
+                assert(isNumber(start));
+                assert(isNumber(end));
+                for (let i = start; i < end; i += 1) {
+                    updateIndexHighlight(filename, i, { permanent: false });
+                }
+            };
+            /* sourceArray = Array<[filename: string, start: number, end: number]> */
+            highlightSourceTemp = (sourceArray) => {
+                assert(
+                    isArrayWith(isTupleWith(isString, isNumber, isNumber))(sourceArray),
+                    `Must have Array<[filename: string, start: number, end: number]>. Recieved: ${sourceArray}`
+                );
+                for (let item of sourceArray) {
+                    highlightRangeTemp(item[0], item[1], item[2]);
+                }
+            };
+            dehighlightSourceTemp = (sourceArray) => {
+                assert(
+                    isArrayWith(isTupleWith(isString, isNumber, isNumber))(sourceArray),
+                    `Must have Array<[filename: string, start: number, end: number]>. Recieved: ${sourceArray}`
+                );
+                for (let item of sourceArray) {
+                    dehighlightRangeTemp(item[0], item[1], item[2]);
+                }
+            };
+            highlightSourcePermanent = (sourceArray) => {
+                assert(
+                    isArrayWith(isTupleWith(isString, isNumber, isNumber))(sourceArray),
+                    `Must have Array<[filename: string, start: number, end: number]>. Recieved: ${sourceArray}`
+                );
+                for (let item of sourceArray) {
+                    highlightRangePermanent(item[0], item[1], item[2]);
+                }
+            };
+            dehighlightSourcePermanent = (sourceArray) => {
+                assert(
+                    isArrayWith(isTupleWith(isString, isNumber, isNumber))(sourceArray),
+                    `Must have Array<[filename: string, start: number, end: number]>. Recieved: ${sourceArray}`
+                );
+                for (let item of sourceArray) {
+                    dehighlightRangePermanent(item[0], item[1], item[2]);
                 }
             };
 
-            /* sourceArray = Array<[filename: string, start: number, end: number]> */
-            let highlightSource = (sourceArray) => {
-                for (let item of sourceArray) {
-                    highlightRange(item[0], item[1], item[2]);
-                }
+            /* Pulls up the given source and scrolls to the location. Places the location vertically centered
+            and horizontally as far right as possible (but still on screen). */
+            goToLocation = (filename, location) => {
+                assert(isString(filename));
+                assert(isNumber(location));
+                pullGivenSource(filename);
+                highlighterSpan = sourceLetterSpanArrays.get(filename)[location];
+                highlighterSpanWidth = highlighterSpan.offsetWidth; //offsetWidth is for inline elements
+                sourceDivHeight = sourceDivs.get(filename).clientHeight; //clientHeight excludes scrollbar
+                sourceDivWidth = sourceDivs.get(filename).clientWidth;
+                sourceDivs.get(filename).scrollTop = highlighterSpan.offsetTop - sourceDivHeight / 2;
+                sourceDivs.get(filename).scrollLeft = highlighterSpan.offsetLeft - sourceDivWidth + highlighterSpanWidth;
             };
-            let dehighlightSource = (sourceArray) => {
-                for (let item of sourceArray) {
-                    dehighlightRange(item[0], item[1], item[2]);
+
+            currentPermanentHighlightArray = []; //the array of source locations to cycle through
+            currentPermanentHighlightIndex = 0; //number indicating which of the sources to highlight
+            /* permanentHighlightArray: Array<[filename: string, start: number, end: number]> */
+            clearPermanentHighlight = () => {
+                if (currentPermanentHighlightIndex < currentPermanentHighlightArray.length) {
+                    dehighlightRangePermanent(...currentPermanentHighlightArray[currentPermanentHighlightIndex]);
                 }
+                currentPermanentHighlightArray = [];
+                currentPermanentHighlightIndex = 0;
+            };
+            cyclePermanentHighlight = (permanentHighlightArray) => {
+                assert(
+                    isArrayWith(isTupleWith(isString, isNumber, isNumber))(permanentHighlightArray),
+                    `Must have Array<[filename: string, start: number, end: number]>. Recieved: ${permanentHighlightArray}`
+                );
+                if (permanentHighlightArray.length === 0) {
+                    clearPermanentHighlight();
+                } else {
+                    if (currentPermanentHighlightIndex < currentPermanentHighlightArray.length) {
+                        dehighlightRangePermanent(...currentPermanentHighlightArray[currentPermanentHighlightIndex]);
+                    }
+                    if (permanentHighlightArray === currentPermanentHighlightArray) {
+                        currentPermanentHighlightIndex =
+                            (currentPermanentHighlightIndex + 1) % (currentPermanentHighlightArray.length + 1);
+                    } else {
+                        currentPermanentHighlightArray = permanentHighlightArray;
+                        currentPermanentHighlightIndex = 0;
+                    }
+                    if (currentPermanentHighlightIndex < currentPermanentHighlightArray.length) {
+                        //click all the way through a source and it dehighlights.
+                        sourceToHighlight = currentPermanentHighlightArray[currentPermanentHighlightIndex];
+                        highlightRangePermanent(...sourceToHighlight);
+                        goToLocation(sourceToHighlight[0], sourceToHighlight[1]);
+                    }
+                }
+                assert(
+                    isArrayWith(isTupleWith(isString, isNumber, isNumber))(currentPermanentHighlightArray),
+                    `Must have Array<[filename: string, start: number, end: number]>. Recieved: ${permanentHighlightArray}`
+                );
+                //the permanent index is equal to the highlight array length <=> do not highlight anything.
+                assert(currentPermanentHighlightIndex <= currentPermanentHighlightArray.length);
             };
 
             /* An element to place has type
@@ -1708,36 +1906,30 @@ endmodule
                         });
                     }
                     //handle source highlighting
-                    overSourceInteractRect.addEventListener("mouseenter", () => {
-                        highlightSource(element.source);
-                    });
-                    overSourceInteractRect.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.source);
-                    });
-                    overType.addEventListener("mouseenter", () => {
-                        highlightSource(element.typeSource);
-                    });
-                    overType.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.typeSource);
-                    });
-                    underRect.addEventListener("mouseenter", () => {
-                        highlightSource(element.source);
-                    });
-                    underRect.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.source);
-                    });
-                    underName.addEventListener("mouseenter", () => {
-                        highlightSource(element.source);
-                    });
-                    underName.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.source);
-                    });
-                    underType.addEventListener("mouseenter", () => {
-                        highlightSource(element.typeSource);
-                    });
-                    underType.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.typeSource);
-                    });
+                    let permanentHighlightSourceArray = element.source;
+                    let permanentHighlightTypeSourceArray = element.typeSource;
+                    for (let rect of [overSourceInteractRect, underRect, underName]) {
+                        rect.addEventListener("mouseenter", () => {
+                            highlightSourceTemp(element.source);
+                        });
+                        rect.addEventListener("mouseleave", () => {
+                            dehighlightSourceTemp(element.source);
+                        });
+                        rect.addEventListener("click", () => {
+                            cyclePermanentHighlight(permanentHighlightSourceArray);
+                        });
+                    }
+                    for (let rect of [overType, underType]) {
+                        rect.addEventListener("mouseenter", () => {
+                            highlightSourceTemp(element.typeSource);
+                        });
+                        rect.addEventListener("mouseleave", () => {
+                            dehighlightSourceTemp(element.typeSource);
+                        });
+                        rect.addEventListener("click", () => {
+                            cyclePermanentHighlight(permanentHighlightTypeSourceArray);
+                        });
+                    }
                 } else if (element.variant === "Function") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                     let underRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1793,26 +1985,28 @@ endmodule
                     }
                     //handle source highlighting
                     overSourceInteractRect.addEventListener("mouseenter", () => {
-                        highlightSource(element.source);
-                        highlightSource(element.typeSource);
+                        highlightSourceTemp(element.source);
+                        highlightSourceTemp(element.typeSource);
                     });
                     overSourceInteractRect.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.source);
-                        dehighlightSource(element.typeSource);
+                        dehighlightSourceTemp(element.source);
+                        dehighlightSourceTemp(element.typeSource);
                     });
                     underRect.addEventListener("mouseenter", () => {
-                        highlightSource(element.source);
+                        highlightSourceTemp(element.source);
+                        highlightSourceTemp(element.typeSource);
                     });
                     underRect.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.source);
+                        dehighlightSourcetemp(element.source);
+                        dehighlightSourcetemp(element.typeSource);
                     });
                     underName.addEventListener("mouseenter", () => {
-                        highlightSource(element.source);
-                        highlightSource(element.typeSource);
+                        highlightSourceTemp(element.source);
+                        highlightSourceTemp(element.typeSource);
                     });
                     underName.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.source);
-                        dehighlightSource(element.typeSource);
+                        dehighlightSourceTemp(element.source);
+                        dehighlightSourceTemp(element.typeSource);
                     });
                 } else if (element.variant === "Register") {
                     let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1863,16 +2057,16 @@ endmodule
                         element.height / 100
                     );
                     overSourceInteractRect.addEventListener("mouseenter", () => {
-                        highlightSource(element.source);
+                        highlightSourceTemp(element.source);
                     });
                     overSourceInteractRect.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.source);
+                        dehighlightSourceTemp(element.source);
                     });
                     overType.addEventListener("mouseenter", () => {
-                        highlightSource(element.typeSource);
+                        highlightSourceTemp(element.typeSource);
                     });
                     overType.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.typeSource);
+                        dehighlightSourceTemp(element.typeSource);
                     });
                 } else if (element.variant === "Mux") {
                     let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
@@ -1899,10 +2093,10 @@ endmodule
                     polygon.setAttribute("fill", "white");
                     svgDisplay.appendChild(polygon);
                     polygon.addEventListener("mouseenter", () => {
-                        highlightSource(element.source);
+                        highlightSourceTemp(element.source);
                     });
                     polygon.addEventListener("mouseleave", () => {
-                        dehighlightSource(element.source);
+                        dehighlightSourceTemp(element.source);
                     });
                 } else if (element.variant === "Wire") {
                     let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -1937,7 +2131,6 @@ endmodule
                     }
                 } else {
                     //we do not handle the component
-                    console.log(element.variant);
                 }
             };
             for (let element of elementsToPlace) {
