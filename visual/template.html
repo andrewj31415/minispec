@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
     <head>
+        <title>Minispec Visual</title>
         <style>
             :root {
                 --button-gray: rgb(192, 192, 192);
@@ -1687,23 +1688,25 @@ endmodule
                     );
                     underName.style.visibility = "hidden";
                     underType.style.visibility = "hidden";
-                    //handle opening the module
-                    let open = () => {
-                        overRect.style.visibility = "hidden";
-                        overName.style.visibility = "hidden";
-                        overType.style.visibility = "hidden";
-                        triangle[0].style.visibility = "hidden";
-                        triangle[1].style.visibility = "hidden";
-                        overSourceInteractRect.style.visibility = "hidden";
-                        underName.style.visibility = "";
-                        underType.style.visibility = "";
-                    };
-                    overSourceInteractRect.addEventListener("dblclick", () => {
-                        open();
-                    });
-                    overType.addEventListener("dblclick", () => {
-                        open();
-                    });
+                    if (element.children.length > 0) {
+                        //handle opening the module
+                        let open = () => {
+                            overRect.style.visibility = "hidden";
+                            overName.style.visibility = "hidden";
+                            overType.style.visibility = "hidden";
+                            triangle[0].style.visibility = "hidden";
+                            triangle[1].style.visibility = "hidden";
+                            overSourceInteractRect.style.visibility = "hidden";
+                            underName.style.visibility = "";
+                            underType.style.visibility = "";
+                        };
+                        overSourceInteractRect.addEventListener("dblclick", () => {
+                            open();
+                        });
+                        overType.addEventListener("dblclick", () => {
+                            open();
+                        });
+                    }
                     //handle source highlighting
                     overSourceInteractRect.addEventListener("mouseenter", () => {
                         highlightSource(element.source);
@@ -1721,6 +1724,12 @@ endmodule
                         highlightSource(element.source);
                     });
                     underRect.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.source);
+                    });
+                    underName.addEventListener("mouseenter", () => {
+                        highlightSource(element.source);
+                    });
+                    underName.addEventListener("mouseleave", () => {
                         dehighlightSource(element.source);
                     });
                     underType.addEventListener("mouseenter", () => {
@@ -1770,16 +1779,18 @@ endmodule
                         height: element.height / 4,
                     });
                     underName.style.visibility = "hidden";
-                    //handle opening the function
-                    let open = () => {
-                        overRect.style.visibility = "hidden";
-                        overName.style.visibility = "hidden";
-                        overSourceInteractRect.style.visibility = "hidden";
-                        underName.style.visibility = "";
-                    };
-                    overSourceInteractRect.addEventListener("dblclick", () => {
-                        open();
-                    });
+                    if (element.children.length > 0) {
+                        //handle opening the function
+                        let open = () => {
+                            overRect.style.visibility = "hidden";
+                            overName.style.visibility = "hidden";
+                            overSourceInteractRect.style.visibility = "hidden";
+                            underName.style.visibility = "";
+                        };
+                        overSourceInteractRect.addEventListener("dblclick", () => {
+                            open();
+                        });
+                    }
                     //handle source highlighting
                     overSourceInteractRect.addEventListener("mouseenter", () => {
                         highlightSource(element.source);
@@ -1788,6 +1799,12 @@ endmodule
                     overSourceInteractRect.addEventListener("mouseleave", () => {
                         dehighlightSource(element.source);
                         dehighlightSource(element.typeSource);
+                    });
+                    underRect.addEventListener("mouseenter", () => {
+                        highlightSource(element.source);
+                    });
+                    underRect.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.source);
                     });
                     underName.addEventListener("mouseenter", () => {
                         highlightSource(element.source);
