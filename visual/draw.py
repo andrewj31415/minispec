@@ -66,8 +66,8 @@ class Module(Component):
             self.outputs[i].x = self.x + self.width
             self.outputs[i].y = self.height*(i+1)/(len(self.outputs)+1)
     def toJavaScript(self):
-        d = { 'name': "`" + self.name + "`", 'type': "`" + self.type + "`", 'variant': "'Module'", 'source': [],
-                'typeSource': [], 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height,
+        d = { 'name': "`" + self.name + "`", 'type': "`" + self.type + "`", 'variant': "'Module'", 'source': self.source,
+                'typeSource': self.typeSource, 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height,
                 'children': '[' + ", ".join([child.toJavaScript() for child in self.children]) + ']' }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
@@ -98,8 +98,8 @@ class Function(Component):
         self.output.x = self.x + self.width
         self.output.y = self.y + self.height/2
     def toJavaScript(self):
-        d = { 'name': "`" + self.name + "`", 'variant': "'Function'", 'source': '[]',
-                'typeSource': '[]', 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height,
+        d = { 'name': "`" + self.name + "`", 'variant': "'Function'", 'source': self.source,
+                'typeSource': self.typeSource, 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height,
                 'children': '[' + ", ".join([child.toJavaScript() for child in self.children]) + ']' }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
@@ -123,8 +123,8 @@ class Register(Component):
         self.output.x = self.x + self.width
         self.output.y = self.y + self.height/2
     def toJavaScript(self):
-        d = { 'name': "`" + self.name + "`", 'type': "`" + self.type + "`", 'variant': "'Register'", 'source': [],
-                'typeSource': [], 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height }
+        d = { 'name': "`" + self.name + "`", 'type': "`" + self.type + "`", 'variant': "'Register'", 'source': self.source,
+                'typeSource': self.typeSource, 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
 class Mux(Component):
@@ -152,7 +152,7 @@ class Mux(Component):
         self.control.x = self.x + self.width/2
         self.control.y = self.height - (self.height - self.shortHeight)/4
     def toJavaScript(self):
-        d = { 'variant': "'Mux'", 'source': [],
+        d = { 'variant': "'Mux'", 'source': self.source,
                 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height, 'shortHeight': self.shortHeight }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
@@ -338,6 +338,38 @@ m.children[11].autoPlace()
 m.children[12].autoPlace()
 m.children[13].autoPlace()
 m.children[14].autoPlace()
+
+m.source = []
+m.typeSource = [['fourbitcounter', 22, 338]]
+u.source = [['fourbitcounter', 74, 94]]
+u.typeSource = [['twobitcounter', 0, 203]]
+l.source = [['fourbitcounter', 49, 69]]
+l.typeSource = [['twobitcounter', 0, 203]]
+
+mConcat.source = [['fourbitcounter', 139, 171]]
+mConcat.typeSource = [] #built-in, no type source
+mAnd.source = [['fourbitcounter', 291, 293]]
+mAnd.typeSource = []
+mEq.source = [['fourbitcounter', 310, 312]]
+mEq.typeSource = []
+mConst3.source = [['fourbitcounter', 313, 314]]
+mConst3.typeSource = []
+
+uAdder.source = [['twobitcounter', 177, 178]]
+uAdder.typeSource = []
+uConst1.source = [['twobitcounter', 179, 180]]
+uConst1.typeSource = []
+uMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]] #muxes do not have typeSource
+uReg.source = [['twobitcounter', 26, 49]]
+uReg.typeSource = []
+
+lAdder.source = [['twobitcounter', 177, 178]]
+lAdder.typeSource = []
+lConst1.source = [['twobitcounter', 179, 180]]
+lConst1.typeSource = []
+lMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]]
+lReg.source = [['twobitcounter', 26, 49]]
+lReg.typeSource = []
 
 print(m)
 print(m.toJavaScript())

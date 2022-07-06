@@ -468,30 +468,7 @@ module FourBitCounter;
         upper.enable = enable && (lower.getCount == 3);
     endrule
 endmodule`,
-                color: [
-                    ...Array(6).fill("blue"),
-                    "pink",
-                    ...Array(13).fill("black"),
-                    "pink",
-                    "pink",
-                    ...Array(6).fill("blue"),
-                    "pink",
-                    ...Array(14).fill("black"),
-                    ...Array(1).fill("black"),
-                    ...Array(5).fill("pink"),
-                    ...Array(13).fill("black"),
-                    "pink",
-                    ...Array(5).fill("black"),
-                    ...Array(1).fill("black"),
-                    ...Array(5).fill("pink"),
-                    ...Array(13).fill("black"),
-                    "pink",
-                    ...Array(5).fill("black"),
-                    ...Array(1).fill("black"),
-                    ...Array(5).fill("pink"),
-                    ...Array(6).fill("blue"),
-                    "pink",
-                ],
+                color: [],
             });
             sources.set("twobitcounter", {
                 text: `module TwoBitCounter;
@@ -1117,6 +1094,361 @@ endmodule
 
             sources.delete("big file");
 
+            k = "blue"; //keyword and syntax marks
+            s = "pink"; //whitespace
+            v = "black"; //variables and constants
+
+            tokens = [
+                `import`,
+                ` `,
+                `twobitcounter`,
+                `
+
+`,
+                `module`,
+                ` `,
+                `FourBitCounter`,
+                `;`,
+                `
+    `,
+                `TwoBitCounter`,
+                ` `,
+                `lower`,
+                `;`,
+                `
+    `,
+                `TwoBitCounter`,
+                ` `,
+                `upper`,
+                `;`,
+                `
+    `,
+                `method`,
+                ` `,
+                `Bit`,
+                `#`,
+                `(`,
+                `4`,
+                `)`,
+                ` `,
+                `getCount`,
+                `;`,
+                `
+        `,
+                `return`,
+                ` `,
+                `{`,
+                `upper`,
+                `.`,
+                `getCount`,
+                `,`,
+                ` `,
+                `lower`,
+                `.`,
+                `getCount`,
+                `}`,
+                `;`,
+                `
+    `,
+                `endmethod`,
+                `
+    `,
+                `input`,
+                ` `,
+                `Bool`,
+                ` `,
+                `enable`,
+                `;`,
+                `
+    `,
+                `rule`,
+                ` `,
+                `increment`,
+                `;`,
+                `
+        `,
+                `lower`,
+                `.`,
+                `enable`,
+                ` `,
+                `=`,
+                ` `,
+                `enable`,
+                `;`,
+                `
+        `,
+                `upper`,
+                `.`,
+                `enable`,
+                ` `,
+                `=`,
+                ` `,
+                `enable`,
+                ` `,
+                `&&`,
+                ` `,
+                `(`,
+                `lower`,
+                `.`,
+                `getCount`,
+                ` `,
+                `==`,
+                ` `,
+                `3`,
+                `)`,
+                `;`,
+                `
+    `,
+                `endrule`,
+                `
+`,
+                `endmodule`,
+            ];
+            colors = [
+                k,
+                s,
+                v,
+                s,
+                k,
+                s,
+                v,
+                v,
+                s,
+                v,
+                s,
+                v,
+                v,
+                s,
+                v,
+                s,
+                v,
+                v,
+                s,
+                k,
+                s,
+                v,
+                k,
+                k,
+                v,
+                k,
+                s,
+                v,
+                v,
+                s,
+                k,
+                s,
+                k,
+                v,
+                v,
+                v,
+                v,
+                s,
+                v,
+                v,
+                v,
+                k,
+                v,
+                s,
+                k,
+                s,
+                k,
+                s,
+                v,
+                s,
+                v,
+                v,
+                s,
+                k,
+                s,
+                v,
+                v,
+                s,
+                v,
+                v,
+                v,
+                s,
+                v,
+                s,
+                v,
+                v,
+                s,
+                v,
+                v,
+                v,
+                s,
+                v,
+                s,
+                v,
+                s,
+                v,
+                s,
+                k,
+                v,
+                v,
+                v,
+                s,
+                v,
+                s,
+                v,
+                k,
+                v,
+                s,
+                k,
+                s,
+                k,
+            ];
+            sources.get("fourbitcounter").color = tokens.map((token, index) => Array(token.length).fill(colors[index])).flat(1);
+
+            tokens = [
+                `module`,
+                ` `,
+                `TwoBitCounter`,
+                `;`,
+                `
+    `,
+                `Reg`,
+                `#`,
+                `(`,
+                `Bit`,
+                `#`,
+                `(`,
+                `2`,
+                `)`,
+                `)`,
+                ` `,
+                `count`,
+                `(`,
+                `0`,
+                `)`,
+                `;`,
+                `
+    `,
+                `method`,
+                ` `,
+                `Bit`,
+                `#`,
+                `(`,
+                `2`,
+                `)`,
+                ` `,
+                `getCount`,
+                ` `,
+                `=`,
+                ` `,
+                `count`,
+                `;`,
+                `
+    `,
+                `input`,
+                ` `,
+                `Bool`,
+                ` `,
+                `enable`,
+                `;`,
+                `
+    `,
+                `rule`,
+                ` `,
+                `increment`,
+                `;`,
+                `
+        `,
+                `if`,
+                ` `,
+                `(`,
+                `enable`,
+                `)`,
+                `
+            `,
+                `count`,
+                ` `,
+                `<=`,
+                ` `,
+                `count`,
+                ` `,
+                `+`,
+                ` `,
+                `1`,
+                `;`,
+                `
+    `,
+                `endrule`,
+                `
+`,
+                `endmodule`,
+            ];
+            colors = [
+                k,
+                s,
+                v,
+                v,
+                s,
+                v,
+                k,
+                k,
+                v,
+                k,
+                k,
+                v,
+                k,
+                k,
+                s,
+                v,
+                k,
+                v,
+                k,
+                v,
+                s,
+                k,
+                s,
+                v,
+                k,
+                k,
+                v,
+                k,
+                s,
+                v,
+                s,
+                v,
+                s,
+                v,
+                v,
+                s,
+                k,
+                s,
+                v,
+                s,
+                v,
+                v,
+                s,
+                k,
+                s,
+                v,
+                v,
+                s,
+                k,
+                s,
+                k,
+                v,
+                k,
+                s,
+                v,
+                s,
+                v,
+                s,
+                v,
+                s,
+                v,
+                s,
+                v,
+                v,
+                s,
+                k,
+                s,
+                k,
+            ];
+            sources.get("twobitcounter").color = tokens.map((token, index) => Array(token.length).fill(colors[index])).flat(1);
+
             /* Put the sources into the document */
             sourceDivs = new Map(); //each of these maps filenames to DOM elements.
             sourceTitleDivs = new Map();
@@ -1171,6 +1503,9 @@ endmodule
             highlightIndex = (filename, index) => {
                 sourceLetterSpanArrays.get(filename)[index].style.backgroundColor = "rgb(130, 255, 157)";
             };
+            dehighlightIndex = (filename, index) => {
+                sourceLetterSpanArrays.get(filename)[index].style.backgroundColor = "white";
+            };
             /* start inclusive, end exclusive
              * requires start <= end
              */
@@ -1179,8 +1514,23 @@ endmodule
                     highlightIndex(filename, i);
                 }
             };
+            dehighlightRange = (filename, start, end) => {
+                for (let i = start; i < end; i += 1) {
+                    dehighlightIndex(filename, i);
+                }
+            };
 
-            highlightRange("twobitcounter", 5, 10);
+            /* sourceArray = Array<[filename: string, start: number, end: number]> */
+            let highlightSource = (sourceArray) => {
+                for (let item of sourceArray) {
+                    highlightRange(item[0], item[1], item[2]);
+                }
+            };
+            let dehighlightSource = (sourceArray) => {
+                for (let item of sourceArray) {
+                    dehighlightRange(item[0], item[1], item[2]);
+                }
+            };
 
             /* An element to place has type
                                                     element = { name: string, type: string, variant: "Module" | "Wire",
@@ -1295,6 +1645,16 @@ endmodule
                         },
                         { dominantBaseline: "bottom" }
                     );
+                    //create a transparent rect to handle interactivity
+                    let overSourceInteractRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    overSourceInteractRect.setAttribute("x", element.x);
+                    overSourceInteractRect.setAttribute("y", element.y);
+                    overSourceInteractRect.setAttribute("width", element.width);
+                    overSourceInteractRect.setAttribute("height", element.height);
+                    overSourceInteractRect.setAttribute("stroke", "transparent");
+                    overSourceInteractRect.setAttribute("stroke-width", element.height / 50); //make the thickness proportional to the height so that it does not cover the under text
+                    overSourceInteractRect.setAttribute("fill", "transparent");
+                    svgDisplay.appendChild(overSourceInteractRect);
                     let overType = fitText(
                         element.type,
                         {
@@ -1334,26 +1694,40 @@ endmodule
                         overType.style.visibility = "hidden";
                         triangle[0].style.visibility = "hidden";
                         triangle[1].style.visibility = "hidden";
+                        overSourceInteractRect.style.visibility = "hidden";
                         underName.style.visibility = "";
                         underType.style.visibility = "";
                     };
-                    overRect.addEventListener("dblclick", () => {
-                        open();
-                    });
-                    overName.addEventListener("dblclick", () => {
+                    overSourceInteractRect.addEventListener("dblclick", () => {
                         open();
                     });
                     overType.addEventListener("dblclick", () => {
                         open();
                     });
-                    //handle mouse click
-                    let highlightSource = () => {
-                        for (let item of element.source) {
-                            highlightRange(item[0], item[1], item[2]);
-                        }
-                    };
-                    overRect.addEventListener("mouseenter", () => {
-                        highlightSource();
+                    //handle source highlighting
+                    overSourceInteractRect.addEventListener("mouseenter", () => {
+                        highlightSource(element.source);
+                    });
+                    overSourceInteractRect.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.source);
+                    });
+                    overType.addEventListener("mouseenter", () => {
+                        highlightSource(element.typeSource);
+                    });
+                    overType.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.typeSource);
+                    });
+                    underRect.addEventListener("mouseenter", () => {
+                        highlightSource(element.source);
+                    });
+                    underRect.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.source);
+                    });
+                    underType.addEventListener("mouseenter", () => {
+                        highlightSource(element.typeSource);
+                    });
+                    underType.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.typeSource);
                     });
                 } else if (element.variant === "Function") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1379,6 +1753,16 @@ endmodule
                         width: element.width,
                         height: element.height,
                     });
+                    //create a transparent rect to handle interactivity
+                    let overSourceInteractRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    overSourceInteractRect.setAttribute("x", element.x);
+                    overSourceInteractRect.setAttribute("y", element.y);
+                    overSourceInteractRect.setAttribute("width", element.width);
+                    overSourceInteractRect.setAttribute("height", element.height);
+                    overSourceInteractRect.setAttribute("stroke", "transparent");
+                    overSourceInteractRect.setAttribute("stroke-width", element.height / 50); //make the thickness proportional to the height so that it does not cover the under text
+                    overSourceInteractRect.setAttribute("fill", "transparent");
+                    svgDisplay.appendChild(overSourceInteractRect);
                     let underName = fitText(element.name, {
                         x: element.x,
                         y: element.y + element.height,
@@ -1390,13 +1774,28 @@ endmodule
                     let open = () => {
                         overRect.style.visibility = "hidden";
                         overName.style.visibility = "hidden";
+                        overSourceInteractRect.style.visibility = "hidden";
                         underName.style.visibility = "";
                     };
-                    overRect.addEventListener("dblclick", () => {
+                    overSourceInteractRect.addEventListener("dblclick", () => {
                         open();
                     });
-                    overName.addEventListener("dblclick", () => {
-                        open();
+                    //handle source highlighting
+                    overSourceInteractRect.addEventListener("mouseenter", () => {
+                        highlightSource(element.source);
+                        highlightSource(element.typeSource);
+                    });
+                    overSourceInteractRect.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.source);
+                        dehighlightSource(element.typeSource);
+                    });
+                    underName.addEventListener("mouseenter", () => {
+                        highlightSource(element.source);
+                        highlightSource(element.typeSource);
+                    });
+                    underName.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.source);
+                        dehighlightSource(element.typeSource);
                     });
                 } else if (element.variant === "Register") {
                     let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1418,6 +1817,16 @@ endmodule
                         },
                         { dominantBaseline: "bottom" }
                     );
+                    //create a transparent rect to handle interactivity
+                    let overSourceInteractRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    overSourceInteractRect.setAttribute("x", element.x);
+                    overSourceInteractRect.setAttribute("y", element.y);
+                    overSourceInteractRect.setAttribute("width", element.width);
+                    overSourceInteractRect.setAttribute("height", element.height);
+                    overSourceInteractRect.setAttribute("stroke", "transparent");
+                    overSourceInteractRect.setAttribute("stroke-width", element.height / 50); //make the thickness proportional to the height so that it does not cover the under text
+                    overSourceInteractRect.setAttribute("fill", "transparent");
+                    svgDisplay.appendChild(overSourceInteractRect);
                     let overType = fitText(
                         element.type,
                         {
@@ -1436,6 +1845,18 @@ endmodule
                         (element.width + element.height) / 16,
                         element.height / 100
                     );
+                    overSourceInteractRect.addEventListener("mouseenter", () => {
+                        highlightSource(element.source);
+                    });
+                    overSourceInteractRect.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.source);
+                    });
+                    overType.addEventListener("mouseenter", () => {
+                        highlightSource(element.typeSource);
+                    });
+                    overType.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.typeSource);
+                    });
                 } else if (element.variant === "Mux") {
                     let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
                     polygon.setAttribute(
@@ -1460,6 +1881,12 @@ endmodule
                     polygon.setAttribute("stroke-width", element.height / 50);
                     polygon.setAttribute("fill", "white");
                     svgDisplay.appendChild(polygon);
+                    polygon.addEventListener("mouseenter", () => {
+                        highlightSource(element.source);
+                    });
+                    polygon.addEventListener("mouseleave", () => {
+                        dehighlightSource(element.source);
+                    });
                 } else if (element.variant === "Wire") {
                     let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     line1.setAttribute("x1", element.startx);
