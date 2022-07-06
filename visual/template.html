@@ -1897,6 +1897,7 @@ endmodule
                             overSourceInteractRect.style.visibility = "hidden";
                             underName.style.visibility = "";
                             underType.style.visibility = "";
+                            clearPermanentHighlight();
                         };
                         overSourceInteractRect.addEventListener("dblclick", () => {
                             open();
@@ -1978,36 +1979,27 @@ endmodule
                             overName.style.visibility = "hidden";
                             overSourceInteractRect.style.visibility = "hidden";
                             underName.style.visibility = "";
+                            clearPermanentHighlight();
                         };
                         overSourceInteractRect.addEventListener("dblclick", () => {
                             open();
                         });
                     }
                     //handle source highlighting
-                    overSourceInteractRect.addEventListener("mouseenter", () => {
-                        highlightSourceTemp(element.source);
-                        highlightSourceTemp(element.typeSource);
-                    });
-                    overSourceInteractRect.addEventListener("mouseleave", () => {
-                        dehighlightSourceTemp(element.source);
-                        dehighlightSourceTemp(element.typeSource);
-                    });
-                    underRect.addEventListener("mouseenter", () => {
-                        highlightSourceTemp(element.source);
-                        highlightSourceTemp(element.typeSource);
-                    });
-                    underRect.addEventListener("mouseleave", () => {
-                        dehighlightSourcetemp(element.source);
-                        dehighlightSourcetemp(element.typeSource);
-                    });
-                    underName.addEventListener("mouseenter", () => {
-                        highlightSourceTemp(element.source);
-                        highlightSourceTemp(element.typeSource);
-                    });
-                    underName.addEventListener("mouseleave", () => {
-                        dehighlightSourceTemp(element.source);
-                        dehighlightSourceTemp(element.typeSource);
-                    });
+                    let permanentHighlightSourceArray = element.source;
+                    for (rect of [overSourceInteractRect, underRect, underName]) {
+                        rect.addEventListener("mouseenter", () => {
+                            highlightSourceTemp(element.source);
+                            highlightSourceTemp(element.typeSource);
+                        });
+                        rect.addEventListener("mouseleave", () => {
+                            dehighlightSourceTemp(element.source);
+                            dehighlightSourceTemp(element.typeSource);
+                        });
+                        rect.addEventListener("click", () => {
+                            cyclePermanentHighlight(permanentHighlightSourceArray);
+                        });
+                    }
                 } else if (element.variant === "Register") {
                     let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                     rect.setAttribute("x", element.x);
@@ -2056,17 +2048,25 @@ endmodule
                         (element.width + element.height) / 16,
                         element.height / 100
                     );
+                    let permanentHighlightSourceArray = element.source;
+                    let permanentHighlightTypeSourceArray = element.typeSource;
                     overSourceInteractRect.addEventListener("mouseenter", () => {
                         highlightSourceTemp(element.source);
                     });
                     overSourceInteractRect.addEventListener("mouseleave", () => {
                         dehighlightSourceTemp(element.source);
                     });
+                    overSourceInteractRect.addEventListener("click", () => {
+                        cyclePermanentHighlight(permanentHighlightSourceArray);
+                    });
                     overType.addEventListener("mouseenter", () => {
                         highlightSourceTemp(element.typeSource);
                     });
                     overType.addEventListener("mouseleave", () => {
                         dehighlightSourceTemp(element.typeSource);
+                    });
+                    overType.addEventListener("click", () => {
+                        cyclePermanentHighlight(permanentHighlightTypeSourceArray);
                     });
                 } else if (element.variant === "Mux") {
                     let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
@@ -2092,11 +2092,15 @@ endmodule
                     polygon.setAttribute("stroke-width", element.height / 50);
                     polygon.setAttribute("fill", "white");
                     svgDisplay.appendChild(polygon);
+                    let permanentHighlightSourceArray = element.source;
                     polygon.addEventListener("mouseenter", () => {
                         highlightSourceTemp(element.source);
                     });
                     polygon.addEventListener("mouseleave", () => {
                         dehighlightSourceTemp(element.source);
+                    });
+                    polygon.addEventListener("click", () => {
+                        cyclePermanentHighlight(permanentHighlightSourceArray);
                     });
                 } else if (element.variant === "Wire") {
                     let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
