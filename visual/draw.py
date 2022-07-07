@@ -187,8 +187,6 @@ class Wire(Component):
         for child in self.children:
             child.translate(dx, dy)
     def toJavaScript(self):
-        print(self.src)
-        print(self.dst)
         d = { 'variant': "'Wire'", 'source': [], 'startx': self.src.x, 'starty': self.src.y,
                 'endx': self.dst.x, 'endy': self.dst.y,
                 'children': '[' + ", ".join([child.toJavaScript() for child in self.children]) + ']'}
@@ -249,8 +247,6 @@ u.children.extend([ uwire1,
                     Wire(uConst1.output, uAdder.inputs[1]).autoPlace(),
                     Wire(uAdder.output, uMux.inputs[1]).autoPlace() ]) #add wires to u
 
-'''
-
 # organize l
 lMux = Mux("lMux", [Node("m1"), Node("m2")])
 lMux.x, lMux.y, lMux.width, lMux.height, lMux.shortHeight = 0, 0, ulMuxWidth, ulMuxHeight, ulMuxShortHeight
@@ -275,10 +271,6 @@ lReg.input.placeAt(0, ulRegHeight/2)
 lReg.output.placeAt(ulRegWidth, ulRegHeight/2)
 
 l = Module('lower', 'TwoBitCounter', [lMux, lAdder, lConst1, lReg], [Node("enable")], [Node("getCount")])
-l.children.extend([ Wire(l.inputs[0], lMux.control), Wire(lMux.output, lReg.input),
-                    Wire(lReg.output, l.outputs[0]), Wire(lReg.output, lAdder.inputs[0]),
-                    Wire(lConst1.output, lAdder.inputs[1]), Wire(lReg.output, lMux.inputs[0]),
-                    Wire(lAdder.output, lMux.inputs[1]) ]) #add wires to l
 
 l.x, l.y, l.width, l.height = 0, 0, ulWidth, ulHeight
 l.inputs[0].placeAt(0, ulHeight/2)
@@ -289,13 +281,20 @@ lConst1.translate(*ulConst1C)
 lMux.translate(*ulMuxC)
 lReg.translate(*ulRegC)
 
-l.children[4].placeAt(ulMuxC[0]/8, 7*ulHeight/8, ulMuxC[0] + ulMuxWidth/2)
-l.children[5].autoPlace()
-l.children[6].autoPlace()
-l.children[7].placeAt(ulRegC[0] + ulRegWidth + 5, ulHeight/6, ulAdderC[0] - 10)
-l.children[8].autoPlace()
-l.children[9].placeAt(ulRegC[0] + ulRegWidth + 5, ulHeight/6, ulMuxC[0] - 10)
-l.children[10].autoPlace()
+lwire1 = Wire(l.inputs[0], Node().placeAt(ulMuxC[0]/8, l.inputs[0].y))
+lwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, lMux.control.y).append(lMux.control.x, lMux.control.y)
+
+lwire2 = Wire(lReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, lReg.output.y))
+lwire2.append(l.outputs[0].x, l.outputs[0].y)
+lwire3 = lwire2.append(ulRegC[0] + ulRegWidth + 5, ulHeight/6).append(ulMuxC[0] - 10, ulHeight/6)
+lwire3.append(ulMuxC[0] - 10, lMux.inputs[0].y).append(lMux.inputs[0].x, lMux.inputs[0].y)
+lwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, lAdder.inputs[0].y).append(lAdder.inputs[0].x, lAdder.inputs[0].y)
+
+l.children.extend([ lwire1,
+                    Wire(lMux.output, lReg.input).autoPlace(),
+                    lwire2,
+                    Wire(lConst1.output, lAdder.inputs[1]).autoPlace(),
+                    Wire(lAdder.output, lMux.inputs[1]).autoPlace() ]) #add wires to l
 
 mWidth, mHeight = 230, 180
 mConcatWidth, mConcatHeight = 10, 10
@@ -327,11 +326,6 @@ mConst3.x, mConst3.y, mConst3.width, mConst3.height = 0, 0, mConst3Width, mConst
 mConst3.autoPlace()
 
 m = Module('stuff', 'FourBitCounter', [u, l, mConcat, mAnd, mEq, mConst3], [Node("enable")], [Node("getCount")])
-m.children.extend([ Wire(m.inputs[0], l.inputs[0]), Wire(m.inputs[0], mAnd.inputs[0]),
-                    Wire(mConst3.output, mEq.inputs[0]), Wire(l.outputs[0], mEq.inputs[1]),
-                    Wire(mEq.output, mAnd.inputs[1]), Wire(mAnd.output, u.inputs[0]),
-                    Wire(u.outputs[0], mConcat.inputs[0]), Wire(l.outputs[0], mConcat.inputs[1]),
-                    Wire(mConcat.output, m.outputs[0]) ])
 
 m.x, m.y, m.width, m.height = 0, 0, mWidth, mHeight
 m.autoPlace()
@@ -343,7 +337,21 @@ mAnd.translate(*mAndC)
 mEq.translate(*mEqC)
 mConst3.translate(*mConst3C)
 
-m.children[6].autoPlace()
+mwire1 = Wire(m.inputs[0], mAnd.inputs[0])
+mwire1.autoPlace()
+
+m.children.extend([ Wire(m.inputs[0], l.inputs[0]).autoPlace(),
+                    mwire1,
+                    Wire(mConst3.output, mEq.inputs[0]).autoPlace(),
+                    Wire(l.outputs[0], mEq.inputs[1]).autoPlace(),
+                    Wire(mEq.output, mAnd.inputs[1]).autoPlace(),
+                    Wire(mAnd.output, u.inputs[0]).autoPlace(),
+                    Wire(u.outputs[0], mConcat.inputs[0]).autoPlace(),
+                    Wire(l.outputs[0], mConcat.inputs[1]).autoPlace(),
+                    Wire(mConcat.output, m.outputs[0]).autoPlace() ])
+
+
+'''m.children[6].autoPlace()
 m.children[7].placeAt(mWidth/20, mHeight/8, mWidth/6)
 m.children[8].autoPlace()
 m.children[9].placeAt(3*mWidth/4, mHeight/2, mWidth/8)
@@ -351,17 +359,15 @@ m.children[10].autoPlace()
 m.children[11].autoPlace()
 m.children[12].autoPlace()
 m.children[13].autoPlace()
-m.children[14].autoPlace()
+m.children[14].autoPlace()'''
 
 m.source = []
 m.typeSource = [['fourbitcounter', 22, 338]]
 
-'''
 
 u.source = [['fourbitcounter', 74, 94]]
 u.typeSource = [['twobitcounter', 0, 203]]
 
-'''
 
 l.source = [['fourbitcounter', 49, 69]]
 l.typeSource = [['twobitcounter', 0, 203]]
@@ -375,8 +381,6 @@ mEq.typeSource = []
 mConst3.source = [['fourbitcounter', 313, 314]]
 mConst3.typeSource = []
 
-'''
-
 uAdder.source = [['twobitcounter', 177, 178]]
 uAdder.typeSource = []
 uConst1.source = [['twobitcounter', 179, 180]]
@@ -385,7 +389,6 @@ uMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]] #muxes 
 uReg.source = [['twobitcounter', 26, 49]]
 uReg.typeSource = []
 
-'''
 
 lAdder.source = [['twobitcounter', 177, 178]]
 lAdder.typeSource = []
@@ -395,10 +398,9 @@ lMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]]
 lReg.source = [['twobitcounter', 26, 49]]
 lReg.typeSource = []
 
-print(m)
-print(m.toJavaScript())
+#print(m)
+#print(m.toJavaScript())
 
-'''
 
 # Graph drawing algorithms:
 # https://en.wikipedia.org/wiki/Layered_graph_drawing
@@ -409,7 +411,7 @@ templateFile = pathlib.Path(__file__).with_name('template.html')
 
 template = templateFile.read_text()
 
-template = u.toJavaScript().join(template.split("/* Python elements go here */"))
+template = m.toJavaScript().join(template.split("/* Python elements go here */"))
 
 output = pathlib.Path(__file__).with_name('sample.html')
 output.open("w").write(template)
