@@ -1815,6 +1815,8 @@ endmodule
                 /* Python elements go here */
             ];
 
+            hoverBackgroundColor = "rgb(240, 255, 255)";
+
             placeElement = (element) => {
                 if (element.variant === "Module") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1910,26 +1912,53 @@ endmodule
                     let permanentHighlightSourceArray = element.source;
                     let permanentHighlightTypeSourceArray = element.typeSource;
                     for (let rect of [overSourceInteractRect, underRect, underName]) {
-                        rect.addEventListener("mouseenter", () => {
-                            highlightSourceTemp(element.source);
-                        });
-                        rect.addEventListener("mouseleave", () => {
-                            dehighlightSourceTemp(element.source);
-                        });
                         rect.addEventListener("click", () => {
+                            //if there is no source, this will clear the permanent highlight.
                             cyclePermanentHighlight(permanentHighlightSourceArray);
                         });
+                        if (permanentHighlightSourceArray.length > 0) {
+                            rect.addEventListener("mouseenter", () => {
+                                highlightSourceTemp(element.source);
+                                overRect.style.stroke = "blue";
+                                overRect.style.fill = hoverBackgroundColor;
+                                overName.style.fill = "blue";
+                                underRect.style.stroke = "blue";
+                                underName.style.fill = "blue";
+                                triangle[0].style.stroke = "blue";
+                                triangle[1].style.stroke = "blue";
+                            });
+                            rect.addEventListener("mouseleave", () => {
+                                dehighlightSourceTemp(element.source);
+                                overRect.style.stroke = "black";
+                                overRect.style.fill = "white";
+                                overName.style.fill = "black";
+                                underRect.style.stroke = "black";
+                                underName.style.fill = "black";
+                                triangle[0].style.stroke = "black";
+                                triangle[1].style.stroke = "black";
+                            });
+                            rect.style.cursor = "pointer";
+                        }
                     }
                     for (let rect of [overType, underType]) {
-                        rect.addEventListener("mouseenter", () => {
-                            highlightSourceTemp(element.typeSource);
-                        });
-                        rect.addEventListener("mouseleave", () => {
-                            dehighlightSourceTemp(element.typeSource);
-                        });
                         rect.addEventListener("click", () => {
                             cyclePermanentHighlight(permanentHighlightTypeSourceArray);
                         });
+                        if (permanentHighlightTypeSourceArray.length > 0) {
+                            rect.addEventListener("mouseenter", () => {
+                                highlightSourceTemp(element.typeSource);
+                                overType.style.fill = "blue";
+                                underType.style.fill = "blue";
+                            });
+                            rect.addEventListener("mouseleave", () => {
+                                dehighlightSourceTemp(element.typeSource);
+                                overType.style.fill = "black";
+                                underType.style.fill = "black";
+                            });
+                            if (permanentHighlightTypeSourceArray.length > 0) {
+                                rect.style.cursor = "pointer";
+                            }
+                        }
                     }
                 } else if (element.variant === "Function") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1991,83 +2020,26 @@ endmodule
                         rect.addEventListener("mouseenter", () => {
                             highlightSourceTemp(element.source);
                             highlightSourceTemp(element.typeSource);
+                            overRect.style.stroke = "blue";
+                            overRect.style.fill = hoverBackgroundColor;
+                            overName.style.fill = "blue";
+                            underRect.style.stroke = "blue";
+                            underName.style.fill = "blue";
                         });
                         rect.addEventListener("mouseleave", () => {
                             dehighlightSourceTemp(element.source);
                             dehighlightSourceTemp(element.typeSource);
+                            overRect.style.stroke = "black";
+                            overRect.style.fill = "white";
+                            overName.style.fill = "black";
+                            underRect.style.stroke = "black";
+                            underName.style.fill = "black";
                         });
                         rect.addEventListener("click", () => {
                             cyclePermanentHighlight(permanentHighlightSourceArray);
                         });
+                        rect.style.cursor = "pointer";
                     }
-                } else if (element.variant === "Register") {
-                    let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                    rect.setAttribute("x", element.x);
-                    rect.setAttribute("y", element.y);
-                    rect.setAttribute("width", element.width);
-                    rect.setAttribute("height", element.height);
-                    rect.setAttribute("stroke", "black");
-                    rect.setAttribute("stroke-width", element.height / 50);
-                    rect.setAttribute("fill", "white");
-                    svgDisplay.appendChild(rect);
-                    let overName = fitText(
-                        element.name,
-                        {
-                            x: element.x,
-                            y: element.y,
-                            width: element.width,
-                            height: element.height / 2,
-                        },
-                        { dominantBaseline: "bottom" }
-                    );
-                    //create a transparent rect to handle interactivity
-                    let overSourceInteractRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                    overSourceInteractRect.setAttribute("x", element.x);
-                    overSourceInteractRect.setAttribute("y", element.y);
-                    overSourceInteractRect.setAttribute("width", element.width);
-                    overSourceInteractRect.setAttribute("height", element.height);
-                    overSourceInteractRect.setAttribute("stroke", "transparent");
-                    overSourceInteractRect.setAttribute("stroke-width", element.height / 50); //make the thickness proportional to the height so that it does not cover the under text
-                    overSourceInteractRect.setAttribute("fill", "transparent");
-                    svgDisplay.appendChild(overSourceInteractRect);
-                    let overType = fitText(
-                        element.type,
-                        {
-                            x: element.x,
-                            y: element.y + element.height / 2,
-                            width: element.width,
-                            height: element.height / 2,
-                        },
-                        { dominantBaseline: "top" }
-                    );
-                    //create the module triangle
-                    let triangle = createTriangle(
-                        element.x,
-                        element.y + (7 * element.height) / 8 - (element.width + element.height) / 16 / 2,
-                        (element.width + element.height) / 30,
-                        (element.width + element.height) / 16,
-                        element.height / 100
-                    );
-                    let permanentHighlightSourceArray = element.source;
-                    let permanentHighlightTypeSourceArray = element.typeSource;
-                    overSourceInteractRect.addEventListener("mouseenter", () => {
-                        highlightSourceTemp(element.source);
-                    });
-                    overSourceInteractRect.addEventListener("mouseleave", () => {
-                        dehighlightSourceTemp(element.source);
-                    });
-                    overSourceInteractRect.addEventListener("click", () => {
-                        cyclePermanentHighlight(permanentHighlightSourceArray);
-                    });
-                    overType.addEventListener("mouseenter", () => {
-                        highlightSourceTemp(element.typeSource);
-                    });
-                    overType.addEventListener("mouseleave", () => {
-                        dehighlightSourceTemp(element.typeSource);
-                    });
-                    overType.addEventListener("click", () => {
-                        cyclePermanentHighlight(permanentHighlightTypeSourceArray);
-                    });
                 } else if (element.variant === "Mux") {
                     let polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
                     polygon.setAttribute(

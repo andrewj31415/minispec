@@ -103,29 +103,11 @@ class Function(Component):
                 'children': '[' + ", ".join([child.toJavaScript() for child in self.children]) + ']' }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
-class Register(Component):
+class Register(Module):
     def __init__(self, name: 'str', type: 'str'):
-        self.name = name
-        self.type = type
-        self.input = Node('_' + name + '_input')
-        self.output = Node('_' + name + '_output')
-    def __str__(self):
-        return "Register " + self.name
-    def translate(self, dx, dy):
-        self.x += dx
-        self.y += dy
-        self.input.translate(dx, dy)
-        self.output.translate(dx, dy)
-    def autoPlace(self):
-        '''automatically place nodes'''
-        self.input.x = self.x
-        self.input.y = self.y + self.height/2
-        self.output.x = self.x + self.width
-        self.output.y = self.y + self.height/2
-    def toJavaScript(self):
-        d = { 'name': "`" + self.name + "`", 'type': "`" + self.type + "`", 'variant': "'Register'", 'source': self.source,
-                'typeSource': self.typeSource, 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height }
-        return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
+        Module.__init__(self, name, type, [], [Node('_' + name + '_input')], [Node('_' + name + '_output')])
+        self.input = self.inputs[0]
+        self.output = self.outputs[0]
 
 class Mux(Component):
     def __init__(self, name: 'str', inputs: 'list[Node]'):
