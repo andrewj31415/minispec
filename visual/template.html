@@ -22,6 +22,7 @@
                 width: 100%;
                 display: flex;
                 flex-direction: row;
+                position: relative;
             }
             #source-div {
                 position: relative;
@@ -32,7 +33,7 @@
                 flex-direction: column;
             }
             #source-filenames-div {
-                z-index: 100;
+                z-index: 2;
                 width: 100%;
                 background-color: rgb(220, 220, 220);
                 display: flex;
@@ -158,9 +159,29 @@
                 background-color: transparent;
                 cursor: pointer;
             }
+            #help-container-div {
+                width: 100%;
+                height: 100%;
+                position: absolute;
+                top: 0;
+                left: 0;
+                display: flex;
+                flex-direction: row;
+                overflow: hidden;
+                align-items: center;
+                justify-content: center;
+                pointer-events: none;
+            }
             #help-div {
                 /* See https://codepen.io/imprakash/pen/GgNMXO */
-                position: absolute;
+                width: 80%;
+                height: 80%;
+                overflow: auto;
+                background-color: white;
+                border-width: 3px;
+                border-color: black;
+                border-style: solid;
+                z-index: 5;
             }
         </style>
     </head>
@@ -195,9 +216,11 @@
                 <div id="button-resetzoom-click-div"></div>
                 <div
                     id="button-help-click-div"
-                    onclick="console.log('Asking for help!')"
                     onmousedown="event.preventDefault(); /* prevents highlighting of div when clicking on icon */"
                 ></div>
+            </div>
+            <div id="help-container-div">
+                <div id="help-div">Hello! Welcome to Minispec Visual!</div>
             </div>
         </div>
         <script defer>
@@ -263,6 +286,8 @@
             sourceFiletextDisplay = document.getElementById("source-filetexts-div"); //The div with the text of the files
             resizeDiv = document.getElementById("resize-div"); //The bar for resizing the display
             svgDisplay = document.getElementById("display-svg"); //The svg with the diagram
+            helpDiv = document.getElementById("help-div"); //The div with help information
+            helpClickDiv = document.getElementById("button-help-click-div"); //The button to click to show help information
             startingFontSize = 100; //in pt
             fontShrinkFactor = 0.75; //all fonts will have size startingFontSize*(fontShrinkFactor)^k for some integer k
             getSVGViewBox = () =>
@@ -282,6 +307,32 @@
                 let cursorpt = pt.matrixTransform(svgDisplay.getScreenCTM().inverse());
                 return cursorpt;
             };
+
+            /* Handle showing the help information */
+            helpDiv.style.visibility = "hidden";
+            helpDivOpening = false;
+            helpDivOpen = false;
+            window.addEventListener("click", () => {
+                //See https://stackoverflow.com/questions/14188654/detect-click-outside-element-vanilla-javascript
+                let isClickInside = helpDiv.contains(event.target);
+                console.log("clicky");
+                console.log("isclick", isClickInside, "helpopening", helpDivOpening);
+                if (!isClickInside && !helpDivOpening) {
+                    console.log("hidey");
+                    helpDiv.style.visibility = "hidden";
+                    helpDivOpen = false;
+                } else {
+                    helpDivOpening = false;
+                    helpDivOpen = true;
+                    helpDiv.style.visibility = "";
+                }
+            });
+            helpClickDiv.addEventListener("click", () => {
+                console.log("openhelp");
+                if (!helpDivOpen) {
+                    helpDivOpening = true;
+                }
+            });
 
             /* Allow the user to zoom in/out on the svg by scrolling. */
             svgDisplay.addEventListener("wheel", (e) => {
@@ -2067,13 +2118,18 @@ endmodule
                     let permanentHighlightSourceArray = element.source;
                     polygon.addEventListener("mouseenter", () => {
                         highlightSourceTemp(element.source);
+                        polygon.style.stroke = "blue";
+                        polygon.style.fill = hoverBackgroundColor;
                     });
                     polygon.addEventListener("mouseleave", () => {
                         dehighlightSourceTemp(element.source);
+                        polygon.style.stroke = "black";
+                        polygon.style.fill = "white";
                     });
                     polygon.addEventListener("click", () => {
                         cyclePermanentHighlight(permanentHighlightSourceArray);
                     });
+                    polygon.style.cursor = "pointer";
                 } else if (element.variant === "Wire") {
                     let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     line1.setAttribute("x1", element.startx);
@@ -2104,6 +2160,16 @@ endmodule
                         line.setAttribute("stroke", "red");
                         line.setAttribute("stroke-width", 0.1);
                         svgDisplay.appendChild(line);
+                        line.addEventListener("mouseenter", () => {
+                            for (let otherLine of [line1, line2, line3, line4, line5]) {
+                                otherLine.style.stroke = "blue";
+                            }
+                        });
+                        line.addEventListener("mouseleave", () => {
+                            for (let otherLine of [line1, line2, line3, line4, line5]) {
+                                otherLine.style.stroke = "red";
+                            }
+                        });
                     }
                 } else {
                     //we do not handle the component
@@ -2113,7 +2179,7 @@ endmodule
                 placeElement(element);
             }
             //set up the reset zoom button
-            svgOriginalViewBox = [-10, -10, elementsToPlace[0].width + 20, elementsToPlace[0].height + 40];
+            svgOriginalViewBox = [-10, -10, elementsToPlace[0].width + 20, elementsToPlace[0].height * 1.25 + 20];
             svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
                 svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
