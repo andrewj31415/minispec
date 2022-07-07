@@ -30,9 +30,15 @@ class Node:
     def placeAt(self, x, y):
         self.x = x
         self.y = y
+        return self
     def translate(self, dx, dy):
         self.x += dx
         self.y += dy
+    def copy(self):
+        node = Node(self.name)
+        node.x = self.x
+        node.y = self.y
+        return node
 
 class Module(Component):
     '''
@@ -138,33 +144,54 @@ class Mux(Component):
                 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height, 'shortHeight': self.shortHeight }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
+
+'''
+Should we have wires containing wire components?
+
+A wire needs to keep track of a tree-like data structure which also has endpoints kept outside the structure.
+
+Wire nodes are copied and unique.
+'''
+
+'''
+JavaScript wire:
+element with x1,y1, x2,y2 and children which are other wires coming after/out.
+hovering over an element activates all children and parents.
+'''
+
 class Wire(Component):
-    ''' src and dst are Nodes.
-    The wire starts horizontal from src, goes up at x1, across at height, down at x2, and ends at dst.
-    src is at (startx, starty) and dst is at (endx, endy). '''
-    def __init__(self, src, dst):
-        self.src = src
-        self.dst = dst
+    ''' src and dst are Nodes. children is a list of Wires. '''
+    def __init__(self, src, dst, children=None):
+        self.src = src.copy()
+        self.dst = dst.copy()
+        self.children = children if children != None else []
     def __str__(self):
         return "wire from " + str(self.src) + " to " + str(self.dst)
-    def translate(self, dx, dy):
-        #wires are not responsible for moving their endpoints--the modules/functions do that.
-        self.x1 += dx
-        self.height += dy
-        self.x2 += dx
-    def placeAt(self, x1, height, x2):
-        self.x1 = x1
-        self.height = height
-        self.x2 = x2
+    def append(self, x, y):
+        ''' src -> dst becomes src -> dst -> (x,y).
+        returns the wire dst -> (x,y). '''
+        node = Node().placeAt(x, y)
+        wire = Wire(self.dst, node)
+        self.children.append(wire)
+        return wire
     def autoPlace(self):
-        self.x1 = self.src.x + (self.dst.x - self.src.x)/2
-        self.height = (self.src.y + self.dst.y)/2
-        self.x2 = self.src.x + (self.dst.x - self.src.x)/2
+        midx = (self.src.x + self.dst.x)/2
+        midNode1 = Node().placeAt(midx, self.src.y)
+        midNode2 = Node().placeAt(midx, self.dst.y)
+        self.children = [Wire(midNode1, midNode2, [Wire(midNode2, self.dst)])]
+        self.dst = midNode1
+        return self
+    def translate(self, dx, dy):
+        self.src.translate(dx, dy)
+        self.dst.translate(dx, dy)
+        for child in self.children:
+            child.translate(dx, dy)
     def toJavaScript(self):
         print(self.src)
         print(self.dst)
         d = { 'variant': "'Wire'", 'source': [], 'startx': self.src.x, 'starty': self.src.y,
-                'x1': self.x1, 'height': self.height, 'x2': self.x2, 'endx': self.dst.x, 'endy': self.dst.y}
+                'endx': self.dst.x, 'endy': self.dst.y,
+                'children': '[' + ", ".join([child.toJavaScript() for child in self.children]) + ']'}
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
 
@@ -198,10 +225,6 @@ uReg.x, uReg.y, uReg.width, uReg.height = 0, 0, ulRegWidth, ulRegHeight
 uReg.autoPlace()
 
 u = Module('upper', 'TwoBitCounter', [uMux, uAdder, uConst1, uReg], [Node("enable")], [Node("getCount")])
-u.children.extend([ Wire(u.inputs[0], uMux.control), Wire(uMux.output, uReg.input),
-                    Wire(uReg.output, u.outputs[0]), Wire(uReg.output, uAdder.inputs[0]),
-                    Wire(uConst1.output, uAdder.inputs[1]), Wire(uReg.output, uMux.inputs[0]),
-                    Wire(uAdder.output, uMux.inputs[1]) ]) #add wires to u
 
 u.x, u.y, u.width, u.height = 0, 0, ulWidth, ulHeight
 u.autoPlace()
@@ -211,13 +234,22 @@ uConst1.translate(*ulConst1C)
 uMux.translate(*ulMuxC)
 uReg.translate(*ulRegC)
 
-u.children[4].placeAt(ulMuxC[0]/8, 7*ulHeight/8, ulMuxC[0] + ulMuxWidth/2)
-u.children[5].autoPlace()
-u.children[6].autoPlace()
-u.children[7].placeAt(ulRegC[0] + ulRegWidth + 5, ulHeight/6, ulAdderC[0] - 10)
-u.children[8].autoPlace()
-u.children[9].placeAt(ulRegC[0] + ulRegWidth + 5, ulHeight/6, ulMuxC[0] - 10)
-u.children[10].autoPlace()
+uwire1 = Wire(u.inputs[0], Node().placeAt(ulMuxC[0]/8, u.inputs[0].y))
+uwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, uMux.control.y).append(uMux.control.x, uMux.control.y)
+
+uwire2 = Wire(uReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, uReg.output.y))
+uwire2.append(u.outputs[0].x, u.outputs[0].y)
+uwire3 = uwire2.append(ulRegC[0] + ulRegWidth + 5, ulHeight/6).append(ulMuxC[0] - 10, ulHeight/6)
+uwire3.append(ulMuxC[0] - 10, uMux.inputs[0].y).append(uMux.inputs[0].x, uMux.inputs[0].y)
+uwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, uAdder.inputs[0].y).append(uAdder.inputs[0].x, uAdder.inputs[0].y)
+
+u.children.extend([ uwire1,
+                    Wire(uMux.output, uReg.input).autoPlace(),
+                    uwire2,
+                    Wire(uConst1.output, uAdder.inputs[1]).autoPlace(),
+                    Wire(uAdder.output, uMux.inputs[1]).autoPlace() ]) #add wires to u
+
+'''
 
 # organize l
 lMux = Mux("lMux", [Node("m1"), Node("m2")])
@@ -323,8 +355,14 @@ m.children[14].autoPlace()
 
 m.source = []
 m.typeSource = [['fourbitcounter', 22, 338]]
+
+'''
+
 u.source = [['fourbitcounter', 74, 94]]
 u.typeSource = [['twobitcounter', 0, 203]]
+
+'''
+
 l.source = [['fourbitcounter', 49, 69]]
 l.typeSource = [['twobitcounter', 0, 203]]
 
@@ -337,6 +375,8 @@ mEq.typeSource = []
 mConst3.source = [['fourbitcounter', 313, 314]]
 mConst3.typeSource = []
 
+'''
+
 uAdder.source = [['twobitcounter', 177, 178]]
 uAdder.typeSource = []
 uConst1.source = [['twobitcounter', 179, 180]]
@@ -344,6 +384,8 @@ uConst1.typeSource = []
 uMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]] #muxes do not have typeSource
 uReg.source = [['twobitcounter', 26, 49]]
 uReg.typeSource = []
+
+'''
 
 lAdder.source = [['twobitcounter', 177, 178]]
 lAdder.typeSource = []
@@ -356,6 +398,8 @@ lReg.typeSource = []
 print(m)
 print(m.toJavaScript())
 
+'''
+
 # Graph drawing algorithms:
 # https://en.wikipedia.org/wiki/Layered_graph_drawing
 
@@ -365,7 +409,7 @@ templateFile = pathlib.Path(__file__).with_name('template.html')
 
 template = templateFile.read_text()
 
-template = m.toJavaScript().join(template.split("/* Python elements go here */"))
+template = u.toJavaScript().join(template.split("/* Python elements go here */"))
 
 output = pathlib.Path(__file__).with_name('sample.html')
 output.open("w").write(template)

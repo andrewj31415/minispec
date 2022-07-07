@@ -182,6 +182,7 @@
                 border-color: black;
                 border-style: solid;
                 z-index: 5;
+                pointer-events: all;
             }
         </style>
     </head>
@@ -220,7 +221,19 @@
                 ></div>
             </div>
             <div id="help-container-div">
-                <div id="help-div">Hello! Welcome to Minispec Visual!</div>
+                <div id="help-div">
+                    Hello! Welcome to Minispec Visual!
+                    <p>The left pane shows the source code. The right pane displays a diagram of the synthesized circuit.</p>
+                    <p>
+                        You can drag to move and scroll or pinch to zoom. Click TODO to reset the zoom. Click TODO to enter
+                        fullscreen; press escape to exit fullscreen.
+                    </p>
+                    <p>
+                        If you double-click on a component, you can view its internals. If you hover on a component, its source
+                        code will be highlighted; if you click on a component, you will jump to the source code. You can also
+                        click on a component's type.
+                    </p>
+                </div>
             </div>
         </div>
         <script defer>
@@ -295,6 +308,7 @@
                     .getAttribute("viewBox")
                     .split(" ")
                     .map((item) => Number(item)); //returns the viewbox of svgDisplay as an array of four numbers.
+            timingColor = "rbg(36, 133, 91)";
 
             /* Given a mouse event from an event listener, returns {x: number, y: number}
                                         where x and y are the svg coordinates of the click on svgDisplay.
@@ -2134,39 +2148,22 @@ endmodule
                     let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     line1.setAttribute("x1", element.startx);
                     line1.setAttribute("y1", element.starty);
-                    line1.setAttribute("x2", element.x1);
-                    line1.setAttribute("y2", element.starty);
-                    let line2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line2.setAttribute("x1", element.x1);
-                    line2.setAttribute("y1", element.starty);
-                    line2.setAttribute("x2", element.x1);
-                    line2.setAttribute("y2", element.height);
-                    let line3 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line3.setAttribute("x1", element.x1);
-                    line3.setAttribute("y1", element.height);
-                    line3.setAttribute("x2", element.x2);
-                    line3.setAttribute("y2", element.height);
-                    let line4 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line4.setAttribute("x1", element.x2);
-                    line4.setAttribute("y1", element.height);
-                    line4.setAttribute("x2", element.x2);
-                    line4.setAttribute("y2", element.endy);
-                    let line5 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line5.setAttribute("x1", element.x2);
-                    line5.setAttribute("y1", element.endy);
-                    line5.setAttribute("x2", element.endx);
-                    line5.setAttribute("y2", element.endy);
-                    for (let line of [line1, line2, line3, line4, line5]) {
+                    line1.setAttribute("x2", element.endx);
+                    line1.setAttribute("y2", element.endy);
+                    for (childElement of element.children) {
+                        placeElement(childElement);
+                    }
+                    for (let line of [line1]) {
                         line.setAttribute("stroke", "red");
-                        line.setAttribute("stroke-width", 0.1);
+                        line.setAttribute("stroke-width", 1);
                         svgDisplay.appendChild(line);
                         line.addEventListener("mouseenter", () => {
-                            for (let otherLine of [line1, line2, line3, line4, line5]) {
+                            for (let otherLine of [line1]) {
                                 otherLine.style.stroke = "blue";
                             }
                         });
                         line.addEventListener("mouseleave", () => {
-                            for (let otherLine of [line1, line2, line3, line4, line5]) {
+                            for (let otherLine of [line1]) {
                                 otherLine.style.stroke = "red";
                             }
                         });
