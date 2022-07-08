@@ -337,17 +337,21 @@ mAnd.translate(*mAndC)
 mEq.translate(*mEqC)
 mConst3.translate(*mConst3C)
 
-mwire1 = Wire(m.inputs[0], mAnd.inputs[0])
-mwire1.autoPlace()
+mwire1 = Wire(m.inputs[0], Node().placeAt(mWidth/20, m.inputs[0].y))
+mwire1.append(l.inputs[0].x/2, m.inputs[0].y).append(l.inputs[0].x/2, l.inputs[0].y).append(l.inputs[0].x, l.inputs[0].y)
+mwire1.append(mWidth/20, mHeight/8).append(mWidth/6, mHeight/8).append(mWidth/6, mAnd.inputs[0].y).append(mAnd.inputs[0].x, mAnd.inputs[0].y)
 
-m.children.extend([ Wire(m.inputs[0], l.inputs[0]).autoPlace(),
-                    mwire1,
+mwire2 = Wire(l.outputs[0], Node().placeAt(3*mWidth/4, l.outputs[0].y))
+mwire3 = mwire2.append(3*mWidth/4, mConcat.inputs[1].y)
+mwire3.append(mConcat.inputs[1].x, mConcat.inputs[1].y)
+mwire3.append(3*mWidth/4, mHeight/2).append(mWidth/8, mHeight/2).append(mWidth/8, mEq.inputs[1].y).append(mEq.inputs[1].x, mEq.inputs[1].y)
+
+m.children.extend([ mwire1,
                     Wire(mConst3.output, mEq.inputs[0]).autoPlace(),
-                    Wire(l.outputs[0], mEq.inputs[1]).autoPlace(),
+                    mwire2,
                     Wire(mEq.output, mAnd.inputs[1]).autoPlace(),
                     Wire(mAnd.output, u.inputs[0]).autoPlace(),
                     Wire(u.outputs[0], mConcat.inputs[0]).autoPlace(),
-                    Wire(l.outputs[0], mConcat.inputs[1]).autoPlace(),
                     Wire(mConcat.output, m.outputs[0]).autoPlace() ])
 
 
