@@ -184,6 +184,18 @@
                 z-index: 5;
                 pointer-events: all;
             }
+            #wire-inspect-div {
+                position: absolute;
+                left: 10px;
+                top: 10px;
+                background-color: white;
+                border-width: 3px;
+                border-color: black;
+                border-style: solid;
+                z-index: 6;
+                pointer-events: none;
+                transform: translate(-100%, -100%); /* position the div by its bottom right corner */
+            }
         </style>
     </head>
     <body>
@@ -194,6 +206,7 @@
             </div>
             <div id="resize-div" onmousedown="event.preventDefault(); /* prevents highlighting of source when resizing */"></div>
             <svg id="display-svg" viewBox="0 0 100 100"></svg>
+            <div id="wire-inspect-div"></div>
             <div id="control-button-div">
                 <div id="button-fullscreen-background-div"></div>
                 <div id="button-resetzoom-background-div"></div>
@@ -301,6 +314,7 @@
             svgDisplay = document.getElementById("display-svg"); //The svg with the diagram
             helpDiv = document.getElementById("help-div"); //The div with help information
             helpClickDiv = document.getElementById("button-help-click-div"); //The button to click to show help information
+            wireInspectDiv = document.getElementById("wire-inspect-div"); //This div will appear when hovering over a wire.
             startingFontSize = 100; //in pt
             fontShrinkFactor = 0.75; //all fonts will have size startingFontSize*(fontShrinkFactor)^k for some integer k
             getSVGViewBox = () =>
@@ -329,10 +343,7 @@
             window.addEventListener("click", () => {
                 //See https://stackoverflow.com/questions/14188654/detect-click-outside-element-vanilla-javascript
                 let isClickInside = helpDiv.contains(event.target);
-                console.log("clicky");
-                console.log("isclick", isClickInside, "helpopening", helpDivOpening);
                 if (!isClickInside && !helpDivOpening) {
-                    console.log("hidey");
                     helpDiv.style.visibility = "hidden";
                     helpDivOpen = false;
                 } else {
@@ -342,7 +353,6 @@
                 }
             });
             helpClickDiv.addEventListener("click", () => {
-                console.log("openhelp");
                 if (!helpDivOpen) {
                     helpDivOpening = true;
                 }
@@ -1621,6 +1631,7 @@ endmodule
                 newSourceTitle.addEventListener("mousedown", (event) => {});
                 newSourceTitle.addEventListener("click", (event) => {
                     pullGivenSource(sourceFileName);
+                    clearPermanentHighlight();
                 });
                 sourceFilenameDisplay.appendChild(newSourceTitle);
                 sourceTitleDivs.set(sourceFileName, newSourceTitle);
@@ -1882,7 +1893,8 @@ endmodule
 
             hoverBackgroundColor = "rgb(240, 255, 255)";
 
-            placeElement = (element) => {
+            placeElement = (element, parent) => {
+                element.parent = parent;
                 if (element.variant === "Module") {
                     let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                     let underRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -1897,7 +1909,7 @@ endmodule
                     }
                     svgDisplay.appendChild(underRect);
                     for (childElement of element.children) {
-                        placeElement(childElement);
+                        placeElement(childElement, element);
                     }
                     svgDisplay.appendChild(overRect);
                     //place text
@@ -2039,7 +2051,7 @@ endmodule
                     }
                     svgDisplay.appendChild(underRect);
                     for (childElement of element.children) {
-                        placeElement(childElement);
+                        placeElement(childElement, element);
                     }
                     svgDisplay.appendChild(overRect);
                     //place text
@@ -2145,41 +2157,75 @@ endmodule
                     });
                     polygon.style.cursor = "pointer";
                 } else if (element.variant === "Wire") {
-                    let line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    line1.setAttribute("x1", element.startx);
-                    line1.setAttribute("y1", element.starty);
-                    line1.setAttribute("x2", element.endx);
-                    line1.setAttribute("y2", element.endy);
+                    let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", element.startx);
+                    line.setAttribute("y1", element.starty);
+                    line.setAttribute("x2", element.endx);
+                    line.setAttribute("y2", element.endy);
+                    line.setAttribute("stroke", "red");
+                    line.setAttribute("stroke-width", 1);
+                    svgDisplay.appendChild(line);
                     for (childElement of element.children) {
-                        placeElement(childElement);
+                        placeElement(childElement, element);
                     }
-                    for (let line of [line1]) {
-                        line.setAttribute("stroke", "red");
-                        line.setAttribute("stroke-width", 1);
-                        svgDisplay.appendChild(line);
-                        line.addEventListener("mouseenter", () => {
-                            for (let otherLine of [line1]) {
-                                otherLine.style.stroke = "blue";
-                            }
-                        });
-                        line.addEventListener("mouseleave", () => {
-                            for (let otherLine of [line1]) {
-                                otherLine.style.stroke = "red";
-                            }
-                        });
+                    if (element.children.length === 1) {
+                        element.source = element.children[0].source;
+                    } else if (element.children.length > 1) {
+                        element.source = element.children.map((child) => child.source).reduce((prev, cur) => cur.concat(prev));
                     }
+                    element.hover = (entering) => {
+                        //if entering, mouseenter. if not, mouseleave.
+                        line.style.stroke = entering ? "blue" : "red";
+                        for (childElement of element.children) {
+                            childElement.hover(entering);
+                        }
+                        if (element.parent.variant === "Wire") {
+                            element.parent.hoverFromChild(entering);
+                        }
+                    };
+                    element.hoverFromChild = (entering) => {
+                        line.style.stroke = entering ? "blue" : "red";
+                        if (element.parent.variant === "Wire") {
+                            element.parent.hoverFromChild(entering);
+                        }
+                    };
+                    line.addEventListener("mouseenter", () => {
+                        element.hover(true);
+                        highlightSourceTemp(element.source);
+                        wireInspectDiv.style.visibility = "";
+                        wireInspectDiv.innerHTML = element.type;
+                    });
+                    line.addEventListener("mouseleave", () => {
+                        element.hover(false);
+                        dehighlightSourceTemp(element.source);
+                        wireInspectDiv.style.visibility = "hidden";
+                    });
+                    line.addEventListener("mousedown", (event) => {
+                        //prevent clicking on the line from highlighting text
+                        event.preventDefault();
+                    });
+                    line.addEventListener("click", () => {
+                        cyclePermanentHighlight(element.source);
+                    });
                 } else {
                     //we do not handle the component
                 }
             };
             for (let element of elementsToPlace) {
-                placeElement(element);
+                placeElement(element, {}); //no parent
             }
+            console.log(elementsToPlace);
             //set up the reset zoom button
             svgOriginalViewBox = [-10, -10, elementsToPlace[0].width + 20, elementsToPlace[0].height * 1.25 + 20];
             svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
                 svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
+            });
+            //manage the wire inspect div
+            wireInspectDiv.style.visibility = "hidden";
+            svgDisplay.addEventListener("mousemove", (event) => {
+                wireInspectDiv.style.left = event.clientX + "px";
+                wireInspectDiv.style.top = event.clientY + "px";
             });
         </script>
     </body>

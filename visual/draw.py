@@ -161,25 +161,35 @@ hovering over an element activates all children and parents.
 
 class Wire(Component):
     ''' src and dst are Nodes. children is a list of Wires. '''
-    def __init__(self, src, dst, children=None):
+    def __init__(self, src, dst, type="unknown", children=None):
         self.src = src.copy()
         self.dst = dst.copy()
         self.children = children if children != None else []
+        self.type = type
+        self.source = []
+        self.typeSource = []
     def __str__(self):
         return "wire from " + str(self.src) + " to " + str(self.dst)
     def append(self, x, y):
         ''' src -> dst becomes src -> dst -> (x,y).
         returns the wire dst -> (x,y). '''
         node = Node().placeAt(x, y)
-        wire = Wire(self.dst, node)
+        wire = Wire(self.dst, node, self.type)
         self.children.append(wire)
         return wire
     def autoPlace(self):
         midx = (self.src.x + self.dst.x)/2
         midNode1 = Node().placeAt(midx, self.src.y)
         midNode2 = Node().placeAt(midx, self.dst.y)
-        self.children = [Wire(midNode1, midNode2, [Wire(midNode2, self.dst)])]
+        self.children = [Wire(midNode1, midNode2, self.type, [Wire(midNode2, self.dst, self.type)])]
         self.dst = midNode1
+        return self
+    def setSource(self, source):
+        assert len(self.children) < 2, "Can only add source to a single wire"
+        if len(self.children) == 1:
+            self.children[0].setSource(source)
+        else:
+            self.source = source
         return self
     def translate(self, dx, dy):
         self.src.translate(dx, dy)
@@ -187,8 +197,8 @@ class Wire(Component):
         for child in self.children:
             child.translate(dx, dy)
     def toJavaScript(self):
-        d = { 'variant': "'Wire'", 'source': [], 'startx': self.src.x, 'starty': self.src.y,
-                'endx': self.dst.x, 'endy': self.dst.y,
+        d = { 'variant': "'Wire'", 'source': self.source, 'typeSource': self.typeSource, 'type': "`" + self.type + "`",
+                'startx': self.src.x, 'starty': self.src.y, 'endx': self.dst.x, 'endy': self.dst.y,
                 'children': '[' + ", ".join([child.toJavaScript() for child in self.children]) + ']'}
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
@@ -232,20 +242,20 @@ uConst1.translate(*ulConst1C)
 uMux.translate(*ulMuxC)
 uReg.translate(*ulRegC)
 
-uwire1 = Wire(u.inputs[0], Node().placeAt(ulMuxC[0]/8, u.inputs[0].y))
-uwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, uMux.control.y).append(uMux.control.x, uMux.control.y)
+uwire1 = Wire(u.inputs[0], Node().placeAt(ulMuxC[0]/8, u.inputs[0].y), "Bool")
+uwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, uMux.control.y).append(uMux.control.x, uMux.control.y).setSource([['twobitcounter', 142, 148]])
 
-uwire2 = Wire(uReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, uReg.output.y))
-uwire2.append(u.outputs[0].x, u.outputs[0].y)
+uwire2 = Wire(uReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, uReg.output.y), "Bit#(2)")
+uwire2.append(u.outputs[0].x, u.outputs[0].y).setSource([['twobitcounter', 80, 85]])
 uwire3 = uwire2.append(ulRegC[0] + ulRegWidth + 5, ulHeight/6).append(ulMuxC[0] - 10, ulHeight/6)
-uwire3.append(ulMuxC[0] - 10, uMux.inputs[0].y).append(uMux.inputs[0].x, uMux.inputs[0].y)
-uwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, uAdder.inputs[0].y).append(uAdder.inputs[0].x, uAdder.inputs[0].y)
+uwire3.append(ulMuxC[0] - 10, uMux.inputs[0].y).append(uMux.inputs[0].x, uMux.inputs[0].y).setSource([['twobitcounter', 130, 181]])
+uwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, uAdder.inputs[0].y).append(uAdder.inputs[0].x, uAdder.inputs[0].y).setSource([['twobitcounter', 171, 176]])
 
 u.children.extend([ uwire1,
-                    Wire(uMux.output, uReg.input).autoPlace(),
+                    Wire(uMux.output, uReg.input, "Bit#(2)").autoPlace().setSource([['twobitcounter', 130, 181]]),
                     uwire2,
-                    Wire(uConst1.output, uAdder.inputs[1]).autoPlace(),
-                    Wire(uAdder.output, uMux.inputs[1]).autoPlace() ]) #add wires to u
+                    Wire(uConst1.output, uAdder.inputs[1], "Bit#(1)").autoPlace().setSource([['twobitcounter', 179, 180]]),
+                    Wire(uAdder.output, uMux.inputs[1], "Bit#(2)").autoPlace().setSource([['twobitcounter', 171, 180]]) ]) #add wires to u
 
 # organize l
 lMux = Mux("lMux", [Node("m1"), Node("m2")])
@@ -281,20 +291,20 @@ lConst1.translate(*ulConst1C)
 lMux.translate(*ulMuxC)
 lReg.translate(*ulRegC)
 
-lwire1 = Wire(l.inputs[0], Node().placeAt(ulMuxC[0]/8, l.inputs[0].y))
-lwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, lMux.control.y).append(lMux.control.x, lMux.control.y)
+lwire1 = Wire(l.inputs[0], Node().placeAt(ulMuxC[0]/8, l.inputs[0].y), "Bool")
+lwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, lMux.control.y).append(lMux.control.x, lMux.control.y).setSource([['twobitcounter', 142, 148]])
 
-lwire2 = Wire(lReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, lReg.output.y))
-lwire2.append(l.outputs[0].x, l.outputs[0].y)
+lwire2 = Wire(lReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, lReg.output.y), "Bit#(2)")
+lwire2.append(l.outputs[0].x, l.outputs[0].y).setSource([['twobitcounter', 80, 85]])
 lwire3 = lwire2.append(ulRegC[0] + ulRegWidth + 5, ulHeight/6).append(ulMuxC[0] - 10, ulHeight/6)
-lwire3.append(ulMuxC[0] - 10, lMux.inputs[0].y).append(lMux.inputs[0].x, lMux.inputs[0].y)
-lwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, lAdder.inputs[0].y).append(lAdder.inputs[0].x, lAdder.inputs[0].y)
+lwire3.append(ulMuxC[0] - 10, lMux.inputs[0].y).append(lMux.inputs[0].x, lMux.inputs[0].y).setSource([['twobitcounter', 130, 181]])
+lwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, lAdder.inputs[0].y).append(lAdder.inputs[0].x, lAdder.inputs[0].y).setSource([['twobitcounter', 171, 176]])
 
 l.children.extend([ lwire1,
-                    Wire(lMux.output, lReg.input).autoPlace(),
+                    Wire(lMux.output, lReg.input, "Bit#(2)").autoPlace().setSource([['twobitcounter', 130, 181]]),
                     lwire2,
-                    Wire(lConst1.output, lAdder.inputs[1]).autoPlace(),
-                    Wire(lAdder.output, lMux.inputs[1]).autoPlace() ]) #add wires to l
+                    Wire(lConst1.output, lAdder.inputs[1], "Bit#(1)").autoPlace().setSource([['twobitcounter', 179, 180]]),
+                    Wire(lAdder.output, lMux.inputs[1], "Bit#(2)").autoPlace().setSource([['twobitcounter', 171, 180]]) ]) #add wires to l
 
 mWidth, mHeight = 230, 180
 mConcatWidth, mConcatHeight = 10, 10
@@ -337,41 +347,28 @@ mAnd.translate(*mAndC)
 mEq.translate(*mEqC)
 mConst3.translate(*mConst3C)
 
-mwire1 = Wire(m.inputs[0], Node().placeAt(mWidth/20, m.inputs[0].y))
-mwire1.append(l.inputs[0].x/2, m.inputs[0].y).append(l.inputs[0].x/2, l.inputs[0].y).append(l.inputs[0].x, l.inputs[0].y)
-mwire1.append(mWidth/20, mHeight/8).append(mWidth/6, mHeight/8).append(mWidth/6, mAnd.inputs[0].y).append(mAnd.inputs[0].x, mAnd.inputs[0].y)
+mwire1 = Wire(m.inputs[0], Node().placeAt(mWidth/20, m.inputs[0].y), "Bool")
+mwire1.append(l.inputs[0].x/2, m.inputs[0].y).append(l.inputs[0].x/2, l.inputs[0].y).append(l.inputs[0].x, l.inputs[0].y).setSource([['fourbitcounter', 253, 259]])
+mwire1.append(mWidth/20, mHeight/8).append(mWidth/6, mHeight/8).append(mWidth/6, mAnd.inputs[0].y).append(mAnd.inputs[0].x, mAnd.inputs[0].y).setSource([['fourbitcounter', 284, 290]])
 
-mwire2 = Wire(l.outputs[0], Node().placeAt(3*mWidth/4, l.outputs[0].y))
+mwire2 = Wire(l.outputs[0], Node().placeAt(3*mWidth/4, l.outputs[0].y), "Bit#(2)")
 mwire3 = mwire2.append(3*mWidth/4, mConcat.inputs[1].y)
-mwire3.append(mConcat.inputs[1].x, mConcat.inputs[1].y)
-mwire3.append(3*mWidth/4, mHeight/2).append(mWidth/8, mHeight/2).append(mWidth/8, mEq.inputs[1].y).append(mEq.inputs[1].x, mEq.inputs[1].y)
+mwire3.append(mConcat.inputs[1].x, mConcat.inputs[1].y).setSource([['fourbitcounter', 156, 170]])
+mwire3.append(3*mWidth/4, mHeight/2).append(mWidth/8, mHeight/2).append(mWidth/8, mEq.inputs[1].y).append(mEq.inputs[1].x, mEq.inputs[1].y).setSource([['fourbitcounter', 295, 309]])
 
 m.children.extend([ mwire1,
-                    Wire(mConst3.output, mEq.inputs[0]).autoPlace(),
+                    Wire(mConst3.output, mEq.inputs[0], "Bit#(2)").autoPlace().setSource([['fourbitcounter', 313, 314]]),
                     mwire2,
-                    Wire(mEq.output, mAnd.inputs[1]).autoPlace(),
-                    Wire(mAnd.output, u.inputs[0]).autoPlace(),
-                    Wire(u.outputs[0], mConcat.inputs[0]).autoPlace(),
-                    Wire(mConcat.output, m.outputs[0]).autoPlace() ])
-
-
-'''m.children[6].autoPlace()
-m.children[7].placeAt(mWidth/20, mHeight/8, mWidth/6)
-m.children[8].autoPlace()
-m.children[9].placeAt(3*mWidth/4, mHeight/2, mWidth/8)
-m.children[10].autoPlace()
-m.children[11].autoPlace()
-m.children[12].autoPlace()
-m.children[13].autoPlace()
-m.children[14].autoPlace()'''
+                    Wire(mEq.output, mAnd.inputs[1], "Bool").autoPlace().setSource([['fourbitcounter', 294, 315]]),
+                    Wire(mAnd.output, u.inputs[0], "Bool").autoPlace().setSource([['fourbitcounter', 284, 315]]),
+                    Wire(u.outputs[0], mConcat.inputs[0], "Bit#(2)").autoPlace().setSource([['fourbitcounter', 140, 154]]),
+                    Wire(mConcat.output, m.outputs[0], "Bit#(4)").autoPlace().setSource([['fourbitcounter', 139, 171]]) ])
 
 m.source = []
 m.typeSource = [['fourbitcounter', 22, 338]]
 
-
 u.source = [['fourbitcounter', 74, 94]]
 u.typeSource = [['twobitcounter', 0, 203]]
-
 
 l.source = [['fourbitcounter', 49, 69]]
 l.typeSource = [['twobitcounter', 0, 203]]
@@ -393,7 +390,6 @@ uMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]] #muxes 
 uReg.source = [['twobitcounter', 26, 49]]
 uReg.typeSource = []
 
-
 lAdder.source = [['twobitcounter', 177, 178]]
 lAdder.typeSource = []
 lConst1.source = [['twobitcounter', 179, 180]]
@@ -401,6 +397,8 @@ lConst1.typeSource = []
 lMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]]
 lReg.source = [['twobitcounter', 26, 49]]
 lReg.typeSource = []
+
+
 
 #print(m)
 #print(m.toJavaScript())
