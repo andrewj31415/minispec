@@ -2215,8 +2215,47 @@ endmodule
                 placeElement(element, {}); //no parent
             }
             console.log(elementsToPlace);
+
             //set up the reset zoom button
-            svgOriginalViewBox = [-10, -10, elementsToPlace[0].width + 20, elementsToPlace[0].height * 1.25 + 20];
+            let margin = 10;
+            /* rect has x, y, width, height. returns the conbined bounding box. */
+            maxBBox = (rect1, rect2) => {
+                output = { x: Math.min(rect1.x, rect2.x), y: Math.min(rect1.y, rect2.y) };
+                output.width = Math.max(rect1.x + rect1.width, rect2.x + rect2.width) - output.x;
+                output.height = Math.max(rect1.y + rect1.height, rect2.y + rect2.height) - output.y;
+                return output;
+            };
+            /* Takes in an element and returns its bounding box, including children */
+            bboxOfElement = (element) => {
+                if (element.variant === "Module" || element.variant === "Function" || element.variant === "Mux") {
+                    if (element.children === undefined) {
+                        element.children = [];
+                    }
+                    return [element, ...element.children.map((child) => bboxOfElement(child))].reduce((prev, cur) =>
+                        maxBBox(prev, cur)
+                    );
+                } else if (element.variant === "Wire") {
+                    return [
+                        {
+                            x: Math.min(element.startx, element.endx),
+                            y: Math.min(element.starty, element.endy),
+                            width: Math.abs(element.startx - element.endx),
+                            height: Math.abs(element.startx - element.endx),
+                        },
+                        ...element.children.map((child) => bboxOfElement(child)),
+                    ].reduce((prev, cur) => maxBBox(prev, cur));
+                } else {
+                    assert(false, `Missing variant ${element.variant}`);
+                }
+            };
+            fullBBox = elementsToPlace.map((element) => bboxOfElement(element)).reduce((prev, cur) => maxBBox(prev, cur));
+            console.log(fullBBox);
+            svgOriginalViewBox = [
+                -margin + fullBBox.x,
+                -margin + fullBBox.y,
+                fullBBox.width + 2 * margin,
+                fullBBox.height + 2 * margin,
+            ];
             svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
                 svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));

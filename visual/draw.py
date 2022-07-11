@@ -398,6 +398,12 @@ lMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]]
 lReg.source = [['twobitcounter', 26, 49]]
 lReg.typeSource = []
 
+topLevlLength = 30
+
+m.translate(topLevlLength, 0)
+
+topLevelInput = Wire(Node().placeAt(0, m.inputs[0].y), m.inputs[0], "Bool").setSource([])
+topLevelOutput = Wire(m.outputs[0], Node().placeAt(m.outputs[0].x+topLevlLength, m.outputs[0].y), "Bit#(4)").setSource([])
 
 
 #print(m)
@@ -413,7 +419,7 @@ templateFile = pathlib.Path(__file__).with_name('template.html')
 
 template = templateFile.read_text()
 
-template = m.toJavaScript().join(template.split("/* Python elements go here */"))
+template = ",".join([m.toJavaScript(), topLevelInput.toJavaScript(), topLevelOutput.toJavaScript()]).join(template.split("/* Python elements go here */"))
 
 output = pathlib.Path(__file__).with_name('sample.html')
 output.open("w").write(template)
