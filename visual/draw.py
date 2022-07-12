@@ -52,6 +52,7 @@ class Module(Component):
         self.children = children
         self.inputs = inputs
         self.outputs = outputs
+        self.timing = "0 ps"
     def __str__(self):
         return "Module " + self.name + " with children " + " | ".join(str(x) for x in self.children)
     def translate(self, dx, dy):
@@ -74,6 +75,7 @@ class Module(Component):
     def toJavaScript(self):
         d = { 'name': "`" + self.name + "`", 'type': "`" + self.type + "`", 'variant': "'Module'", 'source': self.source,
                 'typeSource': self.typeSource, 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height,
+                'timing': "`" + self.timing + "`",
                 'children': '[' + ", ".join([child.toJavaScript() for child in self.children]) + ']' }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
@@ -84,6 +86,7 @@ class Function(Component):
         self.children = children
         self.inputs = inputs
         self.output = Node('_' + name + '_output')
+        self.timing = "0 ps"
     def __str__(self):
         if (len(self.children) == 0):
             return "Function " + self.name
@@ -104,7 +107,7 @@ class Function(Component):
         self.output.x = self.x + self.width
         self.output.y = self.y + self.height/2
     def toJavaScript(self):
-        d = { 'name': "`" + self.name + "`", 'variant': "'Function'", 'source': self.source,
+        d = { 'name': "`" + self.name + "`", 'variant': "'Function'", 'source': self.source, 'timing': "`" + self.timing + "`",
                 'typeSource': self.typeSource, 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height,
                 'children': '[' + ", ".join([child.toJavaScript() for child in self.children]) + ']' }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
@@ -121,6 +124,7 @@ class Mux(Component):
         self.inputs = inputs
         self.output = Node('_' + name + '_output')
         self.control = Node('_' + name + '_control')
+        self.timing = "0 ps"
     def __str__(self):
         return "mux " + self.name
     def translate(self, dx, dy):
@@ -140,7 +144,7 @@ class Mux(Component):
         self.control.x = self.x + self.width/2
         self.control.y = self.height - (self.height - self.shortHeight)/4
     def toJavaScript(self):
-        d = { 'variant': "'Mux'", 'source': self.source,
+        d = { 'variant': "'Mux'", 'source': self.source, 'timing': "`" + self.timing + "`",
                 'x': self.x, 'y': self.y, 'width': self.width, 'height': self.height, 'shortHeight': self.shortHeight }
         return '{' + ", ".join( key+": "+str(d[key]) for key in d) + '}'
 
@@ -228,11 +232,11 @@ uConst1 = Function("1'b1", [], [])
 uConst1.x, uConst1.y, uConst1.width, uConst1.height = 0, 0, ulConst1Width, ulConst1Height
 uConst1.autoPlace()
 
-uReg = Register("count", "Bit#(2)")
+uReg = Register("count", "Bit#(4)")
 uReg.x, uReg.y, uReg.width, uReg.height = 0, 0, ulRegWidth, ulRegHeight
 uReg.autoPlace()
 
-u = Module('upper', 'TwoBitCounter', [uMux, uAdder, uConst1, uReg], [Node("enable")], [Node("getCount")])
+u = Module('upper', 'FourBitCounter', [uMux, uAdder, uConst1, uReg], [Node("enable")], [Node("getCount")])
 
 u.x, u.y, u.width, u.height = 0, 0, ulWidth, ulHeight
 u.autoPlace()
@@ -242,20 +246,25 @@ uConst1.translate(*ulConst1C)
 uMux.translate(*ulMuxC)
 uReg.translate(*ulRegC)
 
-uwire1 = Wire(u.inputs[0], Node().placeAt(ulMuxC[0]/8, u.inputs[0].y), "Bool")
-uwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, uMux.control.y).append(uMux.control.x, uMux.control.y).setSource([['twobitcounter', 142, 148]])
+uAdder.timing = "45.36 ps"
+uMux.timing = "40.48 ps"
+uReg.timing = "23.86 ps"
+u.timing = "64.64 ps"
 
-uwire2 = Wire(uReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, uReg.output.y), "Bit#(2)")
-uwire2.append(u.outputs[0].x, u.outputs[0].y).setSource([['twobitcounter', 80, 85]])
+uwire1 = Wire(u.inputs[0], Node().placeAt(ulMuxC[0]/8, u.inputs[0].y), "Bool")
+uwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, uMux.control.y).append(uMux.control.x, uMux.control.y).setSource([['fourbitcounter', 143, 149]])
+
+uwire2 = Wire(uReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, uReg.output.y), "Bit#(4)")
+uwire2.append(u.outputs[0].x, u.outputs[0].y).setSource([['fourbitcounter', 81, 86]])
 uwire3 = uwire2.append(ulRegC[0] + ulRegWidth + 5, ulHeight/6).append(ulMuxC[0] - 10, ulHeight/6)
-uwire3.append(ulMuxC[0] - 10, uMux.inputs[0].y).append(uMux.inputs[0].x, uMux.inputs[0].y).setSource([['twobitcounter', 130, 181]])
-uwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, uAdder.inputs[0].y).append(uAdder.inputs[0].x, uAdder.inputs[0].y).setSource([['twobitcounter', 171, 176]])
+uwire3.append(ulMuxC[0] - 10, uMux.inputs[0].y).append(uMux.inputs[0].x, uMux.inputs[0].y).setSource([['fourbitcounter', 131, 182]])
+uwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, uAdder.inputs[0].y).append(uAdder.inputs[0].x, uAdder.inputs[0].y).setSource([['fourbitcounter', 172, 177]])
 
 u.children.extend([ uwire1,
-                    Wire(uMux.output, uReg.input, "Bit#(2)").autoPlace().setSource([['twobitcounter', 130, 181]]),
+                    Wire(uMux.output, uReg.input, "Bit#(4)").autoPlace().setSource([['fourbitcounter', 131, 182]]),
                     uwire2,
-                    Wire(uConst1.output, uAdder.inputs[1], "Bit#(1)").autoPlace().setSource([['twobitcounter', 179, 180]]),
-                    Wire(uAdder.output, uMux.inputs[1], "Bit#(2)").autoPlace().setSource([['twobitcounter', 171, 180]]) ]) #add wires to u
+                    Wire(uConst1.output, uAdder.inputs[1], "Bit#(1)").autoPlace().setSource([['fourbitcounter', 180, 181]]),
+                    Wire(uAdder.output, uMux.inputs[1], "Bit#(4)").autoPlace().setSource([['fourbitcounter', 172, 181]]) ]) #add wires to u
 
 # organize l
 lMux = Mux("lMux", [Node("m1"), Node("m2")])
@@ -275,12 +284,12 @@ lConst1 = Function("1'b1", [], [])
 lConst1.x, lConst1.y, lConst1.width, lConst1.height = 0, 0, ulConst1Width, ulConst1Height
 lConst1.output.placeAt(ulConst1Width, ulConst1Height/2)
 
-lReg = Register("count", "Bit#(2)")
+lReg = Register("count", "Bit#(4)")
 lReg.x, lReg.y, lReg.width, lReg.height = 0, 0, ulRegWidth, ulRegHeight
 lReg.input.placeAt(0, ulRegHeight/2)
 lReg.output.placeAt(ulRegWidth, ulRegHeight/2)
 
-l = Module('lower', 'TwoBitCounter', [lMux, lAdder, lConst1, lReg], [Node("enable")], [Node("getCount")])
+l = Module('lower', 'FourBitCounter', [lMux, lAdder, lConst1, lReg], [Node("enable")], [Node("getCount")])
 
 l.x, l.y, l.width, l.height = 0, 0, ulWidth, ulHeight
 l.inputs[0].placeAt(0, ulHeight/2)
@@ -292,19 +301,19 @@ lMux.translate(*ulMuxC)
 lReg.translate(*ulRegC)
 
 lwire1 = Wire(l.inputs[0], Node().placeAt(ulMuxC[0]/8, l.inputs[0].y), "Bool")
-lwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, lMux.control.y).append(lMux.control.x, lMux.control.y).setSource([['twobitcounter', 142, 148]])
+lwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, lMux.control.y).append(lMux.control.x, lMux.control.y).setSource([['fourbitcounter', 143, 149]])
 
-lwire2 = Wire(lReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, lReg.output.y), "Bit#(2)")
-lwire2.append(l.outputs[0].x, l.outputs[0].y).setSource([['twobitcounter', 80, 85]])
+lwire2 = Wire(lReg.output, Node().placeAt(ulRegC[0] + ulRegWidth + 5, lReg.output.y), "Bit#(4)")
+lwire2.append(l.outputs[0].x, l.outputs[0].y).setSource([['fourbitcounter', 81, 86]])
 lwire3 = lwire2.append(ulRegC[0] + ulRegWidth + 5, ulHeight/6).append(ulMuxC[0] - 10, ulHeight/6)
-lwire3.append(ulMuxC[0] - 10, lMux.inputs[0].y).append(lMux.inputs[0].x, lMux.inputs[0].y).setSource([['twobitcounter', 130, 181]])
-lwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, lAdder.inputs[0].y).append(lAdder.inputs[0].x, lAdder.inputs[0].y).setSource([['twobitcounter', 171, 176]])
+lwire3.append(ulMuxC[0] - 10, lMux.inputs[0].y).append(lMux.inputs[0].x, lMux.inputs[0].y).setSource([['fourbitcounter', 131, 182]])
+lwire3.append(ulAdderC[0] - 10, ulHeight/6).append(ulAdderC[0] - 10, lAdder.inputs[0].y).append(lAdder.inputs[0].x, lAdder.inputs[0].y).setSource([['fourbitcounter', 172, 177]])
 
 l.children.extend([ lwire1,
-                    Wire(lMux.output, lReg.input, "Bit#(2)").autoPlace().setSource([['twobitcounter', 130, 181]]),
+                    Wire(lMux.output, lReg.input, "Bit#(4)").autoPlace().setSource([['fourbitcounter', 131, 182]]),
                     lwire2,
-                    Wire(lConst1.output, lAdder.inputs[1], "Bit#(1)").autoPlace().setSource([['twobitcounter', 179, 180]]),
-                    Wire(lAdder.output, lMux.inputs[1], "Bit#(2)").autoPlace().setSource([['twobitcounter', 171, 180]]) ]) #add wires to l
+                    Wire(lConst1.output, lAdder.inputs[1], "Bit#(1)").autoPlace().setSource([['fourbitcounter', 180, 181]]),
+                    Wire(lAdder.output, lMux.inputs[1], "Bit#(4)").autoPlace().setSource([['fourbitcounter', 172, 181]]) ]) #add wires to l
 
 mWidth, mHeight = 230, 180
 mConcatWidth, mConcatHeight = 10, 10
@@ -331,11 +340,11 @@ mEq = Function("==", [], [Node("a1"), Node("a2")])
 mEq.x, mEq.y, mEq.width, mEq.height = 0, 0, mEqWidth, mEqHeight
 mEq.autoPlace()
 
-mConst3 = Function("2b'3", [], [])
+mConst3 = Function("4b'15", [], [])
 mConst3.x, mConst3.y, mConst3.width, mConst3.height = 0, 0, mConst3Width, mConst3Height
 mConst3.autoPlace()
 
-m = Module('stuff', 'FourBitCounter', [u, l, mConcat, mAnd, mEq, mConst3], [Node("enable")], [Node("getCount")])
+m = Module('stuff', 'EightBitCounter', [u, l, mConcat, mAnd, mEq, mConst3], [Node("enable")], [Node("getCount")])
 
 m.x, m.y, m.width, m.height = 0, 0, mWidth, mHeight
 m.autoPlace()
@@ -348,54 +357,54 @@ mEq.translate(*mEqC)
 mConst3.translate(*mConst3C)
 
 mwire1 = Wire(m.inputs[0], Node().placeAt(mWidth/20, m.inputs[0].y), "Bool")
-mwire1.append(l.inputs[0].x/2, m.inputs[0].y).append(l.inputs[0].x/2, l.inputs[0].y).append(l.inputs[0].x, l.inputs[0].y).setSource([['fourbitcounter', 253, 259]])
-mwire1.append(mWidth/20, mHeight/8).append(mWidth/6, mHeight/8).append(mWidth/6, mAnd.inputs[0].y).append(mAnd.inputs[0].x, mAnd.inputs[0].y).setSource([['fourbitcounter', 284, 290]])
+mwire1.append(l.inputs[0].x/2, m.inputs[0].y).append(l.inputs[0].x/2, l.inputs[0].y).append(l.inputs[0].x, l.inputs[0].y).setSource([['eightbitcounter', 258, 264]])
+mwire1.append(mWidth/20, mHeight/8).append(mWidth/6, mHeight/8).append(mWidth/6, mAnd.inputs[0].y).append(mAnd.inputs[0].x, mAnd.inputs[0].y).setSource([['eightbitcounter', 289, 295]])
 
-mwire2 = Wire(l.outputs[0], Node().placeAt(3*mWidth/4, l.outputs[0].y), "Bit#(2)")
+mwire2 = Wire(l.outputs[0], Node().placeAt(3*mWidth/4, l.outputs[0].y), "Bit#(4)")
 mwire3 = mwire2.append(3*mWidth/4, mConcat.inputs[1].y)
-mwire3.append(mConcat.inputs[1].x, mConcat.inputs[1].y).setSource([['fourbitcounter', 156, 170]])
-mwire3.append(3*mWidth/4, mHeight/2).append(mWidth/8, mHeight/2).append(mWidth/8, mEq.inputs[1].y).append(mEq.inputs[1].x, mEq.inputs[1].y).setSource([['fourbitcounter', 295, 309]])
+mwire3.append(mConcat.inputs[1].x, mConcat.inputs[1].y).setSource([['eightbitcounter', 161, 175]])
+mwire3.append(3*mWidth/4, mHeight/2).append(mWidth/8, mHeight/2).append(mWidth/8, mEq.inputs[1].y).append(mEq.inputs[1].x, mEq.inputs[1].y).setSource([['eightbitcounter', 300, 314]])
 
 m.children.extend([ mwire1,
-                    Wire(mConst3.output, mEq.inputs[0], "Bit#(2)").autoPlace().setSource([['fourbitcounter', 313, 314]]),
+                    Wire(mConst3.output, mEq.inputs[0], "Bit#(4)").autoPlace().setSource([['eightbitcounter', 318, 320]]),
                     mwire2,
-                    Wire(mEq.output, mAnd.inputs[1], "Bool").autoPlace().setSource([['fourbitcounter', 294, 315]]),
-                    Wire(mAnd.output, u.inputs[0], "Bool").autoPlace().setSource([['fourbitcounter', 284, 315]]),
-                    Wire(u.outputs[0], mConcat.inputs[0], "Bit#(2)").autoPlace().setSource([['fourbitcounter', 140, 154]]),
-                    Wire(mConcat.output, m.outputs[0], "Bit#(4)").autoPlace().setSource([['fourbitcounter', 139, 171]]) ])
+                    Wire(mEq.output, mAnd.inputs[1], "Bool").autoPlace().setSource([['eightbitcounter', 299, 321]]),
+                    Wire(mAnd.output, u.inputs[0], "Bool").autoPlace().setSource([['eightbitcounter', 289, 321]]),
+                    Wire(u.outputs[0], mConcat.inputs[0], "Bit#(4)").autoPlace().setSource([['eightbitcounter', 145, 159]]),
+                    Wire(mConcat.output, m.outputs[0], "Bit#(8)").autoPlace().setSource([['eightbitcounter', 144, 176]]) ])
 
 m.source = []
-m.typeSource = [['fourbitcounter', 22, 338]]
+m.typeSource = [['eightbitcounter', 24, 344]]
 
-u.source = [['fourbitcounter', 74, 94]]
-u.typeSource = [['twobitcounter', 0, 203]]
+u.source = [['eightbitcounter', 78, 99]]
+u.typeSource = [['fourbitcounter', 0, 204]]
 
-l.source = [['fourbitcounter', 49, 69]]
-l.typeSource = [['twobitcounter', 0, 203]]
+l.source = [['eightbitcounter', 52, 73]]
+l.typeSource = [['fourbitcounter', 0, 204]]
 
-mConcat.source = [['fourbitcounter', 139, 171]]
+mConcat.source = [['eightbitcounter', 144, 176]]
 mConcat.typeSource = [] #built-in, no type source
-mAnd.source = [['fourbitcounter', 291, 293]]
+mAnd.source = [['eightbitcounter', 296, 298]]
 mAnd.typeSource = []
-mEq.source = [['fourbitcounter', 310, 312]]
+mEq.source = [['eightbitcounter', 315, 317]]
 mEq.typeSource = []
-mConst3.source = [['fourbitcounter', 313, 314]]
+mConst3.source = [['eightbitcounter', 318, 320]]
 mConst3.typeSource = []
 
-uAdder.source = [['twobitcounter', 177, 178]]
+uAdder.source = [['fourbitcounter', 178, 179]]
 uAdder.typeSource = []
-uConst1.source = [['twobitcounter', 179, 180]]
+uConst1.source = [['fourbitcounter', 180, 181]]
 uConst1.typeSource = []
-uMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]] #muxes do not have typeSource
-uReg.source = [['twobitcounter', 26, 49]]
+uMux.source = [['fourbitcounter', 139, 150], ['fourbitcounter', 163, 182]] #muxes do not have typeSource
+uReg.source = [['fourbitcounter', 27, 50]]
 uReg.typeSource = []
 
-lAdder.source = [['twobitcounter', 177, 178]]
+lAdder.source = [['fourbitcounter', 178, 179]]
 lAdder.typeSource = []
-lConst1.source = [['twobitcounter', 179, 180]]
+lConst1.source = [['fourbitcounter', 180, 181]]
 lConst1.typeSource = []
-lMux.source = [['twobitcounter', 138, 149], ['twobitcounter', 162, 181]]
-lReg.source = [['twobitcounter', 26, 49]]
+lMux.source = [['fourbitcounter', 139, 150], ['fourbitcounter', 163, 182]]
+lReg.source = [['fourbitcounter', 27, 50]]
 lReg.typeSource = []
 
 topLevlLength = 30
@@ -403,7 +412,7 @@ topLevlLength = 30
 m.translate(topLevlLength, 0)
 
 topLevelInput = Wire(Node().placeAt(0, m.inputs[0].y), m.inputs[0], "Bool").setSource([])
-topLevelOutput = Wire(m.outputs[0], Node().placeAt(m.outputs[0].x+topLevlLength, m.outputs[0].y), "Bit#(4)").setSource([])
+topLevelOutput = Wire(m.outputs[0], Node().placeAt(m.outputs[0].x+topLevlLength, m.outputs[0].y), "Bit#(8)").setSource([])
 
 
 #print(m)
