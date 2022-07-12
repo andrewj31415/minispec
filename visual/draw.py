@@ -300,6 +300,11 @@ lConst1.translate(*ulConst1C)
 lMux.translate(*ulMuxC)
 lReg.translate(*ulRegC)
 
+lAdder.timing = "45.36 ps"
+lMux.timing = "40.48 ps"
+lReg.timing = "23.86 ps"
+l.timing = "64.64 ps"
+
 lwire1 = Wire(l.inputs[0], Node().placeAt(ulMuxC[0]/8, l.inputs[0].y), "Bool")
 lwire1.append(ulMuxC[0]/8, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, 7*ulHeight/8).append(ulMuxC[0] + ulMuxWidth/2, lMux.control.y).append(lMux.control.x, lMux.control.y).setSource([['fourbitcounter', 143, 149]])
 
@@ -355,6 +360,10 @@ mConcat.translate(*mConcatC)
 mAnd.translate(*mAndC)
 mEq.translate(*mEqC)
 mConst3.translate(*mConst3C)
+
+m.timing = "88.66 ps"
+mAnd.timing = "19.74 ps"
+mEq.timing = "36.18 ps"
 
 mwire1 = Wire(m.inputs[0], Node().placeAt(mWidth/20, m.inputs[0].y), "Bool")
 mwire1.append(l.inputs[0].x/2, m.inputs[0].y).append(l.inputs[0].x/2, l.inputs[0].y).append(l.inputs[0].x, l.inputs[0].y).setSource([['eightbitcounter', 258, 264]])
