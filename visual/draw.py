@@ -349,7 +349,7 @@ mConst3 = Function("4b'15", [], [])
 mConst3.x, mConst3.y, mConst3.width, mConst3.height = 0, 0, mConst3Width, mConst3Height
 mConst3.autoPlace()
 
-m = Module('stuff', 'EightBitCounter', [u, l, mConcat, mAnd, mEq, mConst3], [Node("enable")], [Node("getCount")])
+m = Module('TopLevelModule', 'EightBitCounter', [u, l, mConcat, mAnd, mEq, mConst3], [Node("enable")], [Node("getCount")])
 
 m.x, m.y, m.width, m.height = 0, 0, mWidth, mHeight
 m.autoPlace()
