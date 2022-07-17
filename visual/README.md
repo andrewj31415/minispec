@@ -5,6 +5,8 @@ java -classpath ~/minispec/antlr4.jar -Xmx500M org.antlr.v4.Tool -o ~/minispec/v
 
 General plan for minispec visual:
 
+Minispec visual will be a python script, useable from the command line (like synth), which will take the same inputs as synth: a starting file, a top-level module/function, and possibly a circuit element library to use (for timing computations). The python script will output an interactive html file which may be opened in a web browser.
+
 The final program will have four parts:
 
 1. The interpreter. The parser will read the minispec source via ANTLR's parser-generator and will then convert it into an abstract data structure. We will then unroll for loops. We will keep track of a source map along the way.
