@@ -15,16 +15,22 @@ class MinispecVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         print("Hello!")
         print(dir(ctx))
         print("ctx attribute")
-        print(ctx.packageStmt)
-        print(inspect.getsource(ctx.packageStmt))
         print(ctx.packageStmt())
         print("text")
         print(ctx.getText())
         print("children")
         for child in ctx.getChildren():
             print(child)
-        #print(self.visit(ctx.packageStmt()))
-        #self.visit(ctx.packageStmt())
+        print("stmt")
+        print(ctx.packageStmt)
+        print("stmt source")
+        print(inspect.getsource(ctx.packageStmt))
+        print("stmts")
+        for stmt in ctx.packageStmt():
+            print(stmt)
+        print("first stmt")
+        print(ctx.packageStmt(0))
+        self.visitPackageStmt(ctx.packageStmt(0))
         # see https://stackoverflow.com/questions/23092081/antlr4-visitor-pattern-on-simple-arithmetic-example
         # and https://stackoverflow.com/questions/15610183/if-else-statements-in-antlr-using-listeners
         # for examples
@@ -43,6 +49,7 @@ class MinispecVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for child in ctx.getChildren():
             print(1)
         print('hi')'''
+        print(dir(ctx))
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
         pass
 
