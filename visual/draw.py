@@ -10,9 +10,6 @@ All of these objects are mutable for placement.
 A constant is a function with no arguments.
 '''
 
-from click import pass_obj
-
-
 class Component:
     pass
 
