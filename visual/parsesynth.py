@@ -85,6 +85,8 @@ Note:
   in a moduleDef scope, I don't know what is going on.
 
 
+    TODO rename all parse nodes to ctx objects in documentation
+
 '''
 
 class Scope:
@@ -178,16 +180,41 @@ class Node:
         return "Node(" + self.name + ")"
     def __str__(self):
         return self.name
-    def __eq__(self, other):
-        '''returns true if the nodes have the same name'''
-        if isinstance(other, self.__class__):
-            return self.name == other.name
-        return False
 
 class Component:
     '''
     Component = Function(children: list[Component], inputs: list[Node])
                 + Wire(src: Node, dst: Node)
+
+    TODO big change: Node object names no longer matter and are just for debugging.
+    Thus hardware may be the same without matching node names.
+    Note that function names still matter.
+
+    Requirements:
+        - No wire or function object may be reused. This does not apply two nodes.
+        - A node may only be the dst of exactly one wire
+        - A node must be in at most one function (as an input or output) and may appear at most once.
+        - A wire's src and dst must be distinct
+
+    Two components are the same hardware if:
+        - They have the same structure
+            - Wire:
+              always
+            - Function:
+              inputs have matching names
+              children may be permuted such that matching children represent the same hardware
+        - Within a fixed permutation of children:
+            - a pair of nodes are the same object in one if and only if they are the same object in the other.
+    
+    Testing for equality of hardware:
+        1. Permute the children of the functions so that the nodes match
+        2. Compare pairs of nodes for same-object property.
+        If step 2 fails, choose a different valid permutation in step 1.
+    These steps should be implemented recursively.
+    eg, for step 1, compare each of the components of the second object with the first
+    component of the first object; if one matches, keep going until they all match, then
+    do step 2; if step 2 fails, try another first/second/etc. object.
+    
     '''
     pass
 
@@ -204,15 +231,6 @@ class Function(Component):
         if (len(self.children) == 0):
             return "Function " + self.name
         return "Function " + self.name + " with children " + " | ".join(str(x) for x in self.children)
-    def __eq__(self, other):
-        '''returns true if the functions look the same. inputs are ordered, children are not.'''
-        if isinstance(other, self.__class__):
-            if len(self.inputs) == len(other.inputs):
-                if all(self.inputs[i] == other.inputs[i] for i in range(len(self.inputs))):
-                    if sameList(self.children, other.children):
-                        return True
-        return False
-        #need something a little more sophisticated to make sure shared nodes are valid
 
 class Wire(Component):
     ''' src and dst are Nodes.'''
@@ -223,22 +241,73 @@ class Wire(Component):
         return "Wire(" + self.src.__repr__() + ", " + self.dst.__repr__() + ")"
     def __str__(self):
         return "wire from " + str(self.src) + " to " + str(self.dst)
-    def __eq__(self, other):
-        return self.src == other.src and self.dst == other.dst
 
 class OrganizedCircuit:
     '''Used for equality testing.
     Ordinary components contain references to nodes; an OrganizedCircuit has a map
     nodes -> functions/modules/wires containing the node
+    Note: Mutation of an OrganizedCircuit or Component after creating both is undefined behavior.
     
-    self.nodes is a dictionary Node node -> (Function f, Number n, Wire a, Wire b) with:
+    self.nodes is a dictionary Node node -> dictionary {Function f, Number n, list[Wire] a, Wire v} with:
         f is the function with node as an input/output
         n is the index of node in the inputs to f, or -1 if node is the output of f
-        a is the wire with node as its src
-        b is the wire with node as its dst'''
+        a is a list of wires with node as its src
+        v is the wire with node as its dst'''
     def __init__(self, func):
-        self.nodes = {} 
+        self.nodes = {}
+        self.functions = set()  #wires and functions may only occur once in a component, so we log them for reference.
+        self.wires = set()
+        def process(component):
+            if component.__class__ == Function:
+                func = component
+                assert func not in self.functions, "a function may only appear once"
+                self.functions.add(func)
+                for i in range(-1,len(func.inputs)):
+                    node = func.output if i == -1 else func.inputs[i]
+                    if node not in self.nodes:
+                        self.nodes[node] = {'a':[]}
+                    nodeLog = self.nodes[node]
+                    assert 'f' not in nodeLog, "node can only be in one function"
+                    nodeLog['f'] = func
+                    nodeLog['n'] = i
+                for child in component.children:
+                    process(child)
+            elif component.__class__ == Wire:
+                wire = component
+                assert wire not in self.wires, "a wire may only appear once"
+                self.wires.add(wire)
+                if wire.src not in self.nodes:
+                    self.nodes[wire.src] = {'a':[]}
+                srcLog = self.nodes[wire.src]
+                assert wire not in srcLog['a'], "The same wire cannot be reused"
+                srcLog['a'].append(wire)
+                if wire.dst not in self.nodes:
+                    self.nodes[wire.dst] = {'a':[]}
+                dstLog = self.nodes[wire.dst]
+                assert 'v' not in dstLog, "Node can only be dst of one wire"
+                dstLog['v'] = wire
+            else:
+                assert False, "Component must have one of the given types"
+        process(func)
     def __eq__(self, other):
+        '''returns true if self and other correspond to the same hardware layout, with the same names'''
+        if self.__class__ != other.__class__:
+            return False
+        selffunc, otherfunc = list(self.functions), list(other.functions)
+        selfnodes, othernodes  = list(self.nodes), list(other.nodes)  #the node objects
+        k = lambda node: node.name
+        selfnodes.sort(key = k)
+        othernodes.sort(key = k)
+        selffunc.sort(key = k)
+        otherfunc.sort(key = k)
+        print("comparing")
+        print(selfnodes)
+        print(othernodes)
+        print(selffunc)
+        print(otherfunc)
+    def __str__(self):
+        return str(self.nodes)
+    def toComponent(self):
         pass
 
 class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
@@ -375,3 +444,7 @@ print()
 print("output:")
 print(output.__repr__())
 
+print(OrganizedCircuit(output))
+
+print()
+print(OrganizedCircuit(output) == OrganizedCircuit(output))
