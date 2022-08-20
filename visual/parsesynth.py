@@ -223,11 +223,14 @@ class Component:
 
 class Function(Component):
     ''' children is a list of components. '''
-    def __init__(self, name: 'str', children: 'list[Component]', inputs: 'list[Node]'):
+    def __init__(self, name: 'str', children: 'list[Component]', inputs: 'list[Node]', output: 'Node'=None):
         self.name = name
         self.children = children
         self.inputs = inputs
-        self.output = Node('_' + name + '_output')
+        if output == None:
+            self.output = Node('_' + name + '_output')
+        else:
+            self.output = output
     def __repr__(self):
         return "Function(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ")"
     def __str__(self):
@@ -271,20 +274,25 @@ class Function(Component):
                     return False
         return True
     def matchStep(self, other, i):
-        '''tries to make self and other match by permuting other[i],...,other[-1]'''
+        '''tries to make self and other match by permuting other[i],...,other[-1].
+        assumes self and other have the same length of children lists.
+        mutates other to have matching order in children lists, even if the comparison fails.'''
         if i >= len(self.children):
             return self.matchOrdered(other)
-        for j in range(i, len(other.children)):
-            if self.__class__ == other.__class__:
-                if other.children[j].match(self.children[i]):
-                    other.children[i], other.children[j] = other.children[j], other.children[i]
-                    if self.matchStep(other, i+1):
-                        return True
-                    other.children[i], other.children[j] = other.children[j], other.children[i]
+        for j in range(i, len(self.children)):
+            if other.children[j].match(self.children[i]):
+                other.children[i], other.children[j] = other.children[j], other.children[i]
+                if self.matchStep(other, i+1):
+                    return True
+                other.children[i], other.children[j] = other.children[j], other.children[i]
         return False
     def match(self, other):
         '''returns true if self and other represent the same hardware.
         mutates other to have matching order in children lists.'''
+        if self.__class__ != other.__class__:
+            return False
+        if len(self.children) != len(other.children):
+            return False
         return self.matchStep(other, 0)
 
 
@@ -382,7 +390,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         op = ctx.op.text
         binComponent = Function(op, [], [Node("l"), Node("r")])
         leftWireIn = Wire(left, binComponent.inputs[0])
-        rightWireIn = Wire(left, binComponent.inputs[1])
+        rightWireIn = Wire(right, binComponent.inputs[1])
         for component in [binComponent, leftWireIn, rightWireIn]:
             parsedCode.currentComponent.children.append(component)
         return binComponent.output
@@ -445,3 +453,22 @@ print()
 print("output:")
 print(output.__repr__())
 
+ga, gb, gc, go = Node('ga'), Node('gb'), Node('gc'), Node('go')
+fa, fb, fo = Node('fa'), Node('fb'), Node('fo')
+xfa, xfb, xfo = Node('xfa'), Node('xfb'), Node('xfo')
+xga, xgb, xgo = Node('xga'), Node('xgb'), Node('xgo')
+
+expected = Function("g", [Function("f", [Function("^", [], [xfa, xfb], xfo),
+                                        Wire(fa, xfa), Wire(fb, xfb), Wire(xfo, fo)], [fa, fb], fo),
+                        Function("^", [], [xga, xgb], xgo),
+                        Wire(ga, xga), Wire(gb, xgb), Wire(xgo, fa), Wire(gc, fb), Wire(fo, go)], [ga, gb, gc], go)
+
+
+# expected = Function("f", [Function("^", [], [xfa, xfb], xfo), Wire(fa, xfa),
+#                             Wire(fb, xfb), Wire(xfo, fo)], [fa, fb], fo)
+
+print()
+print("testing correctness:")
+print(output.__repr__())
+print(expected.__repr__())
+print(output.match(expected))
