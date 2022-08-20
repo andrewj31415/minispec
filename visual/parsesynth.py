@@ -114,49 +114,75 @@ class Scope:
     name: for convenience only.
     self.parents: List of immediate parent scopes.
     self.permanentValues
-        dict sending varName: str -> list[(parameters: tuple(int|str), ctx object)]
+        dict sending varName: str -> list[(parameters: list[int|str], ctx object)]
         last element of list is most recent.
+        a function name maps to the functionDef node in the parse tree which defines the function.
     self.temporaryValues
         dict sending varName: str -> Node object
+        variable names map to nodes with the correct value.
     '''
     def __init__(self, name: 'str', parents: 'list[Scope]'):
         self.parents = parents.copy()
-        '''vars is a dictionary mapping names to permanent values.
-        A function name maps to the functionDef node in the parse tree which defines the function.'''
-        self.vars = {}
-        '''values is a dictionary mapping names to temporary values.
-        variable names map to nodes with the correct value.'''
-        self.values = {}
         self.name = name
-    def get(self, varName):
-        if varName in self.vars:
-            return self.vars[varName]
-        for parent in self.parents:
-            item = parent.get(varName)
-            if item != None:
-                return item
-        return None
+        self.permanentValues = {}
+        self.temporaryValues = {}
     def __str__(self):
-        if len(self.values) == 0:
+        if len(self.permanentValues) == 0 and len(self.temporaryValues) == 0:
             return "Scope " + self.name
-        return "Scope " + self.name + " with values " + str(self.values)
-    def find(self, varName: 'str', parameters: 'list[int]' = None):
+        return "Scope " + self.name + " with parents " + ", ".join([parent.name for parent in self.parents]) + " with values " + str(self.permanentValues) + " and " + str(self.temporaryValues)
+    def clearTemporaryValues(self):
+        '''clears temporary values used in synthesis. should be called after synthesizing a function/module.'''
+        self.temporaryValues = {}
+    def matchParams(intValues: 'list[int]', storedParams: 'list[int|str]'):
+        '''returns a dictionary mapping str -> int if intValues can fit storedParams.
+        returns None otherwise.'''
+        if len(intValues) != len(storedParams):
+            return None
+        d = {}  #make sure parameters match
+        for i in range(len(intValues)):
+            if storedParams[i].__class__ == str:
+                d[storedParams[i]] = intValues[i]
+            elif storedParams[i] != intValues[i]:
+                return None
+        return d
+    def get(self, varName: 'str', parameters: 'list[int]' = None):
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
-        probably a ctx object (functionDef) or a node object (variable value).'''
-        return
+        probably a ctx object (functionDef) or a node object (variable value).
+        Returns an object.
+        Returns a tuple (object, paramMappings) where paramMappings is a dictionary
+        str -> int that shows how the stored parameters were mapped to match parameters to
+        the stored parameters.'''
+        if parameters == None:
+            parameters = []
+        print("getting", varName, parameters)
+        if varName in self.temporaryValues:
+            return self.temporaryValues[varName]
+        if varName in self.permanentValues:
+            for storedParams, ctx in self.permanentValues[varName][::-1]: #iterate backwards through the stored values, looking for the most recent match.
+                d = Scope.matchParams(parameters, storedParams)
+                if d != None:
+                    return (ctx, d)
+        for parent in self.parents:
+            output = parent.get(varName, parameters)
+            if output != None:
+                return output
+        return None
     def set(self, value, varName: 'str', parameters: 'list[int]' = None):
         '''Sets the given name/parameters to the given value in temporary storage,
         overwriting the previous value (if any) in temporary storage.
-        Used for assigning variables to nodes, typically with no paramters.'''
-        return
+        Used for assigning variables to nodes, typically with no paramters.
+        Currently ignores parameters.'''
+        self.temporaryValues[varName] = value
     def setPermanent(self, value, varName: 'str', parameters: 'list[int|str]' = None):
         '''Sets the given name/parameters to the given value in permanent storage.
         Overrules but does not overwrite previous values with the same name.
         Used for logging declarations functions/modules; value is expected to be a ctx
         functionDef or similar.
         Note that some parameters may be unknown at the time of storing, hence the int|str type.'''
-        return
+        if varName not in self.permanentValues:
+            self.permanentValues[varName] = []
+        self.permanentValues[varName].append((parameters, value))
     '''Note: we probably need a helper function to detect when given parameters match
     a list[int|str] description.'''
 
@@ -341,6 +367,10 @@ def parseAndSynth(text, topLevel):
             self.allScopes = [builtinScope, startingFile]
             self.currentScope = startingFile
             self.currentComponent = None  # a function/module component. used during synthesis.
+            self.parameterBindings = {}
+            '''self.parameterBindings is a dictionary str -> int telling functions which parameters
+            have been bound. Should be set whenever calling a function.'''
+
 
     parsedCode = MinispecStructure()
 
@@ -352,15 +382,15 @@ def parseAndSynth(text, topLevel):
 
         def enterFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
             '''We are defining a function. We need to give this function a corresponding scope.'''
-            # print("function")
-            # print(inspect.getsource(ctx.getText))
-            # print(ctx.getText())
-            # print(ctx.typeName().getText())
-            # print(ctx.functionId().getText())
-            functionName = ctx.functionId().getText() # get the name of the function
+            functionName = ctx.functionId().name.getText() # get the name of the function
             print("defining a function", functionName)
+            params = []
+            if ctx.functionId().paramFormals():
+                for param in ctx.functionId().paramFormals().paramFormal():
+                    print("param", param.getText())
+                    params.append(param.getText()[-1])  #TODO extract actual param name rather than just picking out a single letter
             #log the function's scope
-            parsedCode.currentScope.vars[functionName] = ctx
+            parsedCode.currentScope.setPermanent(ctx, functionName, params)
             functionScope = Scope(functionName, [parsedCode.currentScope])
             ctx.scope = functionScope
             parsedCode.currentScope = functionScope
@@ -377,20 +407,28 @@ def parseAndSynth(text, topLevel):
         '''Each method returns a component (module/function/etc.)
         nodes of type exprPrimary return the node corresponding to their value.
         stmt do not return anything; they mutate the current scope and the current hardware.'''
+        
         def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
             print("synth function", ctx.functionId().getText())
             print(ctx.getText())
-            functionName = ctx.functionId().getText()
+            functionName = ctx.functionId().getText()  #the entire name, parameters included #TODO need to extract+use integer values given to parameters
+            print("==========")
+            print(ctx.functionId().toStringTree(recog=parser))
             print()
             functionScope = ctx.scope
-            functionScope.values = {} # clear the temporary values
+            functionScope.clearTemporaryValues # clear the temporary values
+            #bind any parameters in the function scope
+            bindings = parsedCode.parameterBindings
+            for var in bindings:  
+                val = bindings[var]
+                functionScope.set(val, var)
             # extract arguments to function and set up the input nodes
             inputNodes = []
             for arg in ctx.argFormals().argFormal():
                 argType = arg.typeName() # typeName parse tree node
                 argName = arg.argName.getText() # name of the variable
                 argNode = Node(argName)
-                functionScope.values[argName] = argNode
+                functionScope.set(argNode, argName)
                 inputNodes.append(argNode)
             print(functionScope)
             funcComponent = Function(functionName, [], inputNodes)
@@ -416,7 +454,28 @@ def parseAndSynth(text, topLevel):
             # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
             # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
             functionToCall = ctx.fcn.var.getText()
-            functionDef = parsedCode.currentScope.get(functionToCall)  # look up the function to call
+            print(functionToCall)
+            for scope in parsedCode.allScopes:
+                print(scope)
+            print(parsedCode.currentScope)
+            params = []
+            if ctx.fcn.params():
+                for param in ctx.fcn.params().param():
+                    print(param.intParam.toStringTree(recog=parser))
+                    value = self.visit(param.intParam) #visit the parameter and extract the corresponding expression
+                    #TODO handle the fact that params may be either integers (which can be used as-is)
+                    #   or variables (which need to be looked up) or expressions in integers (which need
+                    #   to be evaluated and must evaluate to an integer).
+                    params.append(value)
+            print(params)
+            funcAndBinds = parsedCode.currentScope.get(functionToCall, params)
+            functionDef = funcAndBinds[0]  # look up the function to call
+            bindings = funcAndBinds[1]
+            print("binds", bindings)
+            parsedCode.parameterBindings = bindings
+            for var in bindings:  #bind the parameters in the current scope
+                val = bindings[var]
+                parsedCode.currentScope.set(val, var)
             print("visiting func def")
             funcComponent = self.visit(functionDef)  #synthesize the function internals
             print("visited func def")
@@ -438,16 +497,23 @@ def parseAndSynth(text, topLevel):
         def visitBinopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BinopExprContext):
             if ctx.unopExpr():  # our binary expression is actually a unopExpr.
                 return self.visit(ctx.unopExpr())
-            print("doing a binary skip")
+            #we are either manipulating nodes/wires or manipulating integers.
             left = self.visit(ctx.left)
             right = self.visit(ctx.right)
             op = ctx.op.text
-            binComponent = Function(op, [], [Node("l"), Node("r")])
-            leftWireIn = Wire(left, binComponent.inputs[0])
-            rightWireIn = Wire(right, binComponent.inputs[1])
-            for component in [binComponent, leftWireIn, rightWireIn]:
-                parsedCode.currentComponent.children.append(component)
-            return binComponent.output
+            if left.__class__ == Node and right.__class__ == Node:
+                binComponent = Function(op, [], [Node("l"), Node("r")])
+                leftWireIn = Wire(left, binComponent.inputs[0])
+                rightWireIn = Wire(right, binComponent.inputs[1])
+                for component in [binComponent, leftWireIn, rightWireIn]:
+                    parsedCode.currentComponent.children.append(component)
+                return binComponent.output
+            elif left.__class__ == int and right.__class__ == int:
+                #TODO do error handling for which integer operation are valid
+                return int(eval(str(left) + op + str(right)))
+            else:
+                assert False, "binary expressions can only handle two nodes or two integers"
+
 
         def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
             if not ctx.op:  # our unopExpr is actually just an exprPrimary.
@@ -458,7 +524,11 @@ def parseAndSynth(text, topLevel):
             '''We are visiting a variable/function name. We look it up and return the correpsonding information
             (which may be a Node or a node, for instance).'''
             print(ctx.var.getText())
-            return parsedCode.currentScope.values[ctx.var.getText()]
+            return parsedCode.currentScope.get(ctx.var.getText())
+
+        def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
+            '''We have an integer literal, so we parse it and return it.'''
+            return int(ctx.getText())
 
         def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
             '''A let binding declares a variable or a concatenation of variables and optionally assigns
@@ -467,7 +537,7 @@ def parseAndSynth(text, topLevel):
                 return  #if there is no assignment, we can skip this line
             rhsNode = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
             varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-            parsedCode.currentScope.values[varName] = rhsNode
+            parsedCode.currentScope.set(rhsNode, varName)
             # for now, we only handle the case of assigning a single variable (no concatenations).
             # nothing to return.
             
@@ -495,8 +565,9 @@ def parseAndSynth(text, topLevel):
     print("synthesizing")
     synthesizer = SynthesizerVisitor()
     ctxToSynth = startingFile.get(topLevel)
+    print(ctxToSynth)
     assert ctxToSynth != None, "Failed to find topLevel function/module"
-    output = synthesizer.visit(ctxToSynth) #look up the function in the given file and synthesize it. store the result in 'output'
+    output = synthesizer.visit(ctxToSynth[0]) #look up the function in the given file and synthesize it. store the result in 'output'
     return output
 
 if __name__ == '__main__':

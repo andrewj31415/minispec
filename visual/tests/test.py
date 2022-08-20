@@ -17,4 +17,9 @@ def pull(name):
 text = pull('function')
 output = parseAndSynth(text, 'f')
 expected = Function('f', [], []) #TODO
-assert output.match(expected), "Should give matching hardware description"
+#assert output.match(expected), "Should give matching hardware description"
+
+
+text = pull('parameterize')
+output = parseAndSynth(text, 'e')
+print(output.__repr__())
