@@ -6,6 +6,23 @@ import build.MinispecPythonLexer
 import build.MinispecPythonListener
 import build.MinispecPythonVisitor
 
+
+'''
+Implementation Agenda:
+
+    - Parametrics (+ associated variable lookups)
+    - Type handling (+ associated python type objects)
+    - For loops
+    - If/case statements (+ muxes)
+    - Modules
+    - Other files
+
+Implemented:
+
+    - Function calls
+    - Binary operations
+'''
+
 '''
 Overall specs:
 
@@ -84,12 +101,24 @@ Note:
   in some way using static elaboration; in a function scope, there are no constants; and
   in a moduleDef scope, I don't know what is going on.
 
+Note:
+  When parsing a module, we will need to handle all inputs before synthesizing functions (rules/etc.)
+  so that the rules can refer to the inputs. Same with registers/submodules and module methods.
 
     TODO rename all parse nodes to ctx objects in documentation
 
 '''
 
 class Scope:
+    '''
+    name: for convenience only.
+    self.parents: List of immediate parent scopes.
+    self.permanentValues
+        dict sending varName: str -> list[(parameters: tuple(int|str), ctx object)]
+        last element of list is most recent.
+    self.temporaryValues
+        dict sending varName: str -> Node object
+    '''
     def __init__(self, name: 'str', parents: 'list[Scope]'):
         self.parents = parents.copy()
         '''vars is a dictionary mapping names to permanent values.
@@ -111,6 +140,25 @@ class Scope:
         if len(self.values) == 0:
             return "Scope " + self.name
         return "Scope " + self.name + " with values " + str(self.values)
+    def find(self, varName: 'str', parameters: 'list[int]' = None):
+        '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
+        then prefers temporary values to permanent values. Returns whatever is found,
+        probably a ctx object (functionDef) or a node object (variable value).'''
+        return
+    def set(self, value, varName: 'str', parameters: 'list[int]' = None):
+        '''Sets the given name/parameters to the given value in temporary storage,
+        overwriting the previous value (if any) in temporary storage.
+        Used for assigning variables to nodes, typically with no paramters.'''
+        return
+    def setPermanent(self, value, varName: 'str', parameters: 'list[int|str]' = None):
+        '''Sets the given name/parameters to the given value in permanent storage.
+        Overrules but does not overwrite previous values with the same name.
+        Used for logging declarations functions/modules; value is expected to be a ctx
+        functionDef or similar.
+        Note that some parameters may be unknown at the time of storing, hence the int|str type.'''
+        return
+    '''Note: we probably need a helper function to detect when given parameters match
+    a list[int|str] description.'''
 
 
 
@@ -120,10 +168,25 @@ This is convenient during synthesis because we can map variables to the node
 with the corresponding value and pass the nodes around, attaching wires as needed.
 '''
 
+class MType:
+    '''A minispec type'''
+    pass
+
+class Any(MType):
+    '''An unknown type'''
+    pass
+
+class Bit(MType):
+    '''A bit type with n bits'''
+    def __init__(self, n: 'int'):
+        self.n = n
+
 class Node:
-    '''name is just for convenience.'''
-    def __init__(self, name="unnamed"):
+    '''name is just for convenience.
+    mtype is the minispec type of the value that the node corresponds to.'''
+    def __init__(self, name: 'str' = "unnamed", mtype: 'MType' = Any()):
         self.name = name
+        self.mtype = mtype
     def __repr__(self):
         return "Node(" + self.name + ")"
     def __str__(self):
@@ -432,6 +495,7 @@ def parseAndSynth(text, topLevel):
     print("synthesizing")
     synthesizer = SynthesizerVisitor()
     ctxToSynth = startingFile.get(topLevel)
+    assert ctxToSynth != None, "Failed to find topLevel function/module"
     output = synthesizer.visit(ctxToSynth) #look up the function in the given file and synthesize it. store the result in 'output'
     return output
 
