@@ -214,7 +214,10 @@ class Component:
     eg, for step 1, compare each of the components of the second object with the first
     component of the first object; if one matches, keep going until they all match, then
     do step 2; if step 2 fails, try another first/second/etc. object.
-    
+
+    Note that testing for equality may mutate the second object by permuting the components.
+    This should not matter since the order of the components should not matter.
+
     '''
     pass
 
@@ -231,84 +234,82 @@ class Function(Component):
         if (len(self.children) == 0):
             return "Function " + self.name
         return "Function " + self.name + " with children " + " | ".join(str(x) for x in self.children)
+    def getNodeListRecursive(self):
+        '''returns a set of all nodes in self'''
+        nodes = self.inputs.copy()
+        nodes.append(self.output)
+        for child in self.children:
+            nodes = nodes + child.getNodeListRecursive()
+        return nodes
+    def matchStructure(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
+        if self.__class__ != other.__class__:
+            return False
+        if self.name != other.name:
+            return False
+        if len(self.inputs) != len(other.inputs):
+            return False
+        if len(self.children) != len(other.children):
+            return False
+        for i in range(len(self.children)):
+            if not self.children[i].matchStructure(other.children[i]):
+                return False
+        return True
+    def matchOrdered(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
+        if not self.matchStructure(other):
+            return False
+        selfnodes = self.getNodeListRecursive()
+        othernodes = other.getNodeListRecursive()
+        if len(selfnodes) != len(othernodes):
+            return False
+        for i in range(len(selfnodes)):
+            for j in range(i):
+                if selfnodes[i] is selfnodes[j] and othernodes[i] is not othernodes[j]:
+                    return False
+                if selfnodes[i] is not selfnodes[j] and othernodes[i] is othernodes[j]:
+                    return False
+        return True
+    def matchStep(self, other, i):
+        '''tries to make self and other match by permuting other[i],...,other[-1]'''
+        if i >= len(self.children):
+            return self.matchOrdered(other)
+        for j in range(i, len(other.children)):
+            if self.__class__ == other.__class__:
+                if other.children[j].match(self.children[i]):
+                    other.children[i], other.children[j] = other.children[j], other.children[i]
+                    if self.matchStep(other, i+1):
+                        return True
+                    other.children[i], other.children[j] = other.children[j], other.children[i]
+        return False
+    def match(self, other):
+        '''returns true if self and other represent the same hardware.
+        mutates other to have matching order in children lists.'''
+        return self.matchStep(other, 0)
+
 
 class Wire(Component):
     ''' src and dst are Nodes.'''
     def __init__(self, src: 'Node', dst: 'Node'):
+        assert src is not dst, "wire must have distinct ends"
         self.src = src
         self.dst = dst
     def __repr__(self):
         return "Wire(" + self.src.__repr__() + ", " + self.dst.__repr__() + ")"
     def __str__(self):
         return "wire from " + str(self.src) + " to " + str(self.dst)
-
-class OrganizedCircuit:
-    '''Used for equality testing.
-    Ordinary components contain references to nodes; an OrganizedCircuit has a map
-    nodes -> functions/modules/wires containing the node
-    Note: Mutation of an OrganizedCircuit or Component after creating both is undefined behavior.
-    
-    self.nodes is a dictionary Node node -> dictionary {Function f, Number n, list[Wire] a, Wire v} with:
-        f is the function with node as an input/output
-        n is the index of node in the inputs to f, or -1 if node is the output of f
-        a is a list of wires with node as its src
-        v is the wire with node as its dst'''
-    def __init__(self, func):
-        self.nodes = {}
-        self.functions = set()  #wires and functions may only occur once in a component, so we log them for reference.
-        self.wires = set()
-        def process(component):
-            if component.__class__ == Function:
-                func = component
-                assert func not in self.functions, "a function may only appear once"
-                self.functions.add(func)
-                for i in range(-1,len(func.inputs)):
-                    node = func.output if i == -1 else func.inputs[i]
-                    if node not in self.nodes:
-                        self.nodes[node] = {'a':[]}
-                    nodeLog = self.nodes[node]
-                    assert 'f' not in nodeLog, "node can only be in one function"
-                    nodeLog['f'] = func
-                    nodeLog['n'] = i
-                for child in component.children:
-                    process(child)
-            elif component.__class__ == Wire:
-                wire = component
-                assert wire not in self.wires, "a wire may only appear once"
-                self.wires.add(wire)
-                if wire.src not in self.nodes:
-                    self.nodes[wire.src] = {'a':[]}
-                srcLog = self.nodes[wire.src]
-                assert wire not in srcLog['a'], "The same wire cannot be reused"
-                srcLog['a'].append(wire)
-                if wire.dst not in self.nodes:
-                    self.nodes[wire.dst] = {'a':[]}
-                dstLog = self.nodes[wire.dst]
-                assert 'v' not in dstLog, "Node can only be dst of one wire"
-                dstLog['v'] = wire
-            else:
-                assert False, "Component must have one of the given types"
-        process(func)
-    def __eq__(self, other):
-        '''returns true if self and other correspond to the same hardware layout, with the same names'''
-        if self.__class__ != other.__class__:
-            return False
-        selffunc, otherfunc = list(self.functions), list(other.functions)
-        selfnodes, othernodes  = list(self.nodes), list(other.nodes)  #the node objects
-        k = lambda node: node.name
-        selfnodes.sort(key = k)
-        othernodes.sort(key = k)
-        selffunc.sort(key = k)
-        otherfunc.sort(key = k)
-        print("comparing")
-        print(selfnodes)
-        print(othernodes)
-        print(selffunc)
-        print(otherfunc)
-    def __str__(self):
-        return str(self.nodes)
-    def toComponent(self):
-        pass
+    def getNodeListRecursive(self):
+        '''returns a list of all nodes in self in a deterministic order'''
+        return [self.src, self.dst]
+    def matchStructure(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
+        return self.__class__ == other.__class__
+    def matchOrdered(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
+        return self.matchStructure(other)
+    def match(self, other):
+        '''returns true if self and other represent the same hardware.'''
+        return self.matchOrdered(other)
 
 class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     '''Each method returns a component (module/function/etc.)
@@ -444,7 +445,3 @@ print()
 print("output:")
 print(output.__repr__())
 
-print(OrganizedCircuit(output))
-
-print()
-print(OrganizedCircuit(output) == OrganizedCircuit(output))
