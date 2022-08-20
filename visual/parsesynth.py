@@ -112,65 +112,13 @@ class Scope:
             return "Scope " + self.name
         return "Scope " + self.name + " with values " + str(self.values)
 
-builtinScope = Scope("built-ins", [])
-startingFile = Scope("startingFile", [builtinScope])
 
-class MinispecStructure:
-    def __init__(self):
-        '''will hold all created scopes. used for lookups.'''
-        self.allScopes = [builtinScope, startingFile]
-        self.currentScope = startingFile
-        self.currentComponent = None  # a function/module component. used during synthesis.
-
-parsedCode = MinispecStructure()
-
-class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
-    def enterPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
-        '''The entry node to the parse tree.'''
-        print(inspect.getsource(ctx.getText))
-        print(ctx.getText())
-
-    def enterFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
-        '''We are defining a function. We need to give this function a corresponding scope.'''
-        # print("function")
-        # print(inspect.getsource(ctx.getText))
-        # print(ctx.getText())
-        # print(ctx.typeName().getText())
-        # print(ctx.functionId().getText())
-        functionName = ctx.functionId().getText() # get the name of the function
-        print("defining a function", functionName)
-        #log the function's scope
-        parsedCode.currentScope.vars[functionName] = ctx
-        functionScope = Scope(functionName, [parsedCode.currentScope])
-        ctx.scope = functionScope
-        parsedCode.currentScope = functionScope
-        parsedCode.allScopes.append(functionScope)
-    def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
-        '''We have defined a function, so we step back into the parent scope.'''
-        assert len(parsedCode.currentScope.parents) == 1, "function can only have parent scope"
-        parsedCode.currentScope = parsedCode.currentScope.parents[0]
-    
-    def enterVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
-        print("got a var", ctx.getText())
 
 '''
 Functions/modules/components will have nodes. Wires will be attached to nodes.
 This is convenient during synthesis because we can map variables to the node
 with the corresponding value and pass the nodes around, attaching wires as needed.
 '''
-
-def sameList(l1, l2):
-    '''returns true if l1 and l2 are permutations of each other, up to =='''
-    if len(l1) == len(l2):
-        if len(l1) == 1:
-            return l1[0] == l2[0]
-        for i in range(len(l1)):
-            if l1[0] == l2[i]:
-                l1next = l1[1:]
-                l2next = l2[0:i] + l2[i+1:]
-                return sameList(l1next, l2next)
-        return False
-    return False
 
 class Node:
     '''name is just for convenience.'''
@@ -199,10 +147,10 @@ class Component:
     Two components are the same hardware if:
         - They have the same structure
             - Wire:
-              always
+            always
             - Function:
-              inputs have matching names
-              children may be permuted such that matching children represent the same hardware
+            inputs have matching names
+            children may be permuted such that matching children represent the same hardware
         - Within a fixed permutation of children:
             - a pair of nodes are the same object in one if and only if they are the same object in the other.
     
@@ -319,156 +267,203 @@ class Wire(Component):
         '''returns true if self and other represent the same hardware.'''
         return self.matchOrdered(other)
 
-class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
-    '''Each method returns a component (module/function/etc.)
-    nodes of type exprPrimary return the node corresponding to their value.
-    stmt do not return anything; they mutate the current scope and the current hardware.'''
-    def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
-        print("synth function", ctx.functionId().getText())
-        print(ctx.getText())
-        functionName = ctx.functionId().getText()
-        print()
-        functionScope = ctx.scope
-        functionScope.values = {} # clear the temporary values
-        # extract arguments to function and set up the input nodes
-        inputNodes = []
-        for arg in ctx.argFormals().argFormal():
-            argType = arg.typeName() # typeName parse tree node
-            argName = arg.argName.getText() # name of the variable
-            argNode = Node(argName)
-            functionScope.values[argName] = argNode
-            inputNodes.append(argNode)
-        print(functionScope)
-        funcComponent = Function(functionName, [], inputNodes)
-        # log the current component/scope
-        previousComponent = parsedCode.currentComponent
-        parsedCode.currentComponent = funcComponent
-        previousScope = parsedCode.currentScope
-        parsedCode.currentScope = functionScope
-        # synthesize the function internals
-        for stmt in ctx.stmt():
-            print("Found a statement!")
-            print(stmt.toStringTree(recog=parser))
-            self.visit(stmt)
-            print("Left statement")
-        parsedCode.currentComponent = previousComponent #reset the current component/scope
-        parsedCode.currentScope = previousScope
-        return funcComponent
+def parseAndSynth(text, topLevel):
 
-    def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
-        '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
-        and return the function output node (which corresponds to the value of the function).'''
-        print("calling", ctx.getText())
-        # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
-        # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
-        functionToCall = ctx.fcn.var.getText()
-        functionDef = parsedCode.currentScope.get(functionToCall)  # look up the function to call
-        print("visiting func def")
-        funcComponent = self.visit(functionDef)  #synthesize the function internals
-        print("visited func def")
-        # hook up the funcComponent to the arguments passed in.
-        for i in range(len(ctx.expression())):
-            expr = ctx.expression()[i]
-            exprNode = self.visit(expr) # visit the expression and get the corresponding node
-            funcInputNode = funcComponent.inputs[i]
-            wireIn = Wire(exprNode, funcInputNode)
-            parsedCode.currentComponent.children.append(wireIn)
-        parsedCode.currentComponent.children.append(funcComponent)
-        return funcComponent.output  # return the value of this call, which is the output of the function
+    builtinScope = Scope("built-ins", [])
+    startingFile = Scope("startingFile", [builtinScope])
 
-    def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
-        '''This is an expression corresponding to a binary operation (which may be a unary operation,
-        which may be an exprPrimary). We return the node with the corresponding output value.'''
-        return self.visit(ctx.binopExpr())
+    class MinispecStructure:
+        def __init__(self):
+            '''will hold all created scopes. used for lookups.'''
+            self.allScopes = [builtinScope, startingFile]
+            self.currentScope = startingFile
+            self.currentComponent = None  # a function/module component. used during synthesis.
 
-    def visitBinopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BinopExprContext):
-        if ctx.unopExpr():  # our binary expression is actually a unopExpr.
-            return self.visit(ctx.unopExpr())
-        print("doing a binary skip")
-        left = self.visit(ctx.left)
-        right = self.visit(ctx.right)
-        op = ctx.op.text
-        binComponent = Function(op, [], [Node("l"), Node("r")])
-        leftWireIn = Wire(left, binComponent.inputs[0])
-        rightWireIn = Wire(right, binComponent.inputs[1])
-        for component in [binComponent, leftWireIn, rightWireIn]:
-            parsedCode.currentComponent.children.append(component)
-        return binComponent.output
+    parsedCode = MinispecStructure()
 
-    def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
-        if not ctx.op:  # our unopExpr is actually just an exprPrimary.
-            return self.visit(ctx.exprPrimary())
-        return self.visitChildren(ctx)
+    class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
+        def enterPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
+            '''The entry node to the parse tree.'''
+            print(inspect.getsource(ctx.getText))
+            print(ctx.getText())
 
-    def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
-        '''We are visiting a variable/function name. We look it up and return the correpsonding information
-        (which may be a Node or a node, for instance).'''
-        print(ctx.var.getText())
-        return parsedCode.currentScope.values[ctx.var.getText()]
-
-    def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
-        '''A let binding declares a variable or a concatenation of variables and optionally assigns
-        them to the given expression node ("rhs").'''
-        if not ctx.rhs:
-            return  #if there is no assignment, we can skip this line
-        rhsNode = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
-        varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-        parsedCode.currentScope.values[varName] = rhsNode
-        # for now, we only handle the case of assigning a single variable (no concatenations).
-        # nothing to return.
+        def enterFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
+            '''We are defining a function. We need to give this function a corresponding scope.'''
+            # print("function")
+            # print(inspect.getsource(ctx.getText))
+            # print(ctx.getText())
+            # print(ctx.typeName().getText())
+            # print(ctx.functionId().getText())
+            functionName = ctx.functionId().getText() # get the name of the function
+            print("defining a function", functionName)
+            #log the function's scope
+            parsedCode.currentScope.vars[functionName] = ctx
+            functionScope = Scope(functionName, [parsedCode.currentScope])
+            ctx.scope = functionScope
+            parsedCode.currentScope = functionScope
+            parsedCode.allScopes.append(functionScope)
+        def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
+            '''We have defined a function, so we step back into the parent scope.'''
+            assert len(parsedCode.currentScope.parents) == 1, "function can only have parent scope"
+            parsedCode.currentScope = parsedCode.currentScope.parents[0]
         
-    def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
-        '''This is the return expression in a function. We need to put the correct wire
-        attaching the right hand side to the output of the function.'''
-        rhs = self.visit(ctx.expression())  # the node with the value to return
-        returnWire = Wire(rhs, parsedCode.currentComponent.output)
-        parsedCode.currentComponent.children.append(returnWire)
+        def enterVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
+            print("got a var", ctx.getText())
+
+    class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
+        '''Each method returns a component (module/function/etc.)
+        nodes of type exprPrimary return the node corresponding to their value.
+        stmt do not return anything; they mutate the current scope and the current hardware.'''
+        def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
+            print("synth function", ctx.functionId().getText())
+            print(ctx.getText())
+            functionName = ctx.functionId().getText()
+            print()
+            functionScope = ctx.scope
+            functionScope.values = {} # clear the temporary values
+            # extract arguments to function and set up the input nodes
+            inputNodes = []
+            for arg in ctx.argFormals().argFormal():
+                argType = arg.typeName() # typeName parse tree node
+                argName = arg.argName.getText() # name of the variable
+                argNode = Node(argName)
+                functionScope.values[argName] = argNode
+                inputNodes.append(argNode)
+            print(functionScope)
+            funcComponent = Function(functionName, [], inputNodes)
+            # log the current component/scope
+            previousComponent = parsedCode.currentComponent
+            parsedCode.currentComponent = funcComponent
+            previousScope = parsedCode.currentScope
+            parsedCode.currentScope = functionScope
+            # synthesize the function internals
+            for stmt in ctx.stmt():
+                print("Found a statement!")
+                print(stmt.toStringTree(recog=parser))
+                self.visit(stmt)
+                print("Left statement")
+            parsedCode.currentComponent = previousComponent #reset the current component/scope
+            parsedCode.currentScope = previousScope
+            return funcComponent
+
+        def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
+            '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
+            and return the function output node (which corresponds to the value of the function).'''
+            print("calling", ctx.getText())
+            # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
+            # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
+            functionToCall = ctx.fcn.var.getText()
+            functionDef = parsedCode.currentScope.get(functionToCall)  # look up the function to call
+            print("visiting func def")
+            funcComponent = self.visit(functionDef)  #synthesize the function internals
+            print("visited func def")
+            # hook up the funcComponent to the arguments passed in.
+            for i in range(len(ctx.expression())):
+                expr = ctx.expression()[i]
+                exprNode = self.visit(expr) # visit the expression and get the corresponding node
+                funcInputNode = funcComponent.inputs[i]
+                wireIn = Wire(exprNode, funcInputNode)
+                parsedCode.currentComponent.children.append(wireIn)
+            parsedCode.currentComponent.children.append(funcComponent)
+            return funcComponent.output  # return the value of this call, which is the output of the function
+
+        def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
+            '''This is an expression corresponding to a binary operation (which may be a unary operation,
+            which may be an exprPrimary). We return the node with the corresponding output value.'''
+            return self.visit(ctx.binopExpr())
+
+        def visitBinopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BinopExprContext):
+            if ctx.unopExpr():  # our binary expression is actually a unopExpr.
+                return self.visit(ctx.unopExpr())
+            print("doing a binary skip")
+            left = self.visit(ctx.left)
+            right = self.visit(ctx.right)
+            op = ctx.op.text
+            binComponent = Function(op, [], [Node("l"), Node("r")])
+            leftWireIn = Wire(left, binComponent.inputs[0])
+            rightWireIn = Wire(right, binComponent.inputs[1])
+            for component in [binComponent, leftWireIn, rightWireIn]:
+                parsedCode.currentComponent.children.append(component)
+            return binComponent.output
+
+        def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
+            if not ctx.op:  # our unopExpr is actually just an exprPrimary.
+                return self.visit(ctx.exprPrimary())
+            return self.visitChildren(ctx)
+
+        def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
+            '''We are visiting a variable/function name. We look it up and return the correpsonding information
+            (which may be a Node or a node, for instance).'''
+            print(ctx.var.getText())
+            return parsedCode.currentScope.values[ctx.var.getText()]
+
+        def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
+            '''A let binding declares a variable or a concatenation of variables and optionally assigns
+            them to the given expression node ("rhs").'''
+            if not ctx.rhs:
+                return  #if there is no assignment, we can skip this line
+            rhsNode = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
+            varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
+            parsedCode.currentScope.values[varName] = rhsNode
+            # for now, we only handle the case of assigning a single variable (no concatenations).
+            # nothing to return.
+            
+        def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
+            '''This is the return expression in a function. We need to put the correct wire
+            attaching the right hand side to the output of the function.'''
+            rhs = self.visit(ctx.expression())  # the node with the value to return
+            returnWire = Wire(rhs, parsedCode.currentComponent.output)
+            parsedCode.currentComponent.children.append(returnWire)
+
+    print("text:")
+    print(text, "\n")
+    data = antlr4.InputStream(text)
+    lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
+    stream = antlr4.CommonTokenStream(lexer)
+    parser = build.MinispecPythonParser.MinispecPythonParser(stream)
+    tree = parser.packageDef()  #start parsing at the top-level packageDef rule (so "tree" is the root of the parse tree)
+    print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
+
+    walker = build.MinispecPythonListener.ParseTreeWalker()
+    listener = StaticTypeListener()
+    walker.walk(listener, tree)  # walk the listener through the tree
+
+    print()
+    print("synthesizing")
+    synthesizer = SynthesizerVisitor()
+    ctxToSynth = startingFile.get(topLevel)
+    output = synthesizer.visit(ctxToSynth) #look up the function in the given file and synthesize it. store the result in 'output'
+    return output
+
+if __name__ == '__main__':
+
+    import pathlib
+
+    textFile = pathlib.Path(__file__).with_name("tests").joinpath("functions.ms")
+    text = textFile.read_text()
+
+    output = parseAndSynth(text, 'g')
+
+    print()
+    print("output:")
+    print(output.__repr__())
+
+    ga, gb, gc, go = Node('ga'), Node('gb'), Node('gc'), Node('go')
+    fa, fb, fo = Node('fa'), Node('fb'), Node('fo')
+    xfa, xfb, xfo = Node('xfa'), Node('xfb'), Node('xfo')
+    xga, xgb, xgo = Node('xga'), Node('xgb'), Node('xgo')
+
+    expected = Function("g", [Function("f", [Function("^", [], [xfa, xfb], xfo),
+                                            Wire(fa, xfa), Wire(fb, xfb), Wire(xfo, fo)], [fa, fb], fo),
+                            Function("^", [], [xga, xgb], xgo),
+                            Wire(ga, xga), Wire(gb, xgb), Wire(xgo, fa), Wire(gc, fb), Wire(fo, go)], [ga, gb, gc], go)
 
 
+    # expected = Function("f", [Function("^", [], [xfa, xfb], xfo), Wire(fa, xfa),
+    #                             Wire(fb, xfb), Wire(xfo, fo)], [fa, fb], fo)
 
-import pathlib
-
-textFile = pathlib.Path(__file__).with_name("tests").joinpath("functions.ms")
-text = textFile.read_text()
-
-print("text:")
-print(text, "\n")
-data = antlr4.InputStream(text)
-lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
-stream = antlr4.CommonTokenStream(lexer)
-parser = build.MinispecPythonParser.MinispecPythonParser(stream)
-tree = parser.packageDef()  #start parsing at the top-level packageDef rule (so "tree" is the root of the parse tree)
-print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
-
-walker = build.MinispecPythonListener.ParseTreeWalker()
-listener = StaticTypeListener()
-walker.walk(listener, tree)  # walk the listener through the tree
-
-print()
-print("synthesizing")
-synthesizer = SynthesizerVisitor()
-output = synthesizer.visit(startingFile.get("g")) #look up the function g in the given file and synthesize it. store the result in 'output'
-
-print()
-print("output:")
-print(output.__repr__())
-
-ga, gb, gc, go = Node('ga'), Node('gb'), Node('gc'), Node('go')
-fa, fb, fo = Node('fa'), Node('fb'), Node('fo')
-xfa, xfb, xfo = Node('xfa'), Node('xfb'), Node('xfo')
-xga, xgb, xgo = Node('xga'), Node('xgb'), Node('xgo')
-
-expected = Function("g", [Function("f", [Function("^", [], [xfa, xfb], xfo),
-                                        Wire(fa, xfa), Wire(fb, xfb), Wire(xfo, fo)], [fa, fb], fo),
-                        Function("^", [], [xga, xgb], xgo),
-                        Wire(ga, xga), Wire(gb, xgb), Wire(xgo, fa), Wire(gc, fb), Wire(fo, go)], [ga, gb, gc], go)
-
-
-# expected = Function("f", [Function("^", [], [xfa, xfb], xfo), Wire(fa, xfa),
-#                             Wire(fb, xfb), Wire(xfo, fo)], [fa, fb], fo)
-
-print()
-print("testing correctness:")
-print(output.__repr__())
-print(expected.__repr__())
-print(output.match(expected))
+    print()
+    print("testing correctness:")
+    print(output.__repr__())
+    print(expected.__repr__())
+    print(output.match(expected))
