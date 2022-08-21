@@ -14,6 +14,12 @@ function Bit#(1) f(Bit#(1) a, Bit#(1) b);
   return a;
 endfunction
 
+function Bit#(2) f#(1+i, Integer m)(Bit#(2) a, Bit#(2) b);
+  return a;
+endfunction
+
+Integer i = 1;
+
 function Bit#(m) g#(Integer n, Integer m)(Bit#(m) a);
   return a;
 endfunction

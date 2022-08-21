@@ -19,6 +19,15 @@ output = parseAndSynth(text, 'f')
 expected = Function('f', [], []) #TODO
 #assert output.match(expected), "Should give matching hardware description"
 
+'''
+Parameterization features to test:
+  Multiple parameters
+  Parameter overriding, partial overriding, no overriding (overriding 0, some, all parameters)
+  Functions with same name but different numbers of parameters (0, 1, >1) should not interfere with each other
+  Integer parameter arithmetic, including defining functions with parameters not evaluatable until runtime
+  After implementing types/modules:
+    custom types/modules, with the same categories as above
+'''
 
 text = pull('parameterize')
 output = parseAndSynth(text, 'e')

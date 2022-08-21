@@ -11,6 +11,13 @@ import build.MinispecPythonVisitor
 Implementation Agenda:
 
     - Parametrics (+ associated variable lookups)
+
+Notes for parametrics:
+    paramFormals are used when defining functions/modules/types, and may be Integer n or
+    5 (or an expression that evaluates to an integer) or 'type' X (as in creating a typedef alias of vector).
+    params are used when calling functions/synth modules/invoking custom parameterized types, and may
+    only be an integer or the name of a type.
+
     - Type handling (+ associated python type objects)
     - For loops
     - If/case statements (+ muxes)
@@ -120,6 +127,7 @@ class Scope:
     self.temporaryValues
         dict sending varName: str -> Node object
         variable names map to nodes with the correct value.
+    permanentValues are for static information, while temporaryValues are for information during synthesis.
     '''
     def __init__(self, name: 'str', parents: 'list[Scope]'):
         self.parents = parents.copy()
@@ -387,7 +395,11 @@ def parseAndSynth(text, topLevel):
             params = []
             if ctx.functionId().paramFormals():
                 for param in ctx.functionId().paramFormals().paramFormal():
+                    # each parameter is either an integer or a name.
                     print("param", param.getText())
+                    if param.param:  # our parameter is an actual integer or type name.
+                        pass
+                        #params.append(self.visit(param.param))
                     params.append(param.getText()[-1])  #TODO extract actual param name rather than just picking out a single letter
             #log the function's scope
             parsedCode.currentScope.setPermanent(ctx, functionName, params)
@@ -462,8 +474,8 @@ def parseAndSynth(text, topLevel):
             if ctx.fcn.params():
                 for param in ctx.fcn.params().param():
                     print(param.intParam.toStringTree(recog=parser))
-                    value = self.visit(param.intParam) #visit the parameter and extract the corresponding expression
-                    #TODO handle the fact that params may be either integers (which can be used as-is)
+                    value = self.visit(param) #visit the parameter and extract the corresponding expression
+                    #note that params may be either integers (which can be used as-is)
                     #   or variables (which need to be looked up) or expressions in integers (which need
                     #   to be evaluated and must evaluate to an integer).
                     params.append(value)
@@ -488,6 +500,11 @@ def parseAndSynth(text, topLevel):
                 parsedCode.currentComponent.children.append(wireIn)
             parsedCode.currentComponent.children.append(funcComponent)
             return funcComponent.output  # return the value of this call, which is the output of the function
+
+        def visitParam(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamContext):
+            if ctx.intParam:
+                return self.visit(ctx.intParam)
+            assert False, "typeName lookups are not yet supported"
 
         def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
             '''This is an expression corresponding to a binary operation (which may be a unary operation,
