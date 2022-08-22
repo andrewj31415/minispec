@@ -12,7 +12,7 @@ endfunction
 
 Integer i = 3;
 
-function Bit#(n) f#(Integer n, Integer i+j)(Bit#(n) a, Bit#(n) b);
+function Bit#(n) f#(Integer n, i+j)(Bit#(n) a, Bit#(n) b);
   return b;
 endfunction
 

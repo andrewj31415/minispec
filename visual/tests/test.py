@@ -190,4 +190,5 @@ for i in range(len(failedTests)):
     print("      " + testName + ":")
     print()
     print(errorMessage)
+    print()
 
