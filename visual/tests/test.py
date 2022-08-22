@@ -57,37 +57,70 @@ def _():
     '''
 
 describe("Parameterized Functions")
+''' 
+text = pull('parameterize')
+output = parseAndSynth(text, 'e')
+#print(output.__repr__())
+'''
 
-@it('''Various parameter tests''')
+@it('''Function should not be overwritten by nearby functions with different parameters''')
 def _():
-    text = pull('parameterize')
-    output = parseAndSynth(text, 'e')
-    print(output.__repr__())
-
     text = pull('params1')
-
     fa, fb, fo = Node(), Node(), Node()
     inner1, inner2, innerOut = Node(), Node(), Node()
-
     output = parseAndSynth(text, 'f', [2,2]) #the original f
     expected = Function('f#(2,2)', [Function('+', [], [inner1, inner2], innerOut), Wire(fa, inner1), Wire(fb, inner2), Wire(innerOut, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Function should correctly take parameter''')
+def _():
+    text = pull('params1')
+    fa, fb, fo = Node(), Node(), Node()
     output = parseAndSynth(text, 'f', [1]) #the second f
     expected = Function('f#(1)', [Wire(fa, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Function should correctly partially specialize''')
+def _():
+    text = pull('params1')
+    fa, fb, fo = Node(), Node(), Node()
     output = parseAndSynth(text, 'f', [2,1]) #the third f
     expected = Function('f#(2,1)', [Wire(fb, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Function should correctly fully specialize''')
+def _():
+    text = pull('params1')
+    fa, fb, fo = Node(), Node(), Node()
+    inner1, inner2, innerOut = Node(), Node(), Node()
     output = parseAndSynth(text, 'f', [1,1]) #the fourth f
     expected = Function('f#(1,1)', [Function('f', [Wire(inner1, innerOut)], [inner1, inner2], innerOut), Wire(fa, inner2), Wire(fb, inner1), Wire(innerOut, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Function should be correctly processed''')
+def _():
+    text = pull('params1')
+    fa, fb, fo = Node(), Node(), Node()
     output = parseAndSynth(text, 'f') #the fifth f
-    expected  = Function('f', [Wire(inner1, innerOut)], [inner1, inner2], innerOut)
+    expected  = Function('f', [Wire(fa, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly computes fixed param''')
+def _():
+    text = pull('params2')
+    fa, fb, fo = Node(), Node(), Node()
+    output = parseAndSynth(text, 'f', [10, 0]) #the second f
+    expected  = Function('f#(10,0)', [Wire(fa, fo)], [fa, fb], fo)
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly computes fixed param from constants''')
+def _():
+    text = pull('params2')
+    fa, fb, fo = Node(), Node(), Node()
+    output = parseAndSynth(text, 'f', [1, 7]) #the third f
+    expected  = Function('f#(1,7)', [Wire(fb, fo)], [fa, fb], fo)
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 #run all the tests
 import time
@@ -112,7 +145,7 @@ for i in range(len(tests)):
             if msElapsed > 30:
                 print("    √", testName, "(" + str(int(msElapsed)) + "ms)")
             else:
-                print("    √", testName, "(")
+                print("    √", testName)
             numTestsPassed += 1
         except:
             msElapsed = (time.time() - _t)*1000

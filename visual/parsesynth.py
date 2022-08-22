@@ -144,7 +144,6 @@ class Scope:
     def matchParams(visitor, intValues: 'list[int]', storedParams: 'list[ctxType|str]'):
         '''returns a dictionary mapping str -> int if intValues can fit storedParams.
         returns None otherwise.'''
-        print('stored params', storedParams)
         if len(intValues) != len(storedParams):
             return None
         d = {}  #make sure parameters match
@@ -164,7 +163,6 @@ class Scope:
         the stored parameters.'''
         if parameters == None:
             parameters = []
-        print("getting", varName, parameters)
         if varName in self.temporaryValues:
             return self.temporaryValues[varName]
         if varName in self.permanentValues:
@@ -221,12 +219,16 @@ class Bit(MType):
 
 class Node:
     '''name is just for convenience.
-    mtype is the minispec type of the value that the node corresponds to.'''
+    mtype is the minispec type of the value that the node corresponds to.
+    id is a unique id number for each node created.'''
+    id = 0  #one for each node created
     def __init__(self, name: 'str' = "", mtype: 'MType' = Any()):
         self.name = name
         self.mtype = mtype
+        self.id = Node.id
+        Node.id += 1
     def __repr__(self):
-        return "Node(" + self.name + ")"
+        return "Node(" + str(self.id) + ")"
     def __str__(self):
         return self.name
 
@@ -397,25 +399,20 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         def enterPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
             '''The entry node to the parse tree.'''
-            print(inspect.getsource(ctx.getText))
-            print(ctx.getText())
 
         def enterFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
             '''We are defining a function. We need to give this function a corresponding scope.'''
             functionName = ctx.functionId().name.getText() # get the name of the function
-            print("defining a function", functionName)
             params = []
             if ctx.functionId().paramFormals():
                 for param in ctx.functionId().paramFormals().paramFormal():
                     # each parameter is either an integer or a name.
-                    print("param", param.getText())
                     if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
                         params.append(param.param())
                     elif param.intName:  # param is a variable name. extract the name.
                         params.append(param.intName.getText())
                     else:
                         assert False, "parameters with typeValues are not supported yet"
-            print("using the params", params)
             #log the function's scope
             parsedCode.currentScope.setPermanent(ctx, functionName, params)
             functionScope = Scope(functionName, [parsedCode.currentScope])
@@ -428,7 +425,7 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             parsedCode.currentScope = parsedCode.currentScope.parents[0]
         
         def enterVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
-            print("got a var", ctx.getText())
+            pass
 
     class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''Each method returns a component (module/function/etc.)
@@ -436,15 +433,10 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
         stmt do not return anything; they mutate the current scope and the current hardware.'''
         
         def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
-            print("synth function", ctx.functionId().getText())
-            print(ctx.getText())
             functionName = ctx.functionId().name.getText()
             params = parsedCode.lastParameterLookup
             if len(params) > 0:  #attach parameters to the function name if present
                 functionName += "#(" + ",".join(str(i) for i in params) + ")"
-            print("==========")
-            print(ctx.functionId().toStringTree(recog=parser))
-            print()
             functionScope = ctx.scope
             functionScope.clearTemporaryValues # clear the temporary values
             #bind any parameters in the function scope
@@ -460,7 +452,6 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
                 argNode = Node(argName)
                 functionScope.set(argNode, argName)
                 inputNodes.append(argNode)
-            print(functionScope)
             funcComponent = Function(functionName, [], inputNodes)
             # log the current component/scope
             previousComponent = parsedCode.currentComponent
@@ -469,10 +460,7 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             parsedCode.currentScope = functionScope
             # synthesize the function internals
             for stmt in ctx.stmt():
-                print("Found a statement!")
-                print(stmt.toStringTree(recog=parser))
                 self.visit(stmt)
-                print("Left statement")
             parsedCode.currentComponent = previousComponent #reset the current component/scope
             parsedCode.currentScope = previousScope
             return funcComponent
@@ -480,36 +468,26 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
         def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
             '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
             and return the function output node (which corresponds to the value of the function).'''
-            print("calling", ctx.getText())
             # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
             # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
             functionToCall = ctx.fcn.var.getText()
-            print(functionToCall)
-            for scope in parsedCode.allScopes:
-                print(scope)
-            print(parsedCode.currentScope)
             params = []
             if ctx.fcn.params():
                 for param in ctx.fcn.params().param():
-                    print(param.intParam.toStringTree(recog=parser))
                     value = self.visit(param) #visit the parameter and extract the corresponding expression
                     #note that params may be either integers (which can be used as-is)
                     #   or variables (which need to be looked up) or expressions in integers (which need
                     #   to be evaluated and must evaluate to an integer).
                     params.append(value)
-            print(params)
             funcAndBinds = parsedCode.currentScope.get(self, functionToCall, params)
             functionDef = funcAndBinds[0]  # look up the function to call
             bindings = funcAndBinds[1]
-            print("binds", bindings)
             parsedCode.parameterBindings = bindings
             parsedCode.lastParameterLookup = params
             for var in bindings:  #bind the parameters in the current scope
                 val = bindings[var]
                 parsedCode.currentScope.set(val, var)
-            print("visiting func def")
             funcComponent = self.visit(functionDef)  #synthesize the function internals
-            print("visited func def")
             # hook up the funcComponent to the arguments passed in.
             for i in range(len(ctx.expression())):
                 expr = ctx.expression()[i]
@@ -559,7 +537,6 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
         def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
             '''We are visiting a variable/function name. We look it up and return the correpsonding information
             (which may be a Node or a node, for instance).'''
-            print(ctx.var.getText())
             return parsedCode.currentScope.get(self, ctx.var.getText())
 
         def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
@@ -584,25 +561,20 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             returnWire = Wire(rhs, parsedCode.currentComponent.output)
             parsedCode.currentComponent.children.append(returnWire)
 
-    print("text:")
-    print(text, "\n")
     data = antlr4.InputStream(text)
     lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
     stream = antlr4.CommonTokenStream(lexer)
     parser = build.MinispecPythonParser.MinispecPythonParser(stream)
     tree = parser.packageDef()  #start parsing at the top-level packageDef rule (so "tree" is the root of the parse tree)
-    print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
+    #print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
 
     walker = build.MinispecPythonListener.ParseTreeWalker()
     listener = StaticTypeListener()
     walker.walk(listener, tree)  # walk the listener through the tree
 
-    print()
-    print("synthesizing")
     synthesizer = SynthesizerVisitor()
     parsedCode.lastParameterLookup = topLevelParameters # log parameters in the appropriate global
     ctxToSynth = startingFile.get(synthesizer, topLevel, topLevelParameters)
-    print(ctxToSynth)
     assert ctxToSynth != None, "Failed to find topLevel function/module"
     output = synthesizer.visit(ctxToSynth[0]) #look up the function in the given file and synthesize it. store the result in 'output'
     return output
