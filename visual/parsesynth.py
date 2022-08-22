@@ -141,7 +141,7 @@ class Scope:
     def clearTemporaryValues(self):
         '''clears temporary values used in synthesis. should be called after synthesizing a function/module.'''
         self.temporaryValues = {}
-    def matchParams(visitor, intValues: 'list[int]', storedParams: 'list[ctx|str]'):
+    def matchParams(visitor, intValues: 'list[int]', storedParams: 'list[ctxType|str]'):
         '''returns a dictionary mapping str -> int if intValues can fit storedParams.
         returns None otherwise.'''
         print('stored params', storedParams)
@@ -183,7 +183,7 @@ class Scope:
         Used for assigning variables to nodes, typically with no paramters.
         Currently ignores parameters.'''
         self.temporaryValues[varName] = value
-    def setPermanent(self, value, varName: 'str', parameters: 'list[ctx|str]' = None):
+    def setPermanent(self, value, varName: 'str', parameters: 'list[ctxType|str]' = None):
         '''Sets the given name/parameters to the given value in permanent storage.
         Overrules but does not overwrite previous values with the same name.
         Used for logging declarations functions/modules; value is expected to be a ctx
@@ -197,7 +197,8 @@ class Scope:
     '''Note: we probably need a helper function to detect when given parameters match
     a list[int|str] description.'''
 
-
+#type annotation for context objects.
+ctxType = ' | '.join([ctxType for ctxType in dir(build.MinispecPythonParser.MinispecPythonParser) if ctxType[-7:] == "Context"][:-3])
 
 '''
 Functions/modules/components will have nodes. Wires will be attached to nodes.
@@ -221,7 +222,7 @@ class Bit(MType):
 class Node:
     '''name is just for convenience.
     mtype is the minispec type of the value that the node corresponds to.'''
-    def __init__(self, name: 'str' = "unnamed", mtype: 'MType' = Any()):
+    def __init__(self, name: 'str' = "", mtype: 'MType' = Any()):
         self.name = name
         self.mtype = mtype
     def __repr__(self):
@@ -339,6 +340,8 @@ class Function(Component):
         mutates other to have matching order in children lists.'''
         if self.__class__ != other.__class__:
             return False
+        if self.name != other.name:
+            return False
         if len(self.children) != len(other.children):
             return False
         return self.matchStep(other, 0)
@@ -367,7 +370,9 @@ class Wire(Component):
         '''returns true if self and other represent the same hardware.'''
         return self.matchOrdered(other)
 
-def parseAndSynth(text, topLevel):
+def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
+    if topLevelParameters == None:
+        topLevelParameters = []
 
     builtinScope = Scope("built-ins", [])
     startingFile = Scope("startingFile", [builtinScope])
@@ -595,7 +600,8 @@ def parseAndSynth(text, topLevel):
     print()
     print("synthesizing")
     synthesizer = SynthesizerVisitor()
-    ctxToSynth = startingFile.get(synthesizer, topLevel)
+    parsedCode.lastParameterLookup = topLevelParameters # log parameters in the appropriate global
+    ctxToSynth = startingFile.get(synthesizer, topLevel, topLevelParameters)
     print(ctxToSynth)
     assert ctxToSynth != None, "Failed to find topLevel function/module"
     output = synthesizer.visit(ctxToSynth[0]) #look up the function in the given file and synthesize it. store the result in 'output'
