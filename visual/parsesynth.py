@@ -228,6 +228,12 @@ class BuiltInScope(Scope):
             if n not in Bit.createdBits:
                 Bit.createdBits[n] = Bit(n)
             return Bit.createdBits[n]
+        if varName == 'Vector':
+            assert len(parameters) == 2, "vector takes exactly two parameters"
+            k, typeValue = parameters
+            if (k, typeValue) not in Vector.createdVectors:
+                Vector.createdVectors[(k, typeValue)] = Vector(k, typeValue)
+            return Vector.createdVectors[(k, typeValue)]
 
 #type annotation for context objects.
 ctxType = ' | '.join([ctxType for ctxType in dir(build.MinispecPythonParser.MinispecPythonParser) if ctxType[-7:] == "Context"][:-3])
@@ -248,14 +254,378 @@ class Any(MType):
         return "Any"
 
 class Bit(MType):
-    '''A bit type with n bits'''
+    '''A bit type with n bits. All bit objects must be unique.'''
     createdBits = {}  # a map n -> Bit(n)
     def __init__(self, n: 'int'):
         assert n.__class__ == int, "A bit must be an integer"
-        assert n not in Bit.createdBits, "All bits must be unique."
+        assert n not in Bit.createdBits, "All bit objects must be unique."
         self.n = n
     def __str__(self):
         return "Bit#(" + str(self.n) + ")"
+
+class Bool(MType):
+    '''The boolean type'''
+    def __str__(self):
+        return "Bool"
+
+class Vector(MType):
+    '''The Vector(k, tt) type'''
+    createdVectors = {} # a map (k, tt) -> Vector(k, tt)
+    def __init__(self, k: 'int', typeValue: 'MType'):
+        self.k = k
+        self.typeValue = typeValue
+    def __str__(self):
+        return "Vector#(" + str(self.k) + ", " + str(self.typeValue) + ")"
+
+'''We will eventually want a class whose instances represent minispec literals, including:
+integers, booleans, bit values, etc.
+This class (and subclasses) will describe how to operate/coerce on these values.
+
+#TODO finish implementing literals.
+#Still need to decide exactly how creation/conversion will work.
+
+Binary operators:
+'**','*', '/', '%', '+', '-', '<<', '>>', '<', '<=', '>', '>=', '==', '!=', '&', '^', '^~', '~^', '|', '&&', '||'
+Names for methods in code:
+** is pow.
+* is mul.
+/ is div.
+% is mod.
++ is add.
+- is sub.
+<< is sleft.
+>> is sright.
+< is lt.
+<= is le, in terms of lt, eq
+> is gt, in terms of lt
+>= is ge, in terms of lt, eq
+== is eq.
+!= is neq, in terms of eq
+& is bitand.
+^ is bitxor.
+^~ is #TODO bitxnor?
+~^ is #TODO
+| is bitor.
+&& is booleanand.
+|| is booleanor.
+
+'''
+
+class MLiteral():
+    '''A minispec literal'''
+    '''Coercions for arithmetic operations are performed so that variant-specific
+    calls always have the same class.'''
+    def __init__(self, value: 'str'):
+        '''Given a minispec literal as a string, return the
+        appropriate literal value.'''
+        if value == "True" or value == "False":
+            return BooleanLiteral(value)
+        assert False, f"Unknown literal {value}"
+    def coerceArithmetic(first, second):
+        if first.__class__ == IntegerLiteral and second.__class__ == BooleanLiteral:
+            first = second.fromIntegerLiteral(first)
+        elif first.__class__ == BooleanLiteral and second.__class__ == IntegerLiteral:
+            second = first.fromIntegerLiteral(second)
+        return (first, second)
+    def coerceBoolean(first, second):
+        assert first.__class__ == BooleanLiteral and second.__class__ == BooleanLiteral, "Boolean arithmetic requires boolean values"
+        return first, second
+    def pow(first, second):
+        raise Exception("Not implemented")
+    def mul(first, second):
+        raise Exception("Not implemented")
+    def div(first, second):
+        raise Exception("Not implemented")
+    def mod(first, second):
+        raise Exception("Not implemented")
+    def add(first, second):
+        first, second = MLiteral.coerceArithmetic(first, second)
+        return first.add(second)
+    def sub(first, second):
+        raise Exception("Not implemented")
+    def sleft(first, second):
+        raise Exception("Not implemented")
+    def sright(first, second):
+        raise Exception("Not implemented")
+    def lt(first, second):
+        raise Exception("Not implemented")
+    def le(first, second):
+        raise Exception("Not implemented")
+    def gt(first, second):
+        raise Exception("Not implemented")
+    def ge(first, second):
+        raise Exception("Not implemented")
+    def eq(first, second):
+        raise Exception("Not implemented")
+    def neq(first, second):
+        raise Exception("Not implemented")
+    def bitand(first, second):
+        raise Exception("Not implemented")
+    def bitxor(first, second):
+        raise Exception("Not implemented")
+    def bitxnor(first, second):
+        raise Exception("Not implemented")
+    def bitor(first, second):
+        raise Exception("Not implemented")
+    def booleanand(first, second):
+        raise Exception("Not implemented")
+    def booleanand(first, second):
+        first, second = MLiteral.coerceBoolean(first, second)
+        return first.booleanand(second)
+    def booleanor(first, second):
+        first, second = MLiteral.coerceBoolean(first, second)
+        return first.booleanand(second)
+
+class IntegerLiteral(MLiteral):
+    '''self.value is an integer'''
+    def __init__(self, value: 'int'):
+        assert value.__class__ == int
+        self.value = value
+    def __repr__(self):
+        return "IntegerLiteral(" + str(self.value) + ")"
+    def __str__(self):
+        return str(self.value)
+    def toInt(self):
+        '''Returns the python integer represented by self'''
+        return self.value
+    def pow(self, other):
+        return IntegerLiteral(self.value ** other.value)
+    def mul(self, other):
+        return IntegerLiteral(self.value * other.value)
+    def div(self, other):
+        return IntegerLiteral(self.value // other.value)
+    def mod(self, other):
+        return IntegerLiteral(self.value % other.value)
+    def add(self, other):
+        return IntegerLiteral(self.value + other.value)
+    def sub(self, other):
+        return IntegerLiteral(self.value - other.value)
+    def sleft(self, other):
+        raise Exception("Not implemented")
+    def sright(self, other):
+        raise Exception("Not implemented")
+    def lt(self, other):
+        return BooleanLiteral(self.value < other.value)
+    def le(self, other):
+        return BooleanLiteral(self.value <= other.value)
+    def gt(self, other):
+        return BooleanLiteral(self.value > other.value)
+    def ge(self, other):
+        return BooleanLiteral(self.value >= other.value)
+    def eq(self, other):
+        return BooleanLiteral(self.value == other.value)
+    def neq(self, other):
+        return BooleanLiteral(self.value != other.value)
+    def bitand(self, other):
+        raise Exception("Not implemented")
+    def bitxor(self, other):
+        raise Exception("Not implemented")
+    def bitxnor(self, other):
+        raise Exception("Not implemented")
+    def bitor(self, other):
+        raise Exception("Not implemented")
+    def booleanand(self, other):
+        raise Exception("Not implemented")
+    def booleanor(self, other):
+        raise Exception("Not implemented")
+
+class BitLiteral(MLiteral):
+    '''n is the number of bits. value is an integer 0 <= value < 2**n.'''
+    def __init__(self, n: 'int', value: 'int'):
+        assert n.__class__ == int
+        assert value.__class__ == int
+        self.n = n
+        self.value = value % 2**n
+    def __repr__(self):
+        return "BitLiteral(" + str(self.n) + "," + str(self.value) + ")"
+    def __str__(self):
+        output = ""
+        val = self.value
+        for i in range(self.n):
+            output = output + (val % 2)
+            val /= 2
+        return str(self.n) + "'b" + output
+    def fromIntegerLiteral(self, i):
+        return BitLiteral(self.n, i.toInt())
+    def pow(self, other):
+        raise Exception("Not implemented")
+    def mul(self, other):
+        raise Exception("Not implemented")
+    def div(self, other):
+        raise Exception("Not implemented")
+    def mod(self, other):
+        raise Exception("Not implemented")
+    def add(self, other):
+        return BitLiteral(max(self.n, other.n), self.value + other.value)
+    def sub(self, other):
+        raise Exception("Not implemented")
+    def sleft(self, other):
+        raise Exception("Not implemented")
+    def sright(self, other):
+        raise Exception("Not implemented")
+    def lt(self, other):
+        return BooleanLiteral(self.value < other.value)
+    def le(self, other):
+        return BooleanLiteral(self.value <= other.value)
+    def gt(self, other):
+        return BooleanLiteral(self.value > other.value)
+    def ge(self, other):
+        return BooleanLiteral(self.value >= other.value)
+    def eq(self, other):
+        return BooleanLiteral(self.value == other.value)
+    def neq(self, other):
+        return BooleanLiteral(self.value != other.value)
+    def bitand(self, other):
+        raise Exception("Not implemented")
+    def bitxor(self, other):
+        raise Exception("Not implemented")
+    def bitxnor(self, other):
+        raise Exception("Not implemented")
+    def bitor(self, other):
+        raise Exception("Not implemented")
+    def booleanand(self, other):
+        raise Exception("Not implemented")
+    def booleanor(self, other):
+        raise Exception("Not implemented")
+
+class BooleanLiteral(MLiteral):
+    '''value is a boolean'''
+    def __init__(self, value: 'bool'):
+        self.value = value
+    def __repr__(self):
+        return "BooleanLiteral(" + str(self.value) + ")"
+    def __str__(self):
+        return str(self.value)
+    def pow(self, other):
+        raise Exception("Not implemented")
+    def mul(self, other):
+        raise Exception("Not implemented")
+    def div(self, other):
+        raise Exception("Not implemented")
+    def mod(self, other):
+        raise Exception("Not implemented")
+    def add(self, other):
+        raise Exception("Not implemented")
+    def sub(self, other):
+        raise Exception("Not implemented")
+    def sleft(self, other):
+        raise Exception("Not implemented")
+    def sright(self, other):
+        raise Exception("Not implemented")
+    def lt(self, other):
+        raise Exception("Not implemented")
+    def le(self, other):
+        raise Exception("Not implemented")
+    def gt(self, other):
+        raise Exception("Not implemented")
+    def ge(self, other):
+        raise Exception("Not implemented")
+    def eq(self, other):
+        raise Exception("Not implemented")
+    def neq(self, other):
+        raise Exception("Not implemented")
+    def bitand(self, other):
+        raise Exception("Not implemented")
+    def bitxor(self, other):
+        raise Exception("Not implemented")
+    def bitxnor(self, other):
+        raise Exception("Not implemented")
+    def bitor(self, other):
+        raise Exception("Not implemented")
+    def booleanand(self, other):
+        return BooleanLiteral(self.value and other.value)
+    def booleanor(self, other):
+        return BooleanLiteral(self.value or other.value)
+
+class MaybeLiteral(MLiteral):
+    '''value is Valid or Invalid'''
+    #TODO figure out how to implement Valid
+    def pow(self, other):
+        raise Exception("Not implemented")
+    def mul(self, other):
+        raise Exception("Not implemented")
+    def div(self, other):
+        raise Exception("Not implemented")
+    def mod(self, other):
+        raise Exception("Not implemented")
+    def add(self, other):
+        raise Exception("Not implemented")
+    def sub(self, other):
+        raise Exception("Not implemented")
+    def sleft(self, other):
+        raise Exception("Not implemented")
+    def sright(self, other):
+        raise Exception("Not implemented")
+    def lt(self, other):
+        raise Exception("Not implemented")
+    def le(self, other):
+        raise Exception("Not implemented")
+    def gt(self, other):
+        raise Exception("Not implemented")
+    def ge(self, other):
+        raise Exception("Not implemented")
+    def eq(self, other):
+        raise Exception("Not implemented")
+    def neq(self, other):
+        raise Exception("Not implemented")
+    def bitand(self, other):
+        raise Exception("Not implemented")
+    def bitxor(self, other):
+        raise Exception("Not implemented")
+    def bitxnor(self, other):
+        raise Exception("Not implemented")
+    def bitor(self, other):
+        raise Exception("Not implemented")
+    def booleanand(self, other):
+        raise Exception("Not implemented")
+    def booleanor(self, other):
+        raise Exception("Not implemented")
+
+class DontCareLiteral(MLiteral):
+    '''only one kind, "?" '''
+    def __init__(self):
+        pass
+    # Returns itself for all binary operations
+    def pow(self, other):
+        return self
+    def mul(self, other):
+        return self
+    def div(self, other):
+        return self
+    def mod(self, other):
+        return self
+    def add(self, other):
+        return self
+    def sub(self, other):
+        return self
+    def sleft(self, other):
+        return self
+    def sright(self, other):
+        return self
+    def lt(self, other):
+        return self
+    def le(self, other):
+        return self
+    def gt(self, other):
+        return self
+    def ge(self, other):
+        return self
+    def eq(self, other):
+        return self
+    def neq(self, other):
+        return self
+    def bitand(self, other):
+        return self
+    def bitxor(self, other):
+        return self
+    def bitxnor(self, other):
+        return self
+    def bitor(self, other):
+        return self
+    def booleanand(self, other):
+        return self
+    def booleanor(self, other):
+        return self
 
 class Node:
     '''name is just for convenience.
@@ -474,6 +844,82 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
                     parsedCode.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
 
 
+    '''
+    Documentation for SynthesizerVisitor visit method return types:
+
+    visitLowerCaseIdentifier: 
+    visitUpperCaseIdentifier: 
+    visitIdentifier: 
+    visitAnyIdentifier: 
+    visitArg: 
+    visitArgs: 
+    visitArgFormal: 
+    visitArgFormals: 
+    visitParam: 
+    visitParams: 
+    visitParamFormal: 
+    visitParamFormals: 
+    visitTypeName: 
+    visitPackageDef: 
+    visitPackageStmt: 
+    visitImportDecl: 
+    visitBsvImportDecl: 
+    visitTypeDecl: 
+    visitTypeDefSynonym: 
+    visitTypeId: 
+    visitTypeDefEnum: 
+    visitTypeDefEnumElement: 
+    visitTypeDefStruct: 
+    visitStructMember: 
+    visitVarBinding: 
+    visitLetBinding: 
+    visitVarInit: 
+    visitModuleDef: 
+    visitModuleId: 
+    visitModuleStmt: 
+    visitSubmoduleDecl: 
+    visitInputDef: 
+    visitMethodDef: 
+    visitRuleDef: 
+    visitFunctionDef: Returns the function hardware
+    visitFunctionId: 
+    visitVarAssign: 
+    visitMemberLvalue: 
+    visitIndexLvalue: 
+    visitSimpleLvalue: 
+    visitSliceLvalue: 
+    visitOperatorExpr: Node or MLiteral corresponding to the value of the expression
+    visitCondExpr: 
+    visitCaseExpr: 
+    visitCaseExprItem: 
+    visitBinopExpr: Node or MLiteral corresponding to the value of the expression
+    visitUnopExpr: Node or MLiteral corresponding to the value of the expression
+    visitVarExpr: 
+    visitBitConcat: 
+    visitStringLiteral: 
+    visitIntLiteral: Corresponding MLiteral
+    visitReturnExpr: Nothing, mutates current function hardware
+    visitStructExpr: 
+    visitUndefinedExpr: Corresponding MLiteral
+    visitSliceExpr: 
+    visitCallExpr: Returns the output node of the function call or a literal (if the function gets constant-folded)
+        Note that constant-folding elimination of function components occurs here, not in functionDef, so that the function to synthesize is not eliminated.
+    visitFieldExpr: 
+    visitParenExpr: Node or MLiteral corresponding to the value of the expression
+    visitMemberBinds: 
+    visitMemberBind: 
+    visitBeginEndBlock: 
+    visitRegWrite: 
+    visitStmt: No returns since stmt mutates existing hardware
+    visitIfStmt: 
+    visitCaseStmt: 
+    visitCaseStmtItem: 
+    visitCaseStmtDefaultItem: 
+    visitForStmt: 
+    
+    
+    '''
+
     class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''Each method returns a component (module/function/etc.)
         nodes of type exprPrimary return the node corresponding to their value.
@@ -690,6 +1136,37 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
                 return int(eval(str(left) + op + str(right)))
             else:
                 assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
+
+            '''Combining literals'''
+            if issubclass(left.__class__, MLiteral) and issubclass(right.__class__, MLiteral): #we have two literals, so we combine them
+                return { '**': MLiteral.pow,
+                '*': MLiteral.mul,
+                '/': MLiteral.div,
+                '%': MLiteral.mod,
+                '+': MLiteral.add,
+                '-': MLiteral.sub,
+                '<<': MLiteral.sleft,
+                '>>': MLiteral.sright,
+                '<': MLiteral.lt,
+                '<=': MLiteral.le,
+                '>': MLiteral.gt,
+                '>=': MLiteral.ge,
+                '==': MLiteral.eq,
+                '!=': MLiteral.neq,
+                '&': MLiteral.bitand,
+                '^': MLiteral.bitxor,
+                '^~': MLiteral.bitxnor,
+                '~^': MLiteral.bitxnor,
+                '|': MLiteral.bitor,
+                '&&': MLiteral.booleanand,
+                '||': MLiteral.booleanor }[op](left, right)
+            # convert literals to hardware
+            if issubclass(left.__class__, MLiteral):
+                pass
+            if issubclass(right.__class__, MLiteral):
+                pass
+            # both left and right are nodes, so we combine them using function hardware and return the output node.
+            
 
         def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
             if not ctx.op:  # our unopExpr is actually just an exprPrimary.
