@@ -152,6 +152,7 @@ class Scope:
     def matchParams(visitor, intValues: 'list[int]', storedParams: 'list[ctxType|str]'):
         '''returns a dictionary mapping str -> int if intValues can fit storedParams.
         returns None otherwise.'''
+        print('comparing', intValues, storedParams)
         if len(intValues) != len(storedParams):
             return None
         d = {}  #make sure parameters match
@@ -166,7 +167,7 @@ class Scope:
         then prefers temporary values to permanent values. Returns whatever is found,
         probably a ctx object (functionDef) or a node object (variable value).
         Returns an object.
-        Returns a tuple (object, paramMappings) where paramMappings is a dictionary
+        Returns a tuple (ctx/Node, paramMappings) where paramMappings is a dictionary
         str -> int that shows how the stored parameters were mapped to match parameters to
         the stored parameters.'''
         if parameters == None:
@@ -256,8 +257,9 @@ class Any(MType):
 class Bit(MType):
     '''A bit type with n bits. All bit objects must be unique.'''
     createdBits = {}  # a map n -> Bit(n)
-    def __init__(self, n: 'int'):
-        assert n.__class__ == int, "A bit must be an integer"
+    def __init__(self, n: 'IntegerLiteral'):
+        assert n.__class__ == IntegerLiteral, f"A bit must be an integer literal, not {n} which is {n.__class__}"
+        n = n.value #extract the value of the integer literal
         assert n not in Bit.createdBits, "All bit objects must be unique."
         self.n = n
     def __str__(self):
@@ -333,7 +335,8 @@ class MLiteral():
     def pow(first, second):
         raise Exception("Not implemented")
     def mul(first, second):
-        raise Exception("Not implemented")
+        first, second = MLiteral.coerceArithmetic(first, second)
+        return first.mul(second)
     def div(first, second):
         raise Exception("Not implemented")
     def mod(first, second):
@@ -342,7 +345,8 @@ class MLiteral():
         first, second = MLiteral.coerceArithmetic(first, second)
         return first.add(second)
     def sub(first, second):
-        raise Exception("Not implemented")
+        first, second = MLiteral.coerceArithmetic(first, second)
+        return first.sub(second)
     def sleft(first, second):
         raise Exception("Not implemented")
     def sright(first, second):
@@ -385,6 +389,13 @@ class IntegerLiteral(MLiteral):
         return "IntegerLiteral(" + str(self.value) + ")"
     def __str__(self):
         return str(self.value)
+        #return "IntegerLiteral(" + str(self.value) + ")" #possibly useful for debugging purposes
+    def __eq__(self, other):
+        if other.__class__ != self.__class__:
+            return False
+        return self.value == other.value
+    def __hash__(self):
+        return hash(self.value)
     def toInt(self):
         '''Returns the python integer represented by self'''
         return self.value
@@ -804,6 +815,12 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             the function in the corresponding component.'''
         def reset(self):
             self.__init__()
+        def __setattr__(self, __name: str, __value: Any) -> None:
+            if __name == 'lastParameterLookup':
+                for j in __value:
+                    print(j.__class__)
+                print(__value.__repr__())
+            self.__dict__[__name] = __value
 
 
     parsedCode = MinispecStructure()
@@ -919,6 +936,13 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     
     
     '''
+
+    def isMLiteral(value):
+        '''Returns whether or not value is an MLiteral'''
+        return issubclass(value.__class__, MLiteral)
+    def isNodeOrMLiteral(value):
+        '''Returns whether or not value is a literal or a node.'''
+        return isMLiteral(value) or value.__class__ == Node
 
     class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''Each method returns a component (module/function/etc.)
@@ -1101,8 +1125,10 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
 
         def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
             '''This is an expression corresponding to a binary operation (which may be a unary operation,
-            which may be an exprPrimary). We return the node with the corresponding output value.'''
-            return self.visit(ctx.binopExpr())
+            which may be an exprPrimary). We return the Node or MLiteral with the corresponding output value.'''
+            value = self.visit(ctx.binopExpr())
+            assert isNodeOrMLiteral(value)
+            return value
 
         def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
             raise Exception("Not implemented")
@@ -1119,26 +1145,15 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             #we are either manipulating nodes/wires or manipulating integers.
             left = self.visit(ctx.left)
             right = self.visit(ctx.right)
-            if left.__class__ == tuple and right.__class__ == tuple:
-                #we have received a pair (ctx, params) from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
+            if left.__class__ == tuple: #we have received a pair (ctx, params) from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
                 left = self.visit(left[0])
+            if right.__class__ == tuple:
                 right = self.visit(right[0])
+            assert isNodeOrMLiteral(left), "left side must be literal or node"
+            assert isNodeOrMLiteral(right), "right side must be literal or node"
             op = ctx.op.text
-            if left.__class__ == Node and right.__class__ == Node:
-                binComponent = Function(op, [], [Node("l"), Node("r")])
-                leftWireIn = Wire(left, binComponent.inputs[0])
-                rightWireIn = Wire(right, binComponent.inputs[1])
-                for component in [binComponent, leftWireIn, rightWireIn]:
-                    parsedCode.currentComponent.children.append(component)
-                return binComponent.output
-            elif left.__class__ == int and right.__class__ == int:
-                #TODO do error handling for which integer operation are valid
-                return int(eval(str(left) + op + str(right)))
-            else:
-                assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
-
             '''Combining literals'''
-            if issubclass(left.__class__, MLiteral) and issubclass(right.__class__, MLiteral): #we have two literals, so we combine them
+            if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
                 return { '**': MLiteral.pow,
                 '*': MLiteral.mul,
                 '/': MLiteral.div,
@@ -1161,22 +1176,37 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
                 '&&': MLiteral.booleanand,
                 '||': MLiteral.booleanor }[op](left, right)
             # convert literals to hardware
-            if issubclass(left.__class__, MLiteral):
-                pass
-            if issubclass(right.__class__, MLiteral):
-                pass
+            if isMLiteral(left):
+                constantFunc = Function(str(left), [], [], Node())
+                parsedCode.currentComponent.children.append(constantFunc)
+                left = constantFunc.output
+            if isMLiteral(right):
+                constantFunc = Function(str(right), [], [], Node())
+                parsedCode.currentComponent.children.append(constantFunc)
+                right = constantFunc.output
             # both left and right are nodes, so we combine them using function hardware and return the output node.
-            
+            assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
+            binComponent = Function(op, [], [Node("l"), Node("r")])
+            leftWireIn = Wire(left, binComponent.inputs[0])
+            rightWireIn = Wire(right, binComponent.inputs[1])
+            for component in [binComponent, leftWireIn, rightWireIn]:
+                parsedCode.currentComponent.children.append(component)
+            return binComponent.output
+
+            #assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
 
         def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
             if not ctx.op:  # our unopExpr is actually just an exprPrimary.
-                x = self.visit(ctx.exprPrimary())
-                return x
-            return self.visitChildren(ctx)
+                value = self.visit(ctx.exprPrimary())
+                if value.__class__ == tuple:
+                    value = self.visit(value[0])
+                assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
+                return value
+            #return self.visitChildren(ctx)
 
         def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
             '''We are visiting a variable/function name. We look it up and return the correpsonding information
-            (which may be a Node or a node, for instance).'''
+            (which may be a Node or a ctx or a tuple (ctx/Node, paramMappings), for instance).'''
             return parsedCode.currentScope.get(self, ctx.var.getText())
 
         def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
@@ -1187,7 +1217,7 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
 
         def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
             '''We have an integer literal, so we parse it and return it.'''
-            return int(ctx.getText())
+            return IntegerLiteral(int(ctx.getText()))
 
         def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
             '''This is the return expression in a function. We need to put the correct wire
@@ -1218,6 +1248,7 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
                     #note that params may be either integers (which can be used as-is)
                     #   or variables (which need to be looked up) or expressions in integers (which need
                     #   to be evaluated and must evaluate to an integer).
+                    assert value.__class__ == IntegerLiteral
                     params.append(value)
             funcAndBinds = parsedCode.currentScope.get(self, functionToCall, params)
             functionDef = funcAndBinds[0]  # look up the function to call
@@ -1288,7 +1319,7 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
 
     synthesizer = SynthesizerVisitor()
 
-
+    topLevelParameters = [IntegerLiteral(i) for i in topLevelParameters]
     ctxToSynth = startingFile.get(synthesizer, topLevel, topLevelParameters)
     assert ctxToSynth != None, "Failed to find topLevel function/module"
     # log parameters in the appropriate global
