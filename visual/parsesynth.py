@@ -144,7 +144,7 @@ class Scope:
                 output += "\n    " + "params: " + str(ex[0]) + " and value: " + str(ex[1].__class__)
         output += "\nand temporary values"
         for varName in self.temporaryValues:
-            output += "\n  " + varName + ": " + self.temporaryValues[varName]
+            output += "\n  " + varName + ": " + str(self.temporaryValues[varName])
         return output
     def clearTemporaryValues(self):
         '''clears temporary values used in synthesis. should be called after synthesizing a function/module.'''
@@ -207,6 +207,28 @@ class Scope:
     '''Note: we probably need a helper function to detect when given parameters match
     a list[int|str] description.'''
 
+class BuiltInScope(Scope):
+    '''The minispec built-ins. Behaves slightly differently from other scopes.'''
+    def __init__(self, name: 'str', parents: 'list[Scope]'):
+        self.parents = parents.copy()
+        self.name = name
+        self.permanentValues = {}
+        self.temporaryValues = {}
+    def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node|tuple[ctxType,dict]':
+        '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
+        then prefers temporary values to permanent values. Returns whatever is found,
+        probably a ctx object (functionDef) or a node object (variable value).
+        Returns an object.
+        Returns a tuple (object, paramMappings) where paramMappings is a dictionary
+        str -> int that shows how the stored parameters were mapped to match parameters to
+        the stored parameters.'''
+        if varName == 'Bit':
+            assert len(parameters) == 1, "bit takes exactly one parameter"
+            n = parameters[0]
+            if n not in Bit.createdBits:
+                Bit.createdBits[n] = Bit(n)
+            return Bit.createdBits[n]
+
 #type annotation for context objects.
 ctxType = ' | '.join([ctxType for ctxType in dir(build.MinispecPythonParser.MinispecPythonParser) if ctxType[-7:] == "Context"][:-3])
 
@@ -222,12 +244,18 @@ class MType:
 
 class Any(MType):
     '''An unknown type'''
-    pass
+    def __str__(self):
+        return "Any"
 
 class Bit(MType):
     '''A bit type with n bits'''
+    createdBits = {}  # a map n -> Bit(n)
     def __init__(self, n: 'int'):
+        assert n.__class__ == int, "A bit must be an integer"
+        assert n not in Bit.createdBits, "All bits must be unique."
         self.n = n
+    def __str__(self):
+        return "Bit#(" + str(self.n) + ")"
 
 class Node:
     '''name is just for convenience.
@@ -240,7 +268,7 @@ class Node:
         self.id = Node.id
         Node.id += 1
     def __repr__(self):
-        return "Node(" + str(self.id) + ")"
+        return "Node(" + str(self.id) + ": " + str(self.mtype) + ")"
     def __str__(self):
         return self.name
 
@@ -295,7 +323,7 @@ class Function(Component):
         else:
             self.output = output
     def __repr__(self):
-        return "Function(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ")"
+        return "Function(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.output.__repr__() + ")"
     def __str__(self):
         if (len(self.children) == 0):
             return "Function " + self.name
@@ -388,7 +416,7 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     if topLevelParameters == None:
         topLevelParameters = []
 
-    builtinScope = Scope("built-ins", [])
+    builtinScope = BuiltInScope("built-ins", [])
     startingFile = Scope("startingFile", [builtinScope])
 
     class MinispecStructure:
@@ -490,7 +518,14 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             raise Exception("Not implemented")
 
         def visitTypeName(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeNameContext):
-            raise Exception("Not implemented")
+            params = []
+            if ctx.params():  #evaluate the type parameters, if any
+                for param in ctx.params().param():
+                    params.append(self.visit(param))
+            typeName = ctx.name.getText()
+            typeObject = parsedCode.currentScope.get(self, typeName, params)
+            assert typeObject != None, f"Failed to find type {typeName} with parameters {params}"
+            return typeObject
 
         def visitPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
             raise Exception("Not implemented")
@@ -564,12 +599,18 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             raise Exception("Not implemented")
 
         def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
+            '''Synthesizes the corresponding function and returns the entire function hardware.
+            Gets any parameters from parsedCode.lastParameterLookup and
+            finds parameter bindings in bindings = parsedCode.parameterBindings'''
             functionName = ctx.functionId().name.getText()
             params = parsedCode.lastParameterLookup
             if len(params) > 0:  #attach parameters to the function name if present
                 functionName += "#(" + ",".join(str(i) for i in params) + ")"
             functionScope = ctx.scope
             functionScope.clearTemporaryValues # clear the temporary values
+            # log the current scope
+            previousScope = parsedCode.currentScope
+            parsedCode.currentScope = functionScope
             #bind any parameters in the function scope
             bindings = parsedCode.parameterBindings
             for var in bindings:  
@@ -578,17 +619,15 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             # extract arguments to function and set up the input nodes
             inputNodes = []
             for arg in ctx.argFormals().argFormal():
-                argType = arg.typeName() # typeName parse tree node
+                argType = self.visit(arg.typeName()) # typeName parse tree node
                 argName = arg.argName.getText() # name of the variable
-                argNode = Node(argName)
+                argNode = Node(argName, argType)
                 functionScope.set(argNode, argName)
                 inputNodes.append(argNode)
             funcComponent = Function(functionName, [], inputNodes)
-            # log the current component/scope
+            # log the current component
             previousComponent = parsedCode.currentComponent
             parsedCode.currentComponent = funcComponent
-            previousScope = parsedCode.currentScope
-            parsedCode.currentScope = functionScope
             # synthesize the function internals
             for stmt in ctx.stmt():
                 self.visit(stmt)
@@ -695,10 +734,10 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
             # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
             # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
             functionToCall = ctx.fcn.var.getText()
-            params = []
+            params: 'list[int]' = []
             if ctx.fcn.params():
                 for param in ctx.fcn.params().param():
-                    value = self.visit(param) #visit the parameter and extract the corresponding expression
+                    value = self.visit(param) #visit the parameter and extract the corresponding expression, parsing it to an integer
                     #note that params may be either integers (which can be used as-is)
                     #   or variables (which need to be looked up) or expressions in integers (which need
                     #   to be evaluated and must evaluate to an integer).
@@ -771,10 +810,17 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     #     print(scope)
 
     synthesizer = SynthesizerVisitor()
-    parsedCode.lastParameterLookup = topLevelParameters # log parameters in the appropriate global
+
+
     ctxToSynth = startingFile.get(synthesizer, topLevel, topLevelParameters)
     assert ctxToSynth != None, "Failed to find topLevel function/module"
-    output = synthesizer.visit(ctxToSynth[0]) #look up the function in the given file and synthesize it. store the result in 'output'
+    # log parameters in the appropriate global
+    functionDef = ctxToSynth[0]  # look up the function to call
+    bindings = ctxToSynth[1]
+    parsedCode.parameterBindings = bindings
+    parsedCode.lastParameterLookup = topLevelParameters
+
+    output = synthesizer.visit(functionDef) #look up the function in the given file and synthesize it. store the result in 'output'
     
     # for scope in parsedCode.allScopes:
     #     print(scope)
