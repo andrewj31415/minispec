@@ -25,8 +25,8 @@ Notes for parametrics:
     only be an integer or the name of a type.
 
     - If/case statements (+ muxes)
-    - For loops
     - Modules
+    - For loops
     - Other files
 
 Implemented:
@@ -35,6 +35,7 @@ Implemented:
     - Binary operations
     - Parametrics
     - Type handling (+ associated python type objects)
+    - Literals
 '''
 
 '''
@@ -160,7 +161,6 @@ class Scope:
     def matchParams(visitor, intValues: 'list[int]', storedParams: 'list[ctxType|str]'):
         '''returns a dictionary mapping str -> int if intValues can fit storedParams.
         returns None otherwise.'''
-        print('comparing', intValues, storedParams)
         if len(intValues) != len(storedParams):
             return None
         d = {}  #make sure parameters match
@@ -304,6 +304,7 @@ integers, booleans, bit values, etc.
 This class (and subclasses) will describe how to operate/coerce on these values.
 
 #TODO literals will eventually need to be given the appropriate mtypes
+#TODO reexamine literal arithmetic for time conversions
 
 Binary operators:
 '**','*', '/', '%', '+', '-', '<<', '>>', '<', '<=', '>', '>=', '==', '!=', '&', '^', '^~', '~^', '|', '&&', '||'
@@ -358,6 +359,10 @@ class MLiteral():
         if value == "True" or value == "False":
             return BooleanLiteral(value)
         assert False, f"Unknown literal {value}"
+    def getHardware(self, globalsHandler):
+        constantFunc = Function(str(self), [], [], Node(str(self), self.mtype))
+        globalsHandler.currentComponent.children.append(constantFunc)
+        return constantFunc.output
     def coerceArithmetic(first, second):
         if first.__class__ == IntegerLiteral and second.__class__ == BooleanLiteral:
             first = second.fromIntegerLiteral(first)
@@ -396,7 +401,7 @@ class MLiteral():
     def ge(first, second):
         raise Exception("Not implemented")
     def eq(first, second):
-        raise Exception("Not implemented")
+        return first.eq(second)
     def neq(first, second):
         raise Exception("Not implemented")
     def bitand(first, second):
@@ -559,6 +564,10 @@ class BooleanLiteral(MLiteral):
         return "BooleanLiteral(" + str(self.value) + ")"
     def __str__(self):
         return str(self.value)
+    def __eq__(self, other):
+        if self.__class__ != other.__class__:
+            return False
+        return self.value == other.value
     def pow(self, other):
         raise Exception("Not implemented")
     def mul(self, other):
@@ -703,7 +712,7 @@ class Node:
     def __repr__(self):
         return "Node(" + str(self.id) + ": " + str(self.mtype) + ")"
     def __str__(self):
-        return self.name
+        return "Node(" + str(self.name) + ": " + str(self.mtype) + ")"
 
 class Component:
     '''
@@ -821,7 +830,7 @@ class Function(Component):
         return self.matchStep(other, 0)
 
 class Mux(Component):
-    def __init__(self, inputs: 'list[Node]', control: 'None'=None, output: 'Node'=None):
+    def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
         self.name = "mux"
         self.inputs = inputs
         if control == None:
@@ -831,7 +840,7 @@ class Mux(Component):
             output = Node('_' + self.name + '_output')
         self.output = output
     def __repr__(self):
-        return "Function(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.output.__repr__() + ")"
+        return "Mux(" + self.name + ", " + self.inputs.__repr__() + ", " + self.control.__repr__() + ", " + self.output.__repr__() + ")"
     def __str__(self):
         if (len(self.children) == 0):
             return "Function " + self.name
@@ -915,12 +924,12 @@ class MinispecStructure:
         '''will hold all created scopes. used for lookups.'''
         self.allScopes = [builtinScope, startingFile]
         self.currentScope = startingFile
-    def __setattr__(self, __name: str, __value: Any) -> None:
+    '''def __setattr__(self, __name: str, __value: Any) -> None: #For debugging lookups.
         if __name == 'lastParameterLookup':
             for j in __value:
                 print(j.__class__)
             print(__value.__repr__())
-        self.__dict__[__name] = __value
+        self.__dict__[__name] = __value'''
 
 
 class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
@@ -1002,7 +1011,7 @@ visitMethodDef:
 visitRuleDef: 
 visitFunctionDef: Returns the function hardware
 visitFunctionId: 
-visitVarAssign: 
+visitVarAssign: No returns, mutates existing hardware
 visitMemberLvalue: 
 visitIndexLvalue: 
 visitSimpleLvalue: 
@@ -1030,8 +1039,8 @@ visitMemberBind:
 visitBeginEndBlock: 
 visitRegWrite: 
 visitStmt: No returns since stmt mutates existing hardware
-visitIfStmt: 
-visitCaseStmt: 
+visitIfStmt: No returns, mutates existing hardware
+visitCaseStmt: No returns, mutates existing hardware
 visitCaseStmtItem: 
 visitCaseStmtDefaultItem: 
 visitForStmt: 
@@ -1137,7 +1146,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
-        raise Exception("Not implemented")
+        typeValue = self.visit(ctx.typeName())
+        for varInit in ctx.varInit():
+            varName = varInit.var.getText()
+            if (varInit.rhs):
+                value = self.visit(varInit.rhs)
+                if value.__class__ == Node:
+                    value.mtype = typeValue
+                self.collectedScopes.currentScope.set(value, varName)
 
     def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
         '''A let binding declares a variable or a concatenation of variables and optionally assigns
@@ -1215,7 +1231,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
-        raise Exception("Not implemented")
+        value = self.visit(ctx.expression())
+        assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
+        if ctx.varList:
+            raise Exception("Not implemented")
+        assert ctx.var, "Did the grammar change?"
+        if ctx.var.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+            raise Exception("Not implemented")
+        varName = ctx.var.getText()
+        self.collectedScopes.currentScope.set(value, varName)
 
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
         raise Exception("Not implemented")
@@ -1283,13 +1307,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             '||': MLiteral.booleanor }[op](left, right)
         # convert literals to hardware
         if isMLiteral(left):
-            constantFunc = Function(str(left), [], [], Node(str(left), left.mtype))
-            self.globalsHandler.currentComponent.children.append(constantFunc)
-            left = constantFunc.output
+            left = left.getHardware(self.globalsHandler)
         if isMLiteral(right):
-            constantFunc = Function(str(right), [], [], Node(str(right), right.mtype))
-            self.globalsHandler.currentComponent.children.append(constantFunc)
-            right = constantFunc.output
+            right = right.getHardware(self.globalsHandler)
         # both left and right are nodes, so we combine them using function hardware and return the output node.
         assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
         binComponent = Function(op, [], [Node("l"), Node("r")])
@@ -1405,9 +1425,56 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return self.visitChildren(ctx)
 
     def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
-        raise Exception("Not implemented")
+        condition = self.visit(ctx.expression())
+        if isMLiteral(condition):
+            # we select the appropriate branch
+            if condition == BooleanLiteral(True):
+                self.visit(ctx.stmt(0))
+            else:
+                if ctx.stmt(1):
+                    self.visit(ctx.stmt(1))
+        else:
+            # we run both branches in separate scopes, then combine
+            ifScope = Scope(self.globalsHandler, "ifScope", [self.collectedScopes.currentScope])
+            elseScope = Scope(self.globalsHandler, "elseScope", [self.collectedScopes.currentScope])
+            self.collectedScopes.allScopes.append(ifScope)
+            self.collectedScopes.allScopes.append(elseScope)
+            originalScope = self.collectedScopes.currentScope
+
+            self.collectedScopes.currentScope = ifScope
+            self.visit(ctx.stmt(0))
+            if ctx.stmt(1):
+                self.collectedScopes.currentScope = elseScope
+                self.visit(ctx.stmt(1))
+            
+            self.collectedScopes.currentScope = originalScope
+            varsToBind = set()
+            for var in ifScope.temporaryValues:
+                varsToBind.add(var)
+            for var in elseScope.temporaryValues:
+                varsToBind.add(var)
+            for var in varsToBind:
+                if var in ifScope.temporaryValues and var not in elseScope.temporaryValues:
+                    originalScope.set(ifScope.get(self, var), var)
+                if var in elseScope.temporaryValues and var not in ifScope.temporaryValues:
+                    originalScope.set(elseScope.get(self, var), var)
+                else:
+                    value1 = ifScope.get(self, var)
+                    value2 = elseScope.get(self, var)
+                    # since the control signal is hardware, we convert the values to hardware as well (if needed)
+                    if isMLiteral(value1):
+                        value1 = value1.getHardware(self.globalsHandler)
+                    if isMLiteral(value2):
+                        value2 = value2.getHardware(self.globalsHandler)
+                    muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
+                    for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
+                        self.globalsHandler.currentComponent.children.append(component)
+                    originalScope.set(muxComponent.output, var)
 
     def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):
+        '''I'm considering implementing case statements as a sequence of if statements.
+        The case statement seems to run from top to bottom, with default only running if no other
+        statements run (statements can overlap).'''
         raise Exception("Not implemented")
 
     def visitCaseStmtItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtItemContext):

@@ -127,7 +127,7 @@ describe('Literal Arithmetic')
 @it('''Correctly folds constants''')
 def _():
     text = pull('literals1')
-    output = parseAndSynth(text, 'f')
+
     fa, fo, ga, go = Node('fa'), Node('fo'), Node('ga'), Node('go')
     xor1, xor2, xoro = Node('xor1'), Node('xor2'), Node('xoro')
     mulf1, mulf2, mulfo = Node('mulf1'), Node('mulf2'), Node('mulfo')
@@ -149,6 +149,39 @@ def _():
 
     output = parseAndSynth(text, 'f')
     expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+describe("If and Case Statements")
+
+@it('''Correctly synthesizes mux''')
+def _():
+    text = pull('if1')
+
+    fa, fo = Node(), Node()
+    eq = Function("==", [], [Node(), Node()])
+    eq1, eq2 = eq.inputs
+    four = Function("4", [], [])
+    two = Function("2", [], [])
+    mux1, mux2, muxc = Node(), Node(), Node()
+    mux = Mux([mux1, mux2], muxc)
+    f2 = Function("f#(2)", [eq, four, two, mux, Wire(fa, eq1), Wire(four.output, eq2), Wire(eq.output, muxc), Wire(fa, mux1), Wire(two.output, mux2), Wire(mux.output, fo)], [fa], fo)
+
+    output = parseAndSynth(text, 'f', [2])
+    expected = f2
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly skips other branch''')
+def _():
+    text = pull('if1')
+
+    fa, fo = Node(), Node()
+    one = Function("1", [], [])
+    xor = Function("^", [], [Node(), Node()])
+    xor1, xor2 = xor.inputs
+    f0 = Function("f#(0)", [xor, one, Wire(one.output, xor1), Wire(fa, xor2), Wire(xor.output, fo)], [fa], fo)
+
+    output = parseAndSynth(text, 'f', [0])
+    expected = f0
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
