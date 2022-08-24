@@ -6,6 +6,12 @@ import build.MinispecPythonLexer
 import build.MinispecPythonListener
 import build.MinispecPythonVisitor
 
+#sets up parser for use in debugging:
+#now ctx.toStringTree(recog=parser) will work properly.
+data = antlr4.InputStream("")
+lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
+stream = antlr4.CommonTokenStream(lexer)
+parser = build.MinispecPythonParser.MinispecPythonParser(stream)
 
 '''
 Implementation Agenda:
@@ -18,9 +24,8 @@ Notes for parametrics:
     params are used when calling functions/synth modules/invoking custom parameterized types, and may
     only be an integer or the name of a type.
 
-    - Type handling (+ associated python type objects)
-    - For loops
     - If/case statements (+ muxes)
+    - For loops
     - Modules
     - Other files
 
@@ -28,6 +33,8 @@ Implemented:
 
     - Function calls
     - Binary operations
+    - Parametrics
+    - Type handling (+ associated python type objects)
 '''
 
 '''
@@ -226,9 +233,7 @@ class BuiltInScope(Scope):
         if varName == 'Bit':
             assert len(parameters) == 1, "bit takes exactly one parameter"
             n = parameters[0]
-            if n not in Bit.createdBits:
-                Bit.createdBits[n] = Bit(n)
-            return Bit.createdBits[n]
+            return Bit.getBit(n)
         if varName == 'Vector':
             assert len(parameters) == 2, "vector takes exactly two parameters"
             k, typeValue = parameters
@@ -253,6 +258,13 @@ class Any(MType):
     '''An unknown type'''
     def __str__(self):
         return "Any"
+Any = Any()
+
+class Integer(MType):
+    '''An integer type'''
+    def __str__(self):
+        return "Integer"
+Integer = Integer()
 
 class Bit(MType):
     '''A bit type with n bits. All bit objects must be unique.'''
@@ -264,11 +276,16 @@ class Bit(MType):
         self.n = n
     def __str__(self):
         return "Bit#(" + str(self.n) + ")"
+    def getBit(n: 'IntegerLiteral'):
+        if n not in Bit.createdBits:
+            Bit.createdBits[n] = Bit(n)
+        return Bit.createdBits[n]
 
 class Bool(MType):
     '''The boolean type'''
     def __str__(self):
         return "Bool"
+Bool = Bool()
 
 class Vector(MType):
     '''The Vector(k, tt) type'''
@@ -283,8 +300,7 @@ class Vector(MType):
 integers, booleans, bit values, etc.
 This class (and subclasses) will describe how to operate/coerce on these values.
 
-#TODO finish implementing literals.
-#Still need to decide exactly how creation/conversion will work.
+#TODO literals will eventually need to be given the appropriate mtypes
 
 Binary operators:
 '**','*', '/', '%', '+', '-', '<<', '>>', '<', '<=', '>', '>=', '==', '!=', '&', '^', '^~', '~^', '|', '&&', '||'
@@ -316,10 +332,11 @@ Names for methods in code:
 class MLiteral():
     '''A minispec literal'''
     '''Coercions for arithmetic operations are performed so that variant-specific
-    calls always have the same class.'''
+    calls always have the same class.
+    mType is the type of the corresponding literal.'''
     def __init__(self, value: 'str'):
         '''Given a minispec literal as a string, return the
-        appropriate literal value.'''
+        appropriate literal value.'''  #TODO not sure if this method is used anywhere ...
         if value == "True" or value == "False":
             return BooleanLiteral(value)
         assert False, f"Unknown literal {value}"
@@ -385,6 +402,7 @@ class IntegerLiteral(MLiteral):
     def __init__(self, value: 'int'):
         assert value.__class__ == int
         self.value = value
+        self.mtype = Integer
     def __repr__(self):
         return "IntegerLiteral(" + str(self.value) + ")"
     def __str__(self):
@@ -447,6 +465,7 @@ class BitLiteral(MLiteral):
         assert value.__class__ == int
         self.n = n
         self.value = value % 2**n
+        self.mtype = Bit.getBit(IntegerLiteral(self.n))
     def __repr__(self):
         return "BitLiteral(" + str(self.n) + "," + str(self.value) + ")"
     def __str__(self):
@@ -503,6 +522,7 @@ class BooleanLiteral(MLiteral):
     '''value is a boolean'''
     def __init__(self, value: 'bool'):
         self.value = value
+        self.mtype = Bool
     def __repr__(self):
         return "BooleanLiteral(" + str(self.value) + ")"
     def __str__(self):
@@ -643,7 +663,7 @@ class Node:
     mtype is the minispec type of the value that the node corresponds to.
     id is a unique id number for each node created.'''
     id = 0  #one for each node created
-    def __init__(self, name: 'str' = "", mtype: 'MType' = Any()):
+    def __init__(self, name: 'str' = "", mtype: 'MType' = Any):
         self.name = name
         self.mtype = mtype
         self.id = Node.id
@@ -793,515 +813,520 @@ class Wire(Component):
         '''returns true if self and other represent the same hardware.'''
         return self.matchOrdered(other)
 
+
+builtinScope = BuiltInScope("built-ins", [])
+startingFile = Scope("startingFile", [builtinScope])
+
+class MinispecStructure:
+    def __init__(self):
+        '''will hold all created scopes. used for lookups.'''
+        self.allScopes = [builtinScope, startingFile]
+        self.currentScope = startingFile
+        self.currentComponent = None  # a function/module component. used during synthesis.
+        self.parameterBindings = {}
+        '''self.parameterBindings is a dictionary str -> int telling functions which parameters
+        have been bound. Should be set whenever calling a function.'''
+        self.lastParameterLookup = []
+        '''self.lastParameterLookup is a list consisting of the last integer values used to look up
+        a function call. Should be set whenever calling a function. Used to determine how to name
+        the function in the corresponding component.'''
+    def reset(self):
+        self.__init__()
+    def __setattr__(self, __name: str, __value: Any) -> None:
+        if __name == 'lastParameterLookup':
+            for j in __value:
+                print(j.__class__)
+            print(__value.__repr__())
+        self.__dict__[__name] = __value
+
+
+class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
+    def __init__(self, parsedCode: 'MinispecStructure') -> None:
+        self.globalsHandler = parsedCode
+
+    def enterPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
+        '''The entry node to the parse tree.'''
+
+    def enterFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
+        '''We are defining a function. We need to give this function a corresponding scope.'''
+        functionName = ctx.functionId().name.getText() # get the name of the function
+        params = []
+        if ctx.functionId().paramFormals():
+            for param in ctx.functionId().paramFormals().paramFormal():
+                # each parameter is either an integer or a name.
+                if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
+                    params.append(param.param())
+                elif param.intName:  # param is a variable name. extract the name.
+                    params.append(param.intName.getText())
+                else:
+                    assert False, "parameters with typeValues are not supported yet"
+        #log the function's scope
+        self.globalsHandler.currentScope.setPermanent(ctx, functionName, params)
+        functionScope = Scope(functionName, [self.globalsHandler.currentScope])
+        ctx.scope = functionScope
+        self.globalsHandler.currentScope = functionScope
+        self.globalsHandler.allScopes.append(functionScope)
+
+    def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
+        '''We have defined a function, so we step back into the parent scope.'''
+        assert len(self.globalsHandler.currentScope.parents) == 1, "function can only have parent scope"
+        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
+
+    def enterVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
+        '''We have found a named constant. Log it for later evaluation (since it may depend on other named constants, etc.)'''
+        for varInit in ctx.varInit():
+            if varInit.rhs:
+                self.globalsHandler.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
+
+
+'''
+Documentation for SynthesizerVisitor visit method return types:
+
+visitLowerCaseIdentifier: 
+visitUpperCaseIdentifier: 
+visitIdentifier: 
+visitAnyIdentifier: 
+visitArg: 
+visitArgs: 
+visitArgFormal: 
+visitArgFormals: 
+visitParam: 
+visitParams: 
+visitParamFormal: 
+visitParamFormals: 
+visitTypeName: 
+visitPackageDef: 
+visitPackageStmt: 
+visitImportDecl: 
+visitBsvImportDecl: 
+visitTypeDecl: 
+visitTypeDefSynonym: 
+visitTypeId: 
+visitTypeDefEnum: 
+visitTypeDefEnumElement: 
+visitTypeDefStruct: 
+visitStructMember: 
+visitVarBinding: 
+visitLetBinding: 
+visitVarInit: 
+visitModuleDef: 
+visitModuleId: 
+visitModuleStmt: 
+visitSubmoduleDecl: 
+visitInputDef: 
+visitMethodDef: 
+visitRuleDef: 
+visitFunctionDef: Returns the function hardware
+visitFunctionId: 
+visitVarAssign: 
+visitMemberLvalue: 
+visitIndexLvalue: 
+visitSimpleLvalue: 
+visitSliceLvalue: 
+visitOperatorExpr: Node or MLiteral corresponding to the value of the expression
+visitCondExpr: 
+visitCaseExpr: 
+visitCaseExprItem: 
+visitBinopExpr: Node or MLiteral corresponding to the value of the expression
+visitUnopExpr: Node or MLiteral corresponding to the value of the expression
+visitVarExpr: 
+visitBitConcat: 
+visitStringLiteral: 
+visitIntLiteral: Corresponding MLiteral
+visitReturnExpr: Nothing, mutates current function hardware
+visitStructExpr: 
+visitUndefinedExpr: Corresponding MLiteral
+visitSliceExpr: 
+visitCallExpr: Returns the output node of the function call or a literal (if the function gets constant-folded)
+    Note that constant-folding elimination of function components occurs here, not in functionDef, so that the function to synthesize is not eliminated.
+visitFieldExpr: 
+visitParenExpr: Node or MLiteral corresponding to the value of the expression
+visitMemberBinds: 
+visitMemberBind: 
+visitBeginEndBlock: 
+visitRegWrite: 
+visitStmt: No returns since stmt mutates existing hardware
+visitIfStmt: 
+visitCaseStmt: 
+visitCaseStmtItem: 
+visitCaseStmtDefaultItem: 
+visitForStmt: 
+
+
+'''
+
+def isMLiteral(value):
+    '''Returns whether or not value is an MLiteral'''
+    return issubclass(value.__class__, MLiteral)
+def isNodeOrMLiteral(value):
+    '''Returns whether or not value is a literal or a node.'''
+    return isMLiteral(value) or value.__class__ == Node
+
+class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
+    '''Each method returns a component (module/function/etc.)
+    nodes of type exprPrimary return the node corresponding to their value.
+    stmt do not return anything; they mutate the current scope and the current hardware.'''
+
+    def __init__(self, parsedCode: 'MinispecStructure') -> None:
+        self.globalsHandler = parsedCode
+    
+    def visitLowerCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LowerCaseIdentifierContext):
+        raise Exception("Not implemented")
+
+    def visitUpperCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UpperCaseIdentifierContext):
+        raise Exception("Not implemented")
+
+    def visitIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IdentifierContext):
+        raise Exception("Not implemented")
+
+    def visitAnyIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.AnyIdentifierContext):
+        raise Exception("Not implemented")
+
+    def visitArg(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgContext):
+        raise Exception("Not implemented")
+    
+    def visitArgs(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgsContext):
+        raise Exception("Not implemented")
+
+    def visitArgFormal(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgFormalContext):
+        raise Exception("Not implemented")
+
+    def visitArgFormals(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgFormalsContext):
+        raise Exception("Not implemented")
+
+    def visitParam(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamContext):
+        if ctx.intParam:
+            return self.visit(ctx.intParam)
+        assert False, "typeName lookups are not yet supported"
+
+    def visitParams(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamsContext):
+        raise Exception("Not implemented")
+
+    def visitParamFormal(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamFormalContext):
+        raise Exception("Not implemented")
+
+    def visitParamFormals(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamFormalsContext):
+        raise Exception("Not implemented")
+
+    def visitTypeName(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeNameContext):
+        params = []
+        if ctx.params():  #evaluate the type parameters, if any
+            for param in ctx.params().param():
+                params.append(self.visit(param))
+        typeName = ctx.name.getText()
+        typeObject = self.globalsHandler.currentScope.get(self, typeName, params)
+        assert typeObject != None, f"Failed to find type {typeName} with parameters {params}"
+        return typeObject
+
+    def visitPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
+        raise Exception("Not implemented")
+
+    def visitPackageStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageStmtContext):
+        raise Exception("Not implemented")
+
+    def visitImportDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ImportDeclContext):
+        raise Exception("Not implemented")
+
+    def visitBsvImportDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BsvImportDeclContext):
+        raise Exception("Not implemented")
+
+    def visitTypeDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDeclContext):
+        raise Exception("Not implemented")
+
+    def visitTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
+        raise Exception("Not implemented")
+
+    def visitTypeId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeIdContext):
+        raise Exception("Not implemented")
+
+    def visitTypeDefEnum(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumContext):
+        raise Exception("Not implemented")
+
+    def visitTypeDefEnumElement(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumElementContext):
+        raise Exception("Not implemented")
+
+    def visitTypeDefStruct(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext):
+        raise Exception("Not implemented")
+
+    def visitStructMember(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructMemberContext):
+        raise Exception("Not implemented")
+
+    def visitVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
+        raise Exception("Not implemented")
+
+    def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
+        '''A let binding declares a variable or a concatenation of variables and optionally assigns
+        them to the given expression node ("rhs").'''
+        if not ctx.rhs:
+            return  #if there is no assignment, we can skip this line
+        rhsNode = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
+        varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
+        self.globalsHandler.currentScope.set(rhsNode, varName)
+        # for now, we only handle the case of assigning a single variable (no concatenations).
+        # nothing to return.
+
+    def visitVarInit(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarInitContext):
+        raise Exception("Not implemented")
+
+    def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
+        raise Exception("Not implemented")
+
+    def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
+        raise Exception("Not implemented")
+
+    def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
+        raise Exception("Not implemented")
+
+    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext):
+        raise Exception("Not implemented")
+
+    def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
+        raise Exception("Not implemented")
+
+    def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
+        raise Exception("Not implemented")
+
+    def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
+        raise Exception("Not implemented")
+
+    def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
+        '''Synthesizes the corresponding function and returns the entire function hardware.
+        Gets any parameters from parsedCode.lastParameterLookup and
+        finds parameter bindings in bindings = parsedCode.parameterBindings'''
+        functionName = ctx.functionId().name.getText()
+        params = self.globalsHandler.lastParameterLookup
+        if len(params) > 0:  #attach parameters to the function name if present
+            functionName += "#(" + ",".join(str(i) for i in params) + ")"
+        functionScope = ctx.scope
+        functionScope.clearTemporaryValues # clear the temporary values
+        # log the current scope
+        previousScope = self.globalsHandler.currentScope
+        self.globalsHandler.currentScope = functionScope
+        #bind any parameters in the function scope
+        bindings = self.globalsHandler.parameterBindings
+        for var in bindings:  
+            val = bindings[var]
+            functionScope.set(val, var)
+        # extract arguments to function and set up the input nodes
+        inputNodes = []
+        for arg in ctx.argFormals().argFormal():
+            argType = self.visit(arg.typeName()) # typeName parse tree node
+            argName = arg.argName.getText() # name of the variable
+            argNode = Node(argName, argType)
+            functionScope.set(argNode, argName)
+            inputNodes.append(argNode)
+        funcComponent = Function(functionName, [], inputNodes)
+        # log the current component
+        previousComponent = self.globalsHandler.currentComponent
+        self.globalsHandler.currentComponent = funcComponent
+        # synthesize the function internals
+        for stmt in ctx.stmt():
+            self.visit(stmt)
+        self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
+        self.globalsHandler.currentScope = previousScope
+        return funcComponent
+
+    def visitFunctionId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionIdContext):
+        raise Exception("Not implemented")
+
+    def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
+        raise Exception("Not implemented")
+
+    def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
+        raise Exception("Not implemented")
+
+    def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
+        raise Exception("Not implemented")
+
+    def visitSimpleLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext):
+        raise Exception("Not implemented")
+
+    def visitSliceLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext):
+        raise Exception("Not implemented")
+
+    def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
+        '''This is an expression corresponding to a binary operation (which may be a unary operation,
+        which may be an exprPrimary). We return the Node or MLiteral with the corresponding output value.'''
+        value = self.visit(ctx.binopExpr())
+        assert isNodeOrMLiteral(value)
+        return value
+
+    def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
+        raise Exception("Not implemented")
+
+    def visitCaseExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprContext):
+        raise Exception("Not implemented")
+
+    def visitCaseExprItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprItemContext):
+        raise Exception("Not implemented")
+
+    def visitBinopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BinopExprContext):
+        if ctx.unopExpr():  # our binary expression is actually a unopExpr.
+            return self.visit(ctx.unopExpr())
+        #we are either manipulating nodes/wires or manipulating integers.
+        left = self.visit(ctx.left)
+        right = self.visit(ctx.right)
+        if left.__class__ == tuple: #we have received a pair (ctx, params) from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
+            left = self.visit(left[0])
+        if right.__class__ == tuple:
+            right = self.visit(right[0])
+        assert isNodeOrMLiteral(left), "left side must be literal or node"
+        assert isNodeOrMLiteral(right), "right side must be literal or node"
+        op = ctx.op.text
+        '''Combining literals'''
+        if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
+            return { '**': MLiteral.pow,
+            '*': MLiteral.mul,
+            '/': MLiteral.div,
+            '%': MLiteral.mod,
+            '+': MLiteral.add,
+            '-': MLiteral.sub,
+            '<<': MLiteral.sleft,
+            '>>': MLiteral.sright,
+            '<': MLiteral.lt,
+            '<=': MLiteral.le,
+            '>': MLiteral.gt,
+            '>=': MLiteral.ge,
+            '==': MLiteral.eq,
+            '!=': MLiteral.neq,
+            '&': MLiteral.bitand,
+            '^': MLiteral.bitxor,
+            '^~': MLiteral.bitxnor,
+            '~^': MLiteral.bitxnor,
+            '|': MLiteral.bitor,
+            '&&': MLiteral.booleanand,
+            '||': MLiteral.booleanor }[op](left, right)
+        # convert literals to hardware
+        if isMLiteral(left):
+            constantFunc = Function(str(left), [], [], Node(str(left), left.mtype))
+            self.globalsHandler.currentComponent.children.append(constantFunc)
+            left = constantFunc.output
+        if isMLiteral(right):
+            constantFunc = Function(str(right), [], [], Node(str(right), right.mtype))
+            self.globalsHandler.currentComponent.children.append(constantFunc)
+            right = constantFunc.output
+        # both left and right are nodes, so we combine them using function hardware and return the output node.
+        assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
+        binComponent = Function(op, [], [Node("l"), Node("r")])
+        leftWireIn = Wire(left, binComponent.inputs[0])
+        rightWireIn = Wire(right, binComponent.inputs[1])
+        for component in [binComponent, leftWireIn, rightWireIn]:
+            self.globalsHandler.currentComponent.children.append(component)
+        return binComponent.output
+
+        #assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
+
+    def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
+        if not ctx.op:  # our unopExpr is actually just an exprPrimary.
+            value = self.visit(ctx.exprPrimary())
+            if value.__class__ == tuple:
+                value = self.visit(value[0])
+            assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
+            return value
+        #return self.visitChildren(ctx)
+
+    def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
+        '''We are visiting a variable/function name. We look it up and return the correpsonding information
+        (which may be a Node or a ctx or a tuple (ctx/Node, paramMappings), for instance).'''
+        return self.globalsHandler.currentScope.get(self, ctx.var.getText())
+
+    def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
+        raise Exception("Not implemented")
+
+    def visitStringLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StringLiteralContext):
+        raise Exception("Not implemented")
+
+    def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
+        '''We have an integer literal, so we parse it and return it.'''
+        return IntegerLiteral(int(ctx.getText()))
+
+    def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
+        '''This is the return expression in a function. We need to put the correct wire
+        attaching the right hand side to the output of the function.'''
+        rhs = self.visit(ctx.expression())  # the node with the value to return
+        returnWire = Wire(rhs, self.globalsHandler.currentComponent.output)
+        self.globalsHandler.currentComponent.children.append(returnWire)
+
+    def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):
+        raise Exception("Not implemented")
+
+    def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
+        raise Exception("Not implemented")
+
+    def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
+        raise Exception("Not implemented")
+
+    def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
+        '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
+        and return the function output node (which corresponds to the value of the function).'''
+        # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
+        # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
+        functionToCall = ctx.fcn.var.getText()
+        params: 'list[int]' = []
+        if ctx.fcn.params():
+            for param in ctx.fcn.params().param():
+                value = self.visit(param) #visit the parameter and extract the corresponding expression, parsing it to an integer
+                #note that params may be either integers (which can be used as-is)
+                #   or variables (which need to be looked up) or expressions in integers (which need
+                #   to be evaluated and must evaluate to an integer).
+                assert value.__class__ == IntegerLiteral
+                params.append(value)
+        funcAndBinds = self.globalsHandler.currentScope.get(self, functionToCall, params)
+        functionDef = funcAndBinds[0]  # look up the function to call
+        bindings = funcAndBinds[1]
+        self.globalsHandler.parameterBindings = bindings
+        self.globalsHandler.lastParameterLookup = params
+        funcComponent = self.visit(functionDef)  #synthesize the function internals
+        # hook up the funcComponent to the arguments passed in.
+        for i in range(len(ctx.expression())):
+            expr = ctx.expression()[i]
+            exprNode = self.visit(expr) # visit the expression and get the corresponding node
+            funcInputNode = funcComponent.inputs[i]
+            wireIn = Wire(exprNode, funcInputNode)
+            self.globalsHandler.currentComponent.children.append(wireIn)
+        self.globalsHandler.currentComponent.children.append(funcComponent)
+        return funcComponent.output  # return the value of this call, which is the output of the function
+
+    def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
+        raise Exception("Not implemented")
+
+    def visitParenExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParenExprContext):
+        return self.visit(ctx.expression())
+
+    def visitMemberBinds(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberBindsContext):
+        raise Exception("Not implemented")
+
+    def visitMemberBind(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberBindContext):
+        raise Exception("Not implemented")
+
+    def visitBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
+        raise Exception("Not implemented")
+
+    def visitRegWrite(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RegWriteContext):
+        raise Exception("Not implemented")
+
+    def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
+        #TODO figure out why we are visiting stmt and adjust as appropriate
+        return self.visitChildren(ctx)
+
+    def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
+        raise Exception("Not implemented")
+
+    def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):
+        raise Exception("Not implemented")
+
+    def visitCaseStmtItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtItemContext):
+        raise Exception("Not implemented")
+
+    def visitCaseStmtDefaultItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext):
+        raise Exception("Not implemented")
+
+    def visitForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
+        raise Exception("Not implemented")
+
 def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     if topLevelParameters == None:
         topLevelParameters = []
-
-    builtinScope = BuiltInScope("built-ins", [])
-    startingFile = Scope("startingFile", [builtinScope])
-
-    class MinispecStructure:
-        def __init__(self):
-            '''will hold all created scopes. used for lookups.'''
-            self.allScopes = [builtinScope, startingFile]
-            self.currentScope = startingFile
-            self.currentComponent = None  # a function/module component. used during synthesis.
-            self.parameterBindings = {}
-            '''self.parameterBindings is a dictionary str -> int telling functions which parameters
-            have been bound. Should be set whenever calling a function.'''
-            self.lastParameterLookup = []
-            '''self.lastParameterLookup is a list consisting of the last integer values used to look up
-            a function call. Should be set whenever calling a function. Used to determine how to name
-            the function in the corresponding component.'''
-        def reset(self):
-            self.__init__()
-        def __setattr__(self, __name: str, __value: Any) -> None:
-            if __name == 'lastParameterLookup':
-                for j in __value:
-                    print(j.__class__)
-                print(__value.__repr__())
-            self.__dict__[__name] = __value
-
-
-    parsedCode = MinispecStructure()
-
-    class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
-        def enterPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
-            '''The entry node to the parse tree.'''
-
-        def enterFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
-            '''We are defining a function. We need to give this function a corresponding scope.'''
-            functionName = ctx.functionId().name.getText() # get the name of the function
-            params = []
-            if ctx.functionId().paramFormals():
-                for param in ctx.functionId().paramFormals().paramFormal():
-                    # each parameter is either an integer or a name.
-                    if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
-                        params.append(param.param())
-                    elif param.intName:  # param is a variable name. extract the name.
-                        params.append(param.intName.getText())
-                    else:
-                        assert False, "parameters with typeValues are not supported yet"
-            #log the function's scope
-            parsedCode.currentScope.setPermanent(ctx, functionName, params)
-            functionScope = Scope(functionName, [parsedCode.currentScope])
-            ctx.scope = functionScope
-            parsedCode.currentScope = functionScope
-            parsedCode.allScopes.append(functionScope)
-
-        def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
-            '''We have defined a function, so we step back into the parent scope.'''
-            assert len(parsedCode.currentScope.parents) == 1, "function can only have parent scope"
-            parsedCode.currentScope = parsedCode.currentScope.parents[0]
-
-        def enterVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
-            '''We have found a named constant. Log it for later evaluation (since it may depend on other named constants, etc.)'''
-            for varInit in ctx.varInit():
-                if varInit.rhs:
-                    parsedCode.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
-
-
-    '''
-    Documentation for SynthesizerVisitor visit method return types:
-
-    visitLowerCaseIdentifier: 
-    visitUpperCaseIdentifier: 
-    visitIdentifier: 
-    visitAnyIdentifier: 
-    visitArg: 
-    visitArgs: 
-    visitArgFormal: 
-    visitArgFormals: 
-    visitParam: 
-    visitParams: 
-    visitParamFormal: 
-    visitParamFormals: 
-    visitTypeName: 
-    visitPackageDef: 
-    visitPackageStmt: 
-    visitImportDecl: 
-    visitBsvImportDecl: 
-    visitTypeDecl: 
-    visitTypeDefSynonym: 
-    visitTypeId: 
-    visitTypeDefEnum: 
-    visitTypeDefEnumElement: 
-    visitTypeDefStruct: 
-    visitStructMember: 
-    visitVarBinding: 
-    visitLetBinding: 
-    visitVarInit: 
-    visitModuleDef: 
-    visitModuleId: 
-    visitModuleStmt: 
-    visitSubmoduleDecl: 
-    visitInputDef: 
-    visitMethodDef: 
-    visitRuleDef: 
-    visitFunctionDef: Returns the function hardware
-    visitFunctionId: 
-    visitVarAssign: 
-    visitMemberLvalue: 
-    visitIndexLvalue: 
-    visitSimpleLvalue: 
-    visitSliceLvalue: 
-    visitOperatorExpr: Node or MLiteral corresponding to the value of the expression
-    visitCondExpr: 
-    visitCaseExpr: 
-    visitCaseExprItem: 
-    visitBinopExpr: Node or MLiteral corresponding to the value of the expression
-    visitUnopExpr: Node or MLiteral corresponding to the value of the expression
-    visitVarExpr: 
-    visitBitConcat: 
-    visitStringLiteral: 
-    visitIntLiteral: Corresponding MLiteral
-    visitReturnExpr: Nothing, mutates current function hardware
-    visitStructExpr: 
-    visitUndefinedExpr: Corresponding MLiteral
-    visitSliceExpr: 
-    visitCallExpr: Returns the output node of the function call or a literal (if the function gets constant-folded)
-        Note that constant-folding elimination of function components occurs here, not in functionDef, so that the function to synthesize is not eliminated.
-    visitFieldExpr: 
-    visitParenExpr: Node or MLiteral corresponding to the value of the expression
-    visitMemberBinds: 
-    visitMemberBind: 
-    visitBeginEndBlock: 
-    visitRegWrite: 
-    visitStmt: No returns since stmt mutates existing hardware
-    visitIfStmt: 
-    visitCaseStmt: 
-    visitCaseStmtItem: 
-    visitCaseStmtDefaultItem: 
-    visitForStmt: 
-    
-    
-    '''
-
-    def isMLiteral(value):
-        '''Returns whether or not value is an MLiteral'''
-        return issubclass(value.__class__, MLiteral)
-    def isNodeOrMLiteral(value):
-        '''Returns whether or not value is a literal or a node.'''
-        return isMLiteral(value) or value.__class__ == Node
-
-    class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
-        '''Each method returns a component (module/function/etc.)
-        nodes of type exprPrimary return the node corresponding to their value.
-        stmt do not return anything; they mutate the current scope and the current hardware.'''
-        
-        def visitLowerCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LowerCaseIdentifierContext):
-            raise Exception("Not implemented")
-
-        def visitUpperCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UpperCaseIdentifierContext):
-            raise Exception("Not implemented")
-
-        def visitIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IdentifierContext):
-            raise Exception("Not implemented")
-
-        def visitAnyIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.AnyIdentifierContext):
-            raise Exception("Not implemented")
-
-        def visitArg(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgContext):
-            raise Exception("Not implemented")
-        
-        def visitArgs(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgsContext):
-            raise Exception("Not implemented")
-
-        def visitArgFormal(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgFormalContext):
-            raise Exception("Not implemented")
-
-        def visitArgFormals(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgFormalsContext):
-            raise Exception("Not implemented")
-
-        def visitParam(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamContext):
-            if ctx.intParam:
-                return self.visit(ctx.intParam)
-            assert False, "typeName lookups are not yet supported"
-
-        def visitParams(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamsContext):
-            raise Exception("Not implemented")
-
-        def visitParamFormal(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamFormalContext):
-            raise Exception("Not implemented")
-
-        def visitParamFormals(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamFormalsContext):
-            raise Exception("Not implemented")
-
-        def visitTypeName(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeNameContext):
-            params = []
-            if ctx.params():  #evaluate the type parameters, if any
-                for param in ctx.params().param():
-                    params.append(self.visit(param))
-            typeName = ctx.name.getText()
-            typeObject = parsedCode.currentScope.get(self, typeName, params)
-            assert typeObject != None, f"Failed to find type {typeName} with parameters {params}"
-            return typeObject
-
-        def visitPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
-            raise Exception("Not implemented")
-
-        def visitPackageStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageStmtContext):
-            raise Exception("Not implemented")
-
-        def visitImportDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ImportDeclContext):
-            raise Exception("Not implemented")
-
-        def visitBsvImportDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BsvImportDeclContext):
-            raise Exception("Not implemented")
-
-        def visitTypeDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDeclContext):
-            raise Exception("Not implemented")
-
-        def visitTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
-            raise Exception("Not implemented")
-
-        def visitTypeId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeIdContext):
-            raise Exception("Not implemented")
-
-        def visitTypeDefEnum(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumContext):
-            raise Exception("Not implemented")
-
-        def visitTypeDefEnumElement(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumElementContext):
-            raise Exception("Not implemented")
-
-        def visitTypeDefStruct(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext):
-            raise Exception("Not implemented")
-
-        def visitStructMember(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructMemberContext):
-            raise Exception("Not implemented")
-
-        def visitVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
-            raise Exception("Not implemented")
-
-        def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
-            '''A let binding declares a variable or a concatenation of variables and optionally assigns
-            them to the given expression node ("rhs").'''
-            if not ctx.rhs:
-                return  #if there is no assignment, we can skip this line
-            rhsNode = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
-            varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-            parsedCode.currentScope.set(rhsNode, varName)
-            # for now, we only handle the case of assigning a single variable (no concatenations).
-            # nothing to return.
-
-        def visitVarInit(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarInitContext):
-            raise Exception("Not implemented")
-
-        def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
-            raise Exception("Not implemented")
-
-        def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
-            raise Exception("Not implemented")
-
-        def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
-            raise Exception("Not implemented")
-
-        def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext):
-            raise Exception("Not implemented")
-
-        def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
-            raise Exception("Not implemented")
-
-        def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
-            raise Exception("Not implemented")
-
-        def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
-            raise Exception("Not implemented")
-
-        def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
-            '''Synthesizes the corresponding function and returns the entire function hardware.
-            Gets any parameters from parsedCode.lastParameterLookup and
-            finds parameter bindings in bindings = parsedCode.parameterBindings'''
-            functionName = ctx.functionId().name.getText()
-            params = parsedCode.lastParameterLookup
-            if len(params) > 0:  #attach parameters to the function name if present
-                functionName += "#(" + ",".join(str(i) for i in params) + ")"
-            functionScope = ctx.scope
-            functionScope.clearTemporaryValues # clear the temporary values
-            # log the current scope
-            previousScope = parsedCode.currentScope
-            parsedCode.currentScope = functionScope
-            #bind any parameters in the function scope
-            bindings = parsedCode.parameterBindings
-            for var in bindings:  
-                val = bindings[var]
-                functionScope.set(val, var)
-            # extract arguments to function and set up the input nodes
-            inputNodes = []
-            for arg in ctx.argFormals().argFormal():
-                argType = self.visit(arg.typeName()) # typeName parse tree node
-                argName = arg.argName.getText() # name of the variable
-                argNode = Node(argName, argType)
-                functionScope.set(argNode, argName)
-                inputNodes.append(argNode)
-            funcComponent = Function(functionName, [], inputNodes)
-            # log the current component
-            previousComponent = parsedCode.currentComponent
-            parsedCode.currentComponent = funcComponent
-            # synthesize the function internals
-            for stmt in ctx.stmt():
-                self.visit(stmt)
-            parsedCode.currentComponent = previousComponent #reset the current component/scope
-            parsedCode.currentScope = previousScope
-            return funcComponent
-
-        def visitFunctionId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionIdContext):
-            raise Exception("Not implemented")
-
-        def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
-            raise Exception("Not implemented")
-
-        def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
-            raise Exception("Not implemented")
-
-        def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
-            raise Exception("Not implemented")
-
-        def visitSimpleLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext):
-            raise Exception("Not implemented")
-
-        def visitSliceLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext):
-            raise Exception("Not implemented")
-
-        def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
-            '''This is an expression corresponding to a binary operation (which may be a unary operation,
-            which may be an exprPrimary). We return the Node or MLiteral with the corresponding output value.'''
-            value = self.visit(ctx.binopExpr())
-            assert isNodeOrMLiteral(value)
-            return value
-
-        def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
-            raise Exception("Not implemented")
-
-        def visitCaseExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprContext):
-            raise Exception("Not implemented")
-
-        def visitCaseExprItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprItemContext):
-            raise Exception("Not implemented")
-
-        def visitBinopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BinopExprContext):
-            if ctx.unopExpr():  # our binary expression is actually a unopExpr.
-                return self.visit(ctx.unopExpr())
-            #we are either manipulating nodes/wires or manipulating integers.
-            left = self.visit(ctx.left)
-            right = self.visit(ctx.right)
-            if left.__class__ == tuple: #we have received a pair (ctx, params) from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
-                left = self.visit(left[0])
-            if right.__class__ == tuple:
-                right = self.visit(right[0])
-            assert isNodeOrMLiteral(left), "left side must be literal or node"
-            assert isNodeOrMLiteral(right), "right side must be literal or node"
-            op = ctx.op.text
-            '''Combining literals'''
-            if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
-                return { '**': MLiteral.pow,
-                '*': MLiteral.mul,
-                '/': MLiteral.div,
-                '%': MLiteral.mod,
-                '+': MLiteral.add,
-                '-': MLiteral.sub,
-                '<<': MLiteral.sleft,
-                '>>': MLiteral.sright,
-                '<': MLiteral.lt,
-                '<=': MLiteral.le,
-                '>': MLiteral.gt,
-                '>=': MLiteral.ge,
-                '==': MLiteral.eq,
-                '!=': MLiteral.neq,
-                '&': MLiteral.bitand,
-                '^': MLiteral.bitxor,
-                '^~': MLiteral.bitxnor,
-                '~^': MLiteral.bitxnor,
-                '|': MLiteral.bitor,
-                '&&': MLiteral.booleanand,
-                '||': MLiteral.booleanor }[op](left, right)
-            # convert literals to hardware
-            if isMLiteral(left):
-                constantFunc = Function(str(left), [], [], Node())
-                parsedCode.currentComponent.children.append(constantFunc)
-                left = constantFunc.output
-            if isMLiteral(right):
-                constantFunc = Function(str(right), [], [], Node())
-                parsedCode.currentComponent.children.append(constantFunc)
-                right = constantFunc.output
-            # both left and right are nodes, so we combine them using function hardware and return the output node.
-            assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
-            binComponent = Function(op, [], [Node("l"), Node("r")])
-            leftWireIn = Wire(left, binComponent.inputs[0])
-            rightWireIn = Wire(right, binComponent.inputs[1])
-            for component in [binComponent, leftWireIn, rightWireIn]:
-                parsedCode.currentComponent.children.append(component)
-            return binComponent.output
-
-            #assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
-
-        def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
-            if not ctx.op:  # our unopExpr is actually just an exprPrimary.
-                value = self.visit(ctx.exprPrimary())
-                if value.__class__ == tuple:
-                    value = self.visit(value[0])
-                assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
-                return value
-            #return self.visitChildren(ctx)
-
-        def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
-            '''We are visiting a variable/function name. We look it up and return the correpsonding information
-            (which may be a Node or a ctx or a tuple (ctx/Node, paramMappings), for instance).'''
-            return parsedCode.currentScope.get(self, ctx.var.getText())
-
-        def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
-            raise Exception("Not implemented")
-
-        def visitStringLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StringLiteralContext):
-            raise Exception("Not implemented")
-
-        def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
-            '''We have an integer literal, so we parse it and return it.'''
-            return IntegerLiteral(int(ctx.getText()))
-
-        def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
-            '''This is the return expression in a function. We need to put the correct wire
-            attaching the right hand side to the output of the function.'''
-            rhs = self.visit(ctx.expression())  # the node with the value to return
-            returnWire = Wire(rhs, parsedCode.currentComponent.output)
-            parsedCode.currentComponent.children.append(returnWire)
-
-        def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):
-            raise Exception("Not implemented")
-
-        def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
-            raise Exception("Not implemented")
-
-        def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
-            raise Exception("Not implemented")
-
-        def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
-            '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
-            and return the function output node (which corresponds to the value of the function).'''
-            # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
-            # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
-            functionToCall = ctx.fcn.var.getText()
-            params: 'list[int]' = []
-            if ctx.fcn.params():
-                for param in ctx.fcn.params().param():
-                    value = self.visit(param) #visit the parameter and extract the corresponding expression, parsing it to an integer
-                    #note that params may be either integers (which can be used as-is)
-                    #   or variables (which need to be looked up) or expressions in integers (which need
-                    #   to be evaluated and must evaluate to an integer).
-                    assert value.__class__ == IntegerLiteral
-                    params.append(value)
-            funcAndBinds = parsedCode.currentScope.get(self, functionToCall, params)
-            functionDef = funcAndBinds[0]  # look up the function to call
-            bindings = funcAndBinds[1]
-            parsedCode.parameterBindings = bindings
-            parsedCode.lastParameterLookup = params
-            funcComponent = self.visit(functionDef)  #synthesize the function internals
-            # hook up the funcComponent to the arguments passed in.
-            for i in range(len(ctx.expression())):
-                expr = ctx.expression()[i]
-                exprNode = self.visit(expr) # visit the expression and get the corresponding node
-                funcInputNode = funcComponent.inputs[i]
-                wireIn = Wire(exprNode, funcInputNode)
-                parsedCode.currentComponent.children.append(wireIn)
-            parsedCode.currentComponent.children.append(funcComponent)
-            return funcComponent.output  # return the value of this call, which is the output of the function
-
-        def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
-            raise Exception("Not implemented")
-
-        def visitParenExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParenExprContext):
-            return self.visit(ctx.expression())
-
-        def visitMemberBinds(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberBindsContext):
-            raise Exception("Not implemented")
-
-        def visitMemberBind(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberBindContext):
-            raise Exception("Not implemented")
-
-        def visitBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
-            raise Exception("Not implemented")
-
-        def visitRegWrite(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RegWriteContext):
-            raise Exception("Not implemented")
-
-        def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
-            #TODO figure out why we are visiting stmt and adjust as appropriate
-            return self.visitChildren(ctx)
-
-        def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
-            raise Exception("Not implemented")
-
-        def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):
-            raise Exception("Not implemented")
-
-        def visitCaseStmtItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtItemContext):
-            raise Exception("Not implemented")
-
-        def visitCaseStmtDefaultItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext):
-            raise Exception("Not implemented")
-
-        def visitForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
-            raise Exception("Not implemented")
 
     data = antlr4.InputStream(text)
     lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
@@ -1310,14 +1335,16 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     tree = parser.packageDef()  #start parsing at the top-level packageDef rule (so "tree" is the root of the parse tree)
     #print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
 
+    parsedCode = MinispecStructure()
+
     walker = build.MinispecPythonListener.ParseTreeWalker()
-    listener = StaticTypeListener()
+    listener = StaticTypeListener(parsedCode)
     walker.walk(listener, tree)  # walk the listener through the tree
 
     # for scope in parsedCode.allScopes:
     #     print(scope)
 
-    synthesizer = SynthesizerVisitor()
+    synthesizer = SynthesizerVisitor(parsedCode)
 
     topLevelParameters = [IntegerLiteral(i) for i in topLevelParameters]
     ctxToSynth = startingFile.get(synthesizer, topLevel, topLevelParameters)
