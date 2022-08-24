@@ -330,6 +330,21 @@ Names for methods in code:
 && is booleanand.
 || is booleanor.
 
+Unary operators:
+'!' | '~' | '&' | '~&' | '|' | '~|' | '^' | '^~' | '~^' | '+' | '-'
+Names for methods in code:
+'!' is not.
+'~' is inv.
+'&' is redand.
+'~&' is #TODO
+'|' is redor.
+'~|' is #TODO
+'^' is redxor
+'^~' is #TODO
+'~^' is #TODO
+'+' is unaryadd
+'-' is neg
+
 '''
 
 class MLiteral():
@@ -352,6 +367,7 @@ class MLiteral():
     def coerceBoolean(first, second):
         assert first.__class__ == BooleanLiteral and second.__class__ == BooleanLiteral, "Boolean arithmetic requires boolean values"
         return first, second
+    '''binary operations'''
     def pow(first, second):
         raise Exception("Not implemented")
     def mul(first, second):
@@ -399,6 +415,9 @@ class MLiteral():
     def booleanor(first, second):
         first, second = MLiteral.coerceBoolean(first, second)
         return first.booleanand(second)
+    '''unary operations'''
+    def neg(first):
+        return first.neg()
 
 class IntegerLiteral(MLiteral):
     '''self.value is an integer'''
@@ -417,9 +436,10 @@ class IntegerLiteral(MLiteral):
         return self.value == other.value
     def __hash__(self):
         return hash(self.value)
-    def toInt(self):
+    def toInt(self) -> int:
         '''Returns the python integer represented by self'''
         return self.value
+    '''binary operations'''
     def pow(self, other):
         return IntegerLiteral(self.value ** other.value)
     def mul(self, other):
@@ -460,10 +480,14 @@ class IntegerLiteral(MLiteral):
         raise Exception("Not implemented")
     def booleanor(self, other):
         raise Exception("Not implemented")
+    '''unary operations'''
+    def neg(self):
+        return IntegerLiteral(-self.value)
 
 class BitLiteral(MLiteral):
     '''n is the number of bits. value is an integer 0 <= value < 2**n.'''
     def __init__(self, n: 'int', value: 'int'):
+        '''n is the number of bits. value is any integer.'''
         assert n.__class__ == int
         assert value.__class__ == int
         self.n = n
@@ -478,8 +502,10 @@ class BitLiteral(MLiteral):
             output = output + (val % 2)
             val /= 2
         return str(self.n) + "'b" + output
-    def fromIntegerLiteral(self, i):
+    def fromIntegerLiteral(self, i: 'IntegerLiteral'):
+        assert -(2**(self.n-1)) <= i.toInt() < 2**self.n, "Bluespec requires Bit#(n) literals to be in range -2**(n-1),...,2**n-1."
         return BitLiteral(self.n, i.toInt())
+    '''binary operations'''
     def pow(self, other):
         raise Exception("Not implemented")
     def mul(self, other):
@@ -520,6 +546,9 @@ class BitLiteral(MLiteral):
         raise Exception("Not implemented")
     def booleanor(self, other):
         raise Exception("Not implemented")
+    '''unary operations'''
+    def neg(self):
+        return BitLiteral(self.n, -self.value)
 
 class BooleanLiteral(MLiteral):
     '''value is a boolean'''
@@ -723,9 +752,8 @@ class Function(Component):
         self.children = children
         self.inputs = inputs
         if output == None:
-            self.output = Node('_' + name + '_output')
-        else:
-            self.output = output
+            output = Node('_' + self.name + '_output')
+        self.output = output
     def __repr__(self):
         return "Function(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.output.__repr__() + ")"
     def __str__(self):
@@ -792,6 +820,60 @@ class Function(Component):
             return False
         return self.matchStep(other, 0)
 
+class Mux(Component):
+    def __init__(self, inputs: 'list[Node]', control: 'None'=None, output: 'Node'=None):
+        self.name = "mux"
+        self.inputs = inputs
+        if control == None:
+            control = Node('_' + self.name + '_control')
+        self.control = control
+        if output == None:
+            output = Node('_' + self.name + '_output')
+        self.output = output
+    def __repr__(self):
+        return "Function(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.output.__repr__() + ")"
+    def __str__(self):
+        if (len(self.children) == 0):
+            return "Function " + self.name
+        return "Function " + self.name + " with children " + " | ".join(str(x) for x in self.children)
+    def getNodeListRecursive(self):
+        '''returns a set of all nodes in self'''
+        nodes = self.inputs.copy()
+        nodes.append(self.output)
+        nodes.append(self.control)
+        return nodes
+    def matchStructure(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
+        if self.__class__ != other.__class__:
+            return False
+        if self.name != other.name:
+            return False
+        if len(self.inputs) != len(other.inputs):
+            return False
+        return True
+    def matchOrdered(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
+        if not self.matchStructure(other):
+            return False
+        selfnodes = self.getNodeListRecursive()
+        othernodes = other.getNodeListRecursive()
+        if len(selfnodes) != len(othernodes):
+            return False
+        for i in range(len(selfnodes)):
+            for j in range(i):
+                if selfnodes[i] is selfnodes[j] and othernodes[i] is not othernodes[j]:
+                    return False
+                if selfnodes[i] is not selfnodes[j] and othernodes[i] is othernodes[j]:
+                    return False
+        return True
+    def match(self, other):
+        '''returns true if self and other represent the same hardware.
+        mutates other to have matching order in children lists.'''
+        if self.__class__ != other.__class__:
+            return False
+        if self.name != other.name:
+            return False
+        return True
 
 class Wire(Component):
     ''' src and dst are Nodes.'''
@@ -1151,7 +1233,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''This is an expression corresponding to a binary operation (which may be a unary operation,
         which may be an exprPrimary). We return the Node or MLiteral with the corresponding output value.'''
         value = self.visit(ctx.binopExpr())
-        assert isNodeOrMLiteral(value)
+        assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
         return value
 
     def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
@@ -1226,7 +1308,20 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value = self.visit(value)
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
             return value
-        #return self.visitChildren(ctx)
+        value = self.visit(ctx.exprPrimary())
+        if not isNodeOrMLiteral(value):
+            value = self.visit(value)
+        assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
+        op = ctx.op.text
+        if isMLiteral(value):
+            #TODO fill out dict
+            return {'-': MLiteral.neg}[op](value)
+        assert value.__class__ == Node, "value should be hardware"
+        unopComponenet = Function(op, [], [Node("v")])
+        wireIn = Wire(value, unopComponenet.inputs[0])
+        for component in [unopComponenet, wireIn]:
+            self.globalsHandler.currentComponent.children.append(component)
+        return unopComponenet.output
 
     def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
         '''We are visiting a variable/function name. We look it up and return the correpsonding information

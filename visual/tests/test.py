@@ -122,6 +122,36 @@ def _():
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
+describe('Literal Arithmetic')
+
+@it('''Correctly folds constants''')
+def _():
+    text = pull('literals1')
+    output = parseAndSynth(text, 'f')
+    fa, fo, ga, go = Node('fa'), Node('fo'), Node('ga'), Node('go')
+    xor1, xor2, xoro = Node('xor1'), Node('xor2'), Node('xoro')
+    mulf1, mulf2, mulfo = Node('mulf1'), Node('mulf2'), Node('mulfo')
+    mulg1, mulg2, mulgo = Node('mulg1'), Node('mul2'), Node('mulo')
+    add1, add2, addo = Node('add1'), Node('add2'), Node('addo')
+    eq1, eq2, eqo = Node('eq1'), Node('eq2'), Node('eqo')
+    five, six, seven, thirteen = Function('5', [], []), Function('6', [], []), Function('7', [], []), Function('13', [], [])
+    mulg = Function('*', [], [mulg1, mulg2], mulgo)
+    add = Function('+', [], [add1, add2], addo)
+    g = Function('g#(15)', [add, mulg, six, thirteen, Wire(ga, mulg1), Wire(six.output, mulg2), Wire(mulgo, add2), Wire(thirteen.output, add1), Wire(addo, go)], [ga], go)
+    xor = Function('^', [], [xor1, xor2], xoro)
+    eq = Function('==', [], [eq1, eq2], eqo)
+    mulf = Function('*', [], [mulf1, mulf2], mulfo)
+    f = Function('f', [xor, eq, g, mulf, five, seven, Wire(fa, mulf1), Wire(five.output, mulf2), Wire(mulfo, xor1), Wire(fa, ga), Wire(go, xor2), Wire(xoro, eq1), Wire(seven.output, eq2), Wire(eqo, fo)], [fa], fo)
+    
+    output = parseAndSynth(text, 'g', [15])
+    expected = g
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+    output = parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
 #run all the tests
 import time
 import sys
