@@ -170,7 +170,7 @@ class Scope:
             elif visitor.visit(storedParams[i]) != intValues[i]:
                 return None
         return d
-    def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node|tuple[ctxType,dict]':
+    def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node':
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
         probably a ctx object (functionDef) or a node object (variable value).
@@ -186,7 +186,8 @@ class Scope:
             for storedParams, ctx in self.permanentValues[varName][::-1]: #iterate backwards through the stored values, looking for the most recent match.
                 d = Scope.matchParams(visitor, parameters, storedParams)
                 if d != None:
-                    return (ctx, d)
+                    self.globalsHandler.parameterBindings = d
+                    return ctx
         for parent in self.parents:
             output = parent.get(visitor, varName, parameters)
             if output != None:
@@ -224,7 +225,7 @@ class BuiltInScope(Scope):
         self.name = name
         self.permanentValues = {}
         self.temporaryValues = {}
-    def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node|tuple[ctxType,dict]':
+    def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node':
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
         probably a ctx object (functionDef) or a node object (variable value).
@@ -1168,10 +1169,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         #we are either manipulating nodes/wires or manipulating integers.
         left = self.visit(ctx.left)
         right = self.visit(ctx.right)
-        if left.__class__ == tuple: #we have received a pair (ctx, params) from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
-            left = self.visit(left[0])
-        if right.__class__ == tuple:
-            right = self.visit(right[0])
+        if not isNodeOrMLiteral(left): #we have received a ctx from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
+            left = self.visit(left)
+        if not isNodeOrMLiteral(right):
+            right = self.visit(right)
         assert isNodeOrMLiteral(left), "left side must be literal or node"
         assert isNodeOrMLiteral(right), "right side must be literal or node"
         op = ctx.op.text
@@ -1221,8 +1222,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
         if not ctx.op:  # our unopExpr is actually just an exprPrimary.
             value = self.visit(ctx.exprPrimary())
-            if value.__class__ == tuple:
-                value = self.visit(value[0])
+            if not isNodeOrMLiteral(value):
+                value = self.visit(value)
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
             return value
         #return self.visitChildren(ctx)
@@ -1273,10 +1274,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #   to be evaluated and must evaluate to an integer).
                 assert value.__class__ == IntegerLiteral
                 params.append(value)
-        funcAndBinds = self.collectedScopes.currentScope.get(self, functionToCall, params)
-        functionDef = funcAndBinds[0]  # look up the function to call
-        bindings = funcAndBinds[1]
-        self.globalsHandler.parameterBindings = bindings
+        functionDef = self.collectedScopes.currentScope.get(self, functionToCall, params)
         self.globalsHandler.lastParameterLookup = params
         funcComponent = self.visit(functionDef)  #synthesize the function internals
         # hook up the funcComponent to the arguments passed in.
@@ -1357,12 +1355,9 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     ctxToSynth = startingFile.get(synthesizer, topLevel, topLevelParameters)
     assert ctxToSynth != None, "Failed to find topLevel function/module"
     # log parameters in the appropriate global
-    functionDef = ctxToSynth[0]  # look up the function to call
-    bindings = ctxToSynth[1]
-    globalsHandler.parameterBindings = bindings
     globalsHandler.lastParameterLookup = topLevelParameters
 
-    output = synthesizer.visit(functionDef) #look up the function in the given file and synthesize it. store the result in 'output'
+    output = synthesizer.visit(ctxToSynth) #look up the function in the given file and synthesize it. store the result in 'output'
     
     # for scope in collectedScopes.allScopes:
     #     print(scope)
