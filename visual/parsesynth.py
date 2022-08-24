@@ -136,7 +136,8 @@ class Scope:
         variable names map to nodes with the correct value.
     permanentValues are for static information, while temporaryValues are for information during synthesis.
     '''
-    def __init__(self, name: 'str', parents: 'list[Scope]'):
+    def __init__(self, globalsHandler: 'GlobalsHandler', name: 'str', parents: 'list[Scope]'):
+        self.globalsHandler = globalsHandler
         self.parents = parents.copy()
         self.name = name
         self.permanentValues = {}
@@ -217,7 +218,8 @@ class Scope:
 
 class BuiltInScope(Scope):
     '''The minispec built-ins. Behaves slightly differently from other scopes.'''
-    def __init__(self, name: 'str', parents: 'list[Scope]'):
+    def __init__(self, globalsHandler: 'GlobalsHandler', name: 'str', parents: 'list[Scope]'):
+        self.globalsHandler = globalsHandler
         self.parents = parents.copy()
         self.name = name
         self.permanentValues = {}
@@ -813,15 +815,8 @@ class Wire(Component):
         '''returns true if self and other represent the same hardware.'''
         return self.matchOrdered(other)
 
-
-builtinScope = BuiltInScope("built-ins", [])
-startingFile = Scope("startingFile", [builtinScope])
-
-class MinispecStructure:
+class GlobalsHandler:
     def __init__(self):
-        '''will hold all created scopes. used for lookups.'''
-        self.allScopes = [builtinScope, startingFile]
-        self.currentScope = startingFile
         self.currentComponent = None  # a function/module component. used during synthesis.
         self.parameterBindings = {}
         '''self.parameterBindings is a dictionary str -> int telling functions which parameters
@@ -830,8 +825,13 @@ class MinispecStructure:
         '''self.lastParameterLookup is a list consisting of the last integer values used to look up
         a function call. Should be set whenever calling a function. Used to determine how to name
         the function in the corresponding component.'''
-    def reset(self):
-        self.__init__()
+    
+
+class MinispecStructure:
+    def __init__(self, builtinScope: 'BuiltInScope', startingFile: 'Scope'):
+        '''will hold all created scopes. used for lookups.'''
+        self.allScopes = [builtinScope, startingFile]
+        self.currentScope = startingFile
     def __setattr__(self, __name: str, __value: Any) -> None:
         if __name == 'lastParameterLookup':
             for j in __value:
@@ -841,8 +841,9 @@ class MinispecStructure:
 
 
 class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
-    def __init__(self, parsedCode: 'MinispecStructure') -> None:
-        self.globalsHandler = parsedCode
+    def __init__(self, globalsHandler: 'GlobalsHandler', collectedScopes: 'MinispecStructure') -> None:
+        self.globalsHandler = globalsHandler
+        self.collectedScopes = collectedScopes
 
     def enterPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
         '''The entry node to the parse tree.'''
@@ -861,22 +862,22 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
                 else:
                     assert False, "parameters with typeValues are not supported yet"
         #log the function's scope
-        self.globalsHandler.currentScope.setPermanent(ctx, functionName, params)
-        functionScope = Scope(functionName, [self.globalsHandler.currentScope])
+        self.collectedScopes.currentScope.setPermanent(ctx, functionName, params)
+        functionScope = Scope(self.globalsHandler, functionName, [self.collectedScopes.currentScope])
         ctx.scope = functionScope
-        self.globalsHandler.currentScope = functionScope
-        self.globalsHandler.allScopes.append(functionScope)
+        self.collectedScopes.currentScope = functionScope
+        self.collectedScopes.allScopes.append(functionScope)
 
     def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''We have defined a function, so we step back into the parent scope.'''
-        assert len(self.globalsHandler.currentScope.parents) == 1, "function can only have parent scope"
-        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
+        assert len(self.collectedScopes.currentScope.parents) == 1, "function can only have parent scope"
+        self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
 
     def enterVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
         '''We have found a named constant. Log it for later evaluation (since it may depend on other named constants, etc.)'''
         for varInit in ctx.varInit():
             if varInit.rhs:
-                self.globalsHandler.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
+                self.collectedScopes.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
 
 
 '''
@@ -967,8 +968,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     nodes of type exprPrimary return the node corresponding to their value.
     stmt do not return anything; they mutate the current scope and the current hardware.'''
 
-    def __init__(self, parsedCode: 'MinispecStructure') -> None:
-        self.globalsHandler = parsedCode
+    def __init__(self, globalsHandler: 'GlobalsHandler', collectedScopes: 'MinispecStructure') -> None:
+        self.globalsHandler = globalsHandler
+        self.collectedScopes = collectedScopes
     
     def visitLowerCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LowerCaseIdentifierContext):
         raise Exception("Not implemented")
@@ -1014,7 +1016,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for param in ctx.params().param():
                 params.append(self.visit(param))
         typeName = ctx.name.getText()
-        typeObject = self.globalsHandler.currentScope.get(self, typeName, params)
+        typeObject = self.collectedScopes.currentScope.get(self, typeName, params)
         assert typeObject != None, f"Failed to find type {typeName} with parameters {params}"
         return typeObject
 
@@ -1061,7 +1063,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             return  #if there is no assignment, we can skip this line
         rhsNode = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
         varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-        self.globalsHandler.currentScope.set(rhsNode, varName)
+        self.collectedScopes.currentScope.set(rhsNode, varName)
         # for now, we only handle the case of assigning a single variable (no concatenations).
         # nothing to return.
 
@@ -1100,8 +1102,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         functionScope = ctx.scope
         functionScope.clearTemporaryValues # clear the temporary values
         # log the current scope
-        previousScope = self.globalsHandler.currentScope
-        self.globalsHandler.currentScope = functionScope
+        previousScope = self.collectedScopes.currentScope
+        self.collectedScopes.currentScope = functionScope
         #bind any parameters in the function scope
         bindings = self.globalsHandler.parameterBindings
         for var in bindings:  
@@ -1123,7 +1125,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for stmt in ctx.stmt():
             self.visit(stmt)
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
-        self.globalsHandler.currentScope = previousScope
+        self.collectedScopes.currentScope = previousScope
         return funcComponent
 
     def visitFunctionId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionIdContext):
@@ -1228,7 +1230,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
         '''We are visiting a variable/function name. We look it up and return the correpsonding information
         (which may be a Node or a ctx or a tuple (ctx/Node, paramMappings), for instance).'''
-        return self.globalsHandler.currentScope.get(self, ctx.var.getText())
+        return self.collectedScopes.currentScope.get(self, ctx.var.getText())
 
     def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
         raise Exception("Not implemented")
@@ -1271,7 +1273,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #   to be evaluated and must evaluate to an integer).
                 assert value.__class__ == IntegerLiteral
                 params.append(value)
-        funcAndBinds = self.globalsHandler.currentScope.get(self, functionToCall, params)
+        funcAndBinds = self.collectedScopes.currentScope.get(self, functionToCall, params)
         functionDef = funcAndBinds[0]  # look up the function to call
         bindings = funcAndBinds[1]
         self.globalsHandler.parameterBindings = bindings
@@ -1335,16 +1337,21 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     tree = parser.packageDef()  #start parsing at the top-level packageDef rule (so "tree" is the root of the parse tree)
     #print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
 
-    parsedCode = MinispecStructure()
+    globalsHandler = GlobalsHandler()
+
+    builtinScope = BuiltInScope(globalsHandler, "built-ins", [])
+    startingFile = Scope(globalsHandler, "startingFile", [builtinScope])
+
+    collectedScopes = MinispecStructure(builtinScope, startingFile) #collects scopes
 
     walker = build.MinispecPythonListener.ParseTreeWalker()
-    listener = StaticTypeListener(parsedCode)
+    listener = StaticTypeListener(globalsHandler, collectedScopes)
     walker.walk(listener, tree)  # walk the listener through the tree
 
-    # for scope in parsedCode.allScopes:
+    # for scope in collectedScopes.allScopes:
     #     print(scope)
 
-    synthesizer = SynthesizerVisitor(parsedCode)
+    synthesizer = SynthesizerVisitor(globalsHandler, collectedScopes)
 
     topLevelParameters = [IntegerLiteral(i) for i in topLevelParameters]
     ctxToSynth = startingFile.get(synthesizer, topLevel, topLevelParameters)
@@ -1352,15 +1359,14 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None):
     # log parameters in the appropriate global
     functionDef = ctxToSynth[0]  # look up the function to call
     bindings = ctxToSynth[1]
-    parsedCode.parameterBindings = bindings
-    parsedCode.lastParameterLookup = topLevelParameters
+    globalsHandler.parameterBindings = bindings
+    globalsHandler.lastParameterLookup = topLevelParameters
 
     output = synthesizer.visit(functionDef) #look up the function in the given file and synthesize it. store the result in 'output'
     
-    # for scope in parsedCode.allScopes:
+    # for scope in collectedScopes.allScopes:
     #     print(scope)
 
-    parsedCode.reset()
     return output
 
 if __name__ == '__main__':
