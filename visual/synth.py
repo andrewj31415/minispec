@@ -1,3 +1,4 @@
+from email.utils import parseaddr
 import inspect
 
 import antlr4
@@ -27,9 +28,11 @@ Notes for parametrics:
     params are used when calling functions/synth modules/invoking custom parameterized types, and may
     only be an integer or the name of a type.
 
-    - If/case statements (+ muxes)
+    - Indexing
+    - Structs
     - Modules
     - For loops
+    - Case statements
     - Other files
 
 Implemented:
@@ -39,6 +42,7 @@ Implemented:
     - Parametrics
     - Type handling (+ associated python type objects)
     - Literals
+    - If/case statements (+ muxes)
 '''
 
 '''
@@ -338,9 +342,9 @@ visitParam:
 visitParams: 
 visitParamFormal: 
 visitParamFormals: 
-visitTypeName: 
-visitPackageDef: 
-visitPackageStmt: 
+visitTypeName: Returns the relevant type object
+visitPackageDef: Error, should only be visited by the static information listener
+visitPackageStmt: Error, should only be visited by the static information listener
 visitImportDecl: 
 visitBsvImportDecl: 
 visitTypeDecl: 
@@ -350,9 +354,9 @@ visitTypeDefEnum:
 visitTypeDefEnumElement: 
 visitTypeDefStruct: 
 visitStructMember: 
-visitVarBinding: 
-visitLetBinding: 
-visitVarInit: 
+visitVarBinding: No returns, binds the given variables to the right-hand-sides in the appropriate scope
+visitLetBinding: No returns, binds the given variables as appropriate in the current scope
+visitVarInit: Not visited, varInits are handled in visitVarBinding since only varBinding has access to the assigned typeName ctx.
 visitModuleDef: 
 visitModuleId: 
 visitModuleStmt: 
@@ -368,14 +372,14 @@ visitIndexLvalue:
 visitSimpleLvalue: 
 visitSliceLvalue: 
 visitOperatorExpr: Node or MLiteral corresponding to the value of the expression
-visitCondExpr: 
+visitCondExpr: Node or MLiteral corresponding to the value of the expression
 visitCaseExpr: 
 visitCaseExprItem: 
 visitBinopExpr: Node or MLiteral corresponding to the value of the expression
 visitUnopExpr: Node or MLiteral corresponding to the value of the expression
 visitVarExpr: 
 visitBitConcat: 
-visitStringLiteral: 
+visitStringLiteral: No returns, does nothing
 visitIntLiteral: Corresponding MLiteral
 visitReturnExpr: Nothing, mutates current function hardware
 visitStructExpr: 
@@ -464,10 +468,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return typeObject
 
     def visitPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
-        raise Exception("Not implemented")
+        raise Exception("PackageDef should only be visited during static elaboration, not synthesis")
 
     def visitPackageStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageStmtContext):
-        raise Exception("Not implemented")
+        raise Exception("PackageStmt should only be visited during static elaboration, not synthesis")
 
     def visitImportDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ImportDeclContext):
         raise Exception("Not implemented")
@@ -503,7 +507,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if (varInit.rhs):
                 value = self.visit(varInit.rhs)
                 if value.__class__ == Node:
-                    value.mtype = typeValue
+                    value.setMType(typeValue)
                 self.collectedScopes.currentScope.set(value, varName)
 
     def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
@@ -516,9 +520,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.collectedScopes.currentScope.set(rhsNode, varName)
         # for now, we only handle the case of assigning a single variable (no concatenations).
         # nothing to return.
+        #TODO handle other cases
 
     def visitVarInit(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarInitContext):
-        raise Exception("Not implemented")
+        raise Exception("Not visited--handled under varBinding to access typeName.")
 
     def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         raise Exception("Not implemented")
@@ -612,7 +617,27 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return value
 
     def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
-        raise Exception("Not implemented")
+        condition = self.visit(ctx.expression(0))
+        if isMLiteral(condition):
+            # we select the appropriate branch
+            if condition == BooleanLiteral(True):
+                return self.visit(ctx.expression(1))
+            else:
+                if ctx.stmt(1):
+                    return self.visit(ctx.expression(2))
+        else:
+            value1 = self.visit(ctx.expression(1))
+            value2 = self.visit(ctx.expression(2))
+            # since the control signal is hardware, we convert the values to hardware as well (if needed)
+            if isMLiteral(value1):
+                value1 = value1.getHardware(self.globalsHandler)
+            if isMLiteral(value2):
+                value2 = value2.getHardware(self.globalsHandler)
+            muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
+            for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
+                self.globalsHandler.currentComponent.addChild(component)
+            return muxComponent.output
+        #TODO go back through ?/if statements and make sure hardware/literal cases are handled properly.
 
     def visitCaseExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprContext):
         raise Exception("Not implemented")
@@ -703,7 +728,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitStringLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StringLiteralContext):
-        raise Exception("Not implemented")
+        pass
+        # I don't think string literals do anything--they are only for system functions (dollar-sign
+        # identifiers) or for comments.
 
     def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
         '''We have an integer literal, so we parse it and return it.'''
@@ -808,8 +835,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for var in varsToBind:
                 if var in ifScope.temporaryValues and var not in elseScope.temporaryValues:
                     originalScope.set(ifScope.get(self, var), var)
+                    raise Exception("Not implemented--need to create mux from original scope.")
                 if var in elseScope.temporaryValues and var not in ifScope.temporaryValues:
                     originalScope.set(elseScope.get(self, var), var)
+                    raise Exception("Not implemented--need to create mux from original scope.")
                 else:
                     value1 = ifScope.get(self, var)
                     value2 = elseScope.get(self, var)

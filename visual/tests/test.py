@@ -201,6 +201,23 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly handles ternary ? operator''')
+def _():
+    text = pull('if3')
+
+    fsel, fa, fb, fo = Node(), Node(), Node(), Node()
+    eq1, eq2, eqo = Node(), Node(), Node()
+    m1, m2, mc = Node(), Node(), Node()
+    zero = Function('0', [], [])
+    eq = Function('==', [], [eq1, eq2], eqo)
+    m = Mux([m1, m2], mc)
+    f = Function('multiplexer1', [m, zero, eq, Wire(fa, m1), Wire(fb, m2), Wire(fsel, eq1), Wire(zero.output, eq2), Wire(eqo, mc), Wire(m.output, fo)], [fsel, fa, fb], fo)
+
+    output = synth.parseAndSynth(text, 'multiplexer1')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
 
 #run all the tests
 import time

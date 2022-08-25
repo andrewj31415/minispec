@@ -20,6 +20,8 @@ class Node:
         return "Node(" + str(self._id) + ": " + str(self._mtype) + ")"
     def __str__(self):
         return "Node(" + str(self._name) + ": " + str(self._mtype) + ")"
+    def setMType(self, value):
+        self._mtype = value
 
 class Component:
     '''
