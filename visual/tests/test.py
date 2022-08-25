@@ -184,6 +184,27 @@ def _():
     expected = f0
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly handles begin/end statement''')
+def _():
+    text = pull('if2')
+
+    fa, fo = Node(), Node()
+    one = Function("1", [], [])
+    three = Function("3", [], [])
+    mux1, mux2, muxc = Node(), Node(), Node()
+    mux = Mux([mux1, mux2], muxc)
+    f = Function("f", [mux, one, three, Wire(fa, muxc), Wire(one.output, mux1), Wire(three.output, mux2), Wire(mux.output, fo)], [fa], fo)
+
+    output = parseAndSynth(text, 'f')
+    expected = f
+    # print()
+    # for child in output.children:
+    #     print(child.__repr__())
+    # print()
+    # for child in expected.children:
+    #     print(child.__repr__())
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 #run all the tests
 import time
