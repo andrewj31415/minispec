@@ -109,7 +109,7 @@ class MLiteral():
         assert False, f"Unknown literal {value}"
     def getHardware(self, globalsHandler):
         constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.mtype))
-        globalsHandler.currentComponent.children.append(constantFunc)
+        globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output
     def coerceArithmetic(first, second):
         if first.__class__ == IntegerLiteral and second.__class__ == BooleanLiteral:

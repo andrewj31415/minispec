@@ -667,7 +667,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         leftWireIn = Wire(left, binComponent.inputs[0])
         rightWireIn = Wire(right, binComponent.inputs[1])
         for component in [binComponent, leftWireIn, rightWireIn]:
-            self.globalsHandler.currentComponent.children.append(component)
+            self.globalsHandler.currentComponent.addChild(component)
         return binComponent.output
 
         #assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
@@ -691,7 +691,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         unopComponenet = Function(op, [], [Node("v")])
         wireIn = Wire(value, unopComponenet.inputs[0])
         for component in [unopComponenet, wireIn]:
-            self.globalsHandler.currentComponent.children.append(component)
+            self.globalsHandler.currentComponent.addChild(component)
         return unopComponenet.output
 
     def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
@@ -714,7 +714,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         attaching the right hand side to the output of the function.'''
         rhs = self.visit(ctx.expression())  # the node with the value to return
         returnWire = Wire(rhs, self.globalsHandler.currentComponent.output)
-        self.globalsHandler.currentComponent.children.append(returnWire)
+        self.globalsHandler.currentComponent.addChild(returnWire)
 
     def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):
         raise Exception("Not implemented")
@@ -749,8 +749,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             exprNode = self.visit(expr) # visit the expression and get the corresponding node
             funcInputNode = funcComponent.inputs[i]
             wireIn = Wire(exprNode, funcInputNode)
-            self.globalsHandler.currentComponent.children.append(wireIn)
-        self.globalsHandler.currentComponent.children.append(funcComponent)
+            self.globalsHandler.currentComponent.addChild(wireIn)
+        self.globalsHandler.currentComponent.addChild(funcComponent)
         return funcComponent.output  # return the value of this call, which is the output of the function
 
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
@@ -822,7 +822,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         value2 = value2.getHardware(self.globalsHandler)
                     muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
                     for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
-                        self.globalsHandler.currentComponent.children.append(component)
+                        self.globalsHandler.currentComponent.addChild(component)
                     originalScope.set(muxComponent.output, var)
 
     def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):

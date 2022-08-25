@@ -63,32 +63,56 @@ class Component:
 
 class Function(Component):
     ''' children is a list of components. '''
-    __slots__ = '_name', 'children', 'inputs', 'output'
+    __slots__ = '_name', '_children', '_inputs', '_output'
     def __init__(self, name: 'str', children: 'list[Component]', inputs: 'list[Node]', output: 'Node'=None):
-        self._name = name
-        self.children = children
-        self.inputs = inputs
+        self.name = name
+        self._children = children.copy() #copy the array but not the children themselves
+        self._inputs = inputs
         if output == None:
             output = Node('_' + self.name + '_output')
-        self.output = output
+        self._output = output
     @property
     def name(self):
         '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
         return self._name
     @name.setter
-    def setname(self, name: 'str'):
+    def name(self, name: 'str'):
         self._name = name
+    @property
+    def children(self):
+        '''The hardware inside the function'''
+        raise Exception("Can't directly access this property")
+    @children.setter
+    def children(self, children: 'list[Component]'):
+        raise Exception("Can't directly modify this property")
+    def addChild(self, child: 'Component'):
+        '''Adds the given hardware to the current function'''
+        self._children.append(child)
+    @property
+    def inputs(self):
+        '''Returns a copy of the list of input Nodes to this function'''
+        return self._inputs.copy()
+    @inputs.setter
+    def inputs(self, inputs: 'list[Node]'):
+        raise Exception("Can't directly modify this property")
+    @property
+    def output(self):
+        '''The output Node of the function'''
+        return self._output
+    @output.setter
+    def output(self, output: 'Node'):
+        raise Exception("Can't directly modify this property")
     def __repr__(self):
-        return "Function(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.output.__repr__() + ")"
+        return "Function(" + self.name + ", " + self._children.__repr__() + ", " + self._inputs.__repr__() + ", " + self.output.__repr__() + ")"
     def __str__(self):
-        if (len(self.children) == 0):
+        if (len(self._children) == 0):
             return "Function " + self.name
-        return "Function " + self.name + " with children " + " | ".join(str(x) for x in self.children)
+        return "Function " + self.name + " with children " + " | ".join(str(x) for x in self._children)
     def getNodeListRecursive(self):
         '''returns a set of all nodes in self'''
         nodes = self.inputs.copy()
         nodes.append(self.output)
-        for child in self.children:
+        for child in self._children:
             nodes = nodes + child.getNodeListRecursive()
         return nodes
     def matchStructure(self, other):
@@ -99,10 +123,10 @@ class Function(Component):
             return False
         if len(self.inputs) != len(other.inputs):
             return False
-        if len(self.children) != len(other.children):
+        if len(self._children) != len(other._children):
             return False
-        for i in range(len(self.children)):
-            if not self.children[i].matchStructure(other.children[i]):
+        for i in range(len(self._children)):
+            if not self._children[i].matchStructure(other._children[i]):
                 return False
         return True
     def matchOrdered(self, other):
@@ -124,14 +148,14 @@ class Function(Component):
         '''tries to make self and other match by permuting other[i],...,other[-1].
         assumes self and other have the same length of children lists.
         mutates other to have matching order in children lists, even if the comparison fails.'''
-        if i >= len(self.children):
+        if i >= len(self._children):
             return self.matchOrdered(other)
-        for j in range(i, len(self.children)):
-            if other.children[j].match(self.children[i]):
-                other.children[i], other.children[j] = other.children[j], other.children[i]
+        for j in range(i, len(self._children)):
+            if other._children[j].match(self._children[i]):
+                other._children[i], other._children[j] = other._children[j], other._children[i]
                 if self.matchStep(other, i+1):
                     return True
-                other.children[i], other.children[j] = other.children[j], other.children[i]
+                other._children[i], other._children[j] = other._children[j], other._children[i]
         return False
     def match(self, other):
         '''returns true if self and other represent the same hardware.
@@ -140,7 +164,7 @@ class Function(Component):
             return False
         if self.name != other.name:
             return False
-        if len(self.children) != len(other.children):
+        if len(self._children) != len(other._children):
             return False
         return self.matchStep(other, 0)
 
@@ -157,9 +181,7 @@ class Mux(Component):
     def __repr__(self):
         return "Mux(" + self.name + ", " + self.inputs.__repr__() + ", " + self.control.__repr__() + ", " + self.output.__repr__() + ")"
     def __str__(self):
-        if (len(self.children) == 0):
-            return "Function " + self.name
-        return "Function " + self.name + " with children " + " | ".join(str(x) for x in self.children)
+        return "Mux " + self.name
     def getNodeListRecursive(self):
         '''returns a set of all nodes in self'''
         nodes = self.inputs.copy()

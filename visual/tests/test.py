@@ -200,10 +200,10 @@ def _():
     output = synth.parseAndSynth(text, 'f')
     expected = f
     print()
-    for child in output.children:
+    for child in output._children:
         print(child.__repr__())
     print()
-    for child in expected.children:
+    for child in expected._children:
         print(child.__repr__())
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
