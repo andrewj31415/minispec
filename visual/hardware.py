@@ -169,19 +169,47 @@ class Function(Component):
         return self.matchStep(other, 0)
 
 class Mux(Component):
+    __slots__ = '_inputs', '_control', '_output'
     def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
-        self.name = "mux"
-        self.inputs = inputs
+        self._inputs = inputs
         if control == None:
-            control = Node('_' + self.name + '_control')
-        self.control = control
+            control = Node('_mux_control')
+        self._control = control
         if output == None:
-            output = Node('_' + self.name + '_output')
-        self.output = output
+            output = Node('_mux_output')
+        self._output = output
+    @property
+    def name(self):
+        '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
+        return self._name
+    @name.setter
+    def name(self, name: 'str'):
+        self._name = name
+    @property
+    def inputs(self):
+        '''Returns a copy of the list of input Nodes to this mux'''
+        return self._inputs.copy()
+    @inputs.setter
+    def inputs(self, inputs: 'list[Node]'):
+        raise Exception("Can't directly modify this property")
+    @property
+    def control(self):
+        '''The control input Node of the mux'''
+        return self._control
+    @control.setter
+    def control(self, control: 'Node'):
+        raise Exception("Can't directly modify this property")
+    @property
+    def output(self):
+        '''The output Node of the mux'''
+        return self._output
+    @output.setter
+    def output(self, output: 'Node'):
+        raise Exception("Can't directly modify this property")
     def __repr__(self):
-        return "Mux(" + self.name + ", " + self.inputs.__repr__() + ", " + self.control.__repr__() + ", " + self.output.__repr__() + ")"
+        return "Mux(" + self.inputs.__repr__() + ", " + self.control.__repr__() + ", " + self.output.__repr__() + ")"
     def __str__(self):
-        return "Mux " + self.name
+        return "Mux"
     def getNodeListRecursive(self):
         '''returns a set of all nodes in self'''
         nodes = self.inputs.copy()
@@ -191,8 +219,6 @@ class Mux(Component):
     def matchStructure(self, other):
         '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
         if self.__class__ != other.__class__:
-            return False
-        if self.name != other.name:
             return False
         if len(self.inputs) != len(other.inputs):
             return False
@@ -217,16 +243,31 @@ class Mux(Component):
         mutates other to have matching order in children lists.'''
         if self.__class__ != other.__class__:
             return False
-        if self.name != other.name:
+        if len(self.inputs) != len(other.inputs):
             return False
         return True
 
 class Wire(Component):
     ''' src and dst are Nodes.'''
+    __slots__ = "_src", "_dst"
     def __init__(self, src: 'Node', dst: 'Node'):
         assert src is not dst, "wire must have distinct ends"
-        self.src = src
-        self.dst = dst
+        self._src = src
+        self._dst = dst
+    @property
+    def src(self):
+        '''The source node of the wire'''
+        return self._src
+    @src.setter
+    def src(self, src: 'Node'):
+        raise Exception("Can't directly modify this property")
+    @property
+    def dst(self):
+        '''The source node of the wire'''
+        return self._dst
+    @dst.setter
+    def dst(self, dst: 'Node'):
+        raise Exception("Can't directly modify this property")
     def __repr__(self):
         return "Wire(" + self.src.__repr__() + ", " + self.dst.__repr__() + ")"
     def __str__(self):
