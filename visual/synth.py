@@ -766,10 +766,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
-        print(ctx.toStringTree(recog=parser))
         for stmt in ctx.stmt():
             self.visit(stmt)
-        #raise Exception("Not implemented")
 
     def visitRegWrite(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RegWriteContext):
         raise Exception("Not implemented")

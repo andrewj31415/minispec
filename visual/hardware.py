@@ -195,7 +195,7 @@ class Function(Component):
         # graph search backwards from the output node
         inputs = {}  #maps nodes to the hardware for which they are an input
         outputs = {}
-        for child in self.children:
+        for child in [self] + self.children:
             for node in child.inputNodes():
                 if node not in inputs:
                     inputs[node] = set()
