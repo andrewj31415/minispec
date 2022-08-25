@@ -1,51 +1,6 @@
 
 import hardware
-
-class MType:
-    '''A minispec type'''
-    pass
-
-class Any(MType):
-    '''An unknown type'''
-    def __str__(self):
-        return "Any"
-Any = Any()
-
-class Integer(MType):
-    '''An integer type'''
-    def __str__(self):
-        return "Integer"
-Integer = Integer()
-
-class Bit(MType):
-    '''A bit type with n bits. All bit objects must be unique.'''
-    createdBits = {}  # a map n -> Bit(n)
-    def __init__(self, n: 'IntegerLiteral'):
-        assert n.__class__ == IntegerLiteral, f"A bit must be an integer literal, not {n} which is {n.__class__}"
-        n = n.value #extract the value of the integer literal
-        assert n not in Bit.createdBits, "All bit objects must be unique."
-        self.n = n
-    def __str__(self):
-        return "Bit#(" + str(self.n) + ")"
-    def getBit(n: 'IntegerLiteral'):
-        if n not in Bit.createdBits:
-            Bit.createdBits[n] = Bit(n)
-        return Bit.createdBits[n]
-
-class Bool(MType):
-    '''The boolean type'''
-    def __str__(self):
-        return "Bool"
-Bool = Bool()
-
-class Vector(MType):
-    '''The Vector(k, tt) type'''
-    createdVectors = {} # a map (k, tt) -> Vector(k, tt)
-    def __init__(self, k: 'int', typeValue: 'MType'):
-        self.k = k
-        self.typeValue = typeValue
-    def __str__(self):
-        return "Vector#(" + str(self.k) + ", " + str(self.typeValue) + ")"
+import mtypes
 
 '''We will eventually want a class whose instances represent minispec literals, including:
 integers, booleans, bit values, etc.
@@ -177,7 +132,7 @@ class IntegerLiteral(MLiteral):
     def __init__(self, value: 'int'):
         assert value.__class__ == int
         self.value = value
-        self.mtype = Integer
+        self.mtype = mtypes.Integer
     def __repr__(self):
         return "IntegerLiteral(" + str(self.value) + ")"
     def __str__(self):
@@ -245,7 +200,7 @@ class BitLiteral(MLiteral):
         assert value.__class__ == int
         self.n = n
         self.value = value % 2**n
-        self.mtype = Bit.getBit(IntegerLiteral(self.n))
+        self.mtype = mtypes.Bit.getBit(IntegerLiteral(self.n))
     def __repr__(self):
         return "BitLiteral(" + str(self.n) + "," + str(self.value) + ")"
     def __str__(self):
@@ -307,7 +262,7 @@ class BooleanLiteral(MLiteral):
     '''value is a boolean'''
     def __init__(self, value: 'bool'):
         self.value = value
-        self.mtype = Bool
+        self.mtype = mtypes.Bool
     def __repr__(self):
         return "BooleanLiteral(" + str(self.value) + ")"
     def __str__(self):

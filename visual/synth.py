@@ -9,6 +9,7 @@ import build.MinispecPythonVisitor
 
 from hardware import *
 from literals import *
+from mtypes import *
 
 #sets up parser for use in debugging:
 #now ctx.toStringTree(recog=parser) will work properly.

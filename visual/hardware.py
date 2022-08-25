@@ -1,6 +1,7 @@
 
 
 from literals import *
+from mtypes import *
 
 '''Private methods/fields begin with a single underscore. See help(property) for details.
 Slots are used to enforce which fields may be set.'''
