@@ -878,7 +878,7 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None) -> 'Co
     # for scope in collectedScopes.allScopes:
     #     print(scope)
 
-    #output.prune() #remove unused components
+    output.prune() #remove unused components
 
     return output
 

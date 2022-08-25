@@ -60,6 +60,30 @@ class Component:
 
     '''
     __slots__ = tuple()
+    def getNodeListRecursive(self):
+        '''returns a list of all nodes in self in a deterministic order'''
+        raise Exception("Not implemented")
+    def matchStructure(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
+        raise Exception("Not implemented")
+    def matchOrdered(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
+        raise Exception("Not implemented")
+    def match(self, other):
+        '''returns true if self and other represent the same hardware.'''
+        raise Exception("Not implemented")
+    ''' Pruning. Removes unused hardware from the component. '''
+    def prune(self):
+        '''Removes all unused hardware.'''
+        raise Exception("Not implemented")
+    def inputNodes(self):
+        '''Returns the set of all input nodes in self, eg a wire's src or a function's inputs.'''
+        raise Exception("Not implemented")
+    def outputNodes(self):
+        '''Returns the set of all output nodes in self, eg a wire's dst or a function's output.'''
+        raise Exception("Not implemented")
+        
+
 
 class Function(Component):
     ''' children is a list of components. '''
@@ -81,7 +105,7 @@ class Function(Component):
     @property
     def children(self):
         '''The hardware inside the function'''
-        raise Exception("Can't directly access this property")
+        return self._children.copy()
     @children.setter
     def children(self, children: 'list[Component]'):
         raise Exception("Can't directly modify this property")
@@ -167,6 +191,42 @@ class Function(Component):
         if len(self._children) != len(other._children):
             return False
         return self.matchStep(other, 0)
+    def prune(self):
+        # graph search backwards from the output node
+        inputs = {}  #maps nodes to the hardware for which they are an input
+        outputs = {}
+        for child in self.children:
+            for node in child.inputNodes():
+                if node not in inputs:
+                    inputs[node] = set()
+                if node not in outputs:
+                    outputs[node] = set()
+                inputs[node].add(child)
+            for node in child.outputNodes():
+                if node not in outputs:
+                    outputs[node] = set()
+                if node not in inputs:
+                    inputs[node] = set()
+                outputs[node].add(child)
+        childrenToKeep = set()
+        currentlyKeepingChildren = outputs[self.output].copy()
+        nextChildren = set()
+        while len(currentlyKeepingChildren) > 0:
+            for child in currentlyKeepingChildren:
+                for node in child.inputNodes():
+                    for nextChild in outputs[node]:
+                        nextChildren.add(nextChild)
+            for child in currentlyKeepingChildren:
+                childrenToKeep.add(child)
+            currentlyKeepingChildren = nextChildren
+            nextChildren = set()
+        self._children = [child for child in self._children if child in childrenToKeep]
+        for child in self.children:
+            child.prune()
+    def inputNodes(self):
+        return set(self.inputs)
+    def outputNodes(self):
+        return {self.output}
 
 class Mux(Component):
     __slots__ = '_inputs', '_control', '_output'
@@ -246,6 +306,14 @@ class Mux(Component):
         if len(self.inputs) != len(other.inputs):
             return False
         return True
+    def prune(self):
+        pass #no children
+    def inputNodes(self):
+        nodes = set(self.inputs)
+        nodes.add(self.control)
+        return nodes
+    def outputNodes(self):
+        return {self.output}
 
 class Wire(Component):
     ''' src and dst are Nodes.'''
@@ -284,3 +352,9 @@ class Wire(Component):
     def match(self, other):
         '''returns true if self and other represent the same hardware.'''
         return self.matchOrdered(other)
+    def prune(self):
+        pass #no children
+    def inputNodes(self):
+        return {self.src}
+    def outputNodes(self):
+        return {self.dst}
