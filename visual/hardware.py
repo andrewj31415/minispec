@@ -2,20 +2,24 @@
 
 from literals import *
 
+'''Private methods/fields begin with a single underscore. See help(property) for details.
+Slots are used to enforce which fields may be set.'''
+
 class Node:
     '''name is just for convenience.
     mtype is the minispec type of the value that the node corresponds to.
     id is a unique id number for each node created.'''
-    id = 0  #one for each node created
+    _num_nodes_created = 0  #one for each node created
+    __slots__ = '_name', '_mtype', '_id'
     def __init__(self, name: 'str' = "", mtype: 'MType' = Any):
-        self.name = name
-        self.mtype = mtype
-        self.id = Node.id
-        Node.id += 1
+        self._name = name
+        self._mtype = mtype
+        self._id = Node._num_nodes_created
+        Node._num_nodes_created += 1
     def __repr__(self):
-        return "Node(" + str(self.id) + ": " + str(self.mtype) + ")"
+        return "Node(" + str(self._id) + ": " + str(self._mtype) + ")"
     def __str__(self):
-        return "Node(" + str(self.name) + ": " + str(self.mtype) + ")"
+        return "Node(" + str(self._name) + ": " + str(self._mtype) + ")"
 
 class Component:
     '''
@@ -55,17 +59,25 @@ class Component:
     This should not matter since the order of the components should not matter.
 
     '''
-    pass
+    __slots__ = tuple()
 
 class Function(Component):
     ''' children is a list of components. '''
+    __slots__ = '_name', 'children', 'inputs', 'output'
     def __init__(self, name: 'str', children: 'list[Component]', inputs: 'list[Node]', output: 'Node'=None):
-        self.name = name
+        self._name = name
         self.children = children
         self.inputs = inputs
         if output == None:
             output = Node('_' + self.name + '_output')
         self.output = output
+    @property
+    def name(self):
+        '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
+        return self._name
+    @name.setter
+    def setname(self, name: 'str'):
+        self._name = name
     def __repr__(self):
         return "Function(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.output.__repr__() + ")"
     def __str__(self):
