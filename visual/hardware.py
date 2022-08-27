@@ -77,7 +77,7 @@ class Component:
     def matchOrdered(self, other):
         '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
         raise Exception("Not implemented")
-    def match(self, other):
+    def match(self, other) -> Bool:
         '''returns true if self and other represent the same hardware.'''
         raise Exception("Not implemented")
     ''' Pruning. Removes unused hardware from the component. '''
@@ -90,12 +90,12 @@ class Component:
     def outputNodes(self):
         '''Returns the set of all output nodes in self, eg a wire's dst or a function's output.'''
         raise Exception("Not implemented")
-    def isRegister(self):
+    def isRegister(self) -> Bool:
         '''Return true if self is a register. This is used when a register's value is used in an expression,
         since most modules' methods can only be accessed by name while a register's output may be accessed
         by referring to the register itself (so we need to determine when a module is actually a register).'''
         return False
-    def isComponent(self):
+    def isComponent(self) -> Bool:
         '''Used by assert statements'''
         return True
 
@@ -340,13 +340,34 @@ class Function(Component):
         '''tries to make self and other match by permuting other[i],...,other[-1].
         assumes self and other have the same length of children lists.
         mutates other to have matching order in children lists, even if the comparison fails.'''
+        #print('matching a step', self.name)
         if i >= len(self._children):
             return self.matchOrdered(other)
         for j in range(i, len(self._children)):
             if other._children[j].match(self._children[i]):
                 other._children[i], other._children[j] = other._children[j], other._children[i]
-                if self.matchStep(other, i+1):
-                    return True
+                #see if the nodes set up so far are the same graph
+                selfNodesSoFar = []
+                for k in range(i+1):
+                    selfNodesSoFar += self._children[k].getNodeListRecursive()
+                otherNodesSoFar = []
+                for k in range(i+1):
+                    otherNodesSoFar += other._children[k].getNodeListRecursive()
+                failed = False
+                for ii in range(len(selfNodesSoFar)):
+                    for jj in range(ii):
+                        if selfNodesSoFar[ii] is selfNodesSoFar[jj] and otherNodesSoFar[ii] is not otherNodesSoFar[jj]:
+                            failed = True
+                        if selfNodesSoFar[ii] is not selfNodesSoFar[jj] and otherNodesSoFar[ii] is otherNodesSoFar[jj]:
+                            failed = True
+                        if failed:
+                            break
+                    if failed:
+                        break
+                if not failed:
+                    #recursively try to match the rest
+                    if self.matchStep(other, i+1):
+                        return True
                 other._children[i], other._children[j] = other._children[j], other._children[i]
         return False
     def match(self, other):

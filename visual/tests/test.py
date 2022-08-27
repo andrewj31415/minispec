@@ -258,7 +258,22 @@ def _():
     expected = g
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly modifies specific bits''')
+def _():
+    text = pull('bits2')
 
+    twoone, two1, zero1 = Function('[2][1]', [], [Node(), Node()]), Function('[2]', [], [Node()]), Function('[0]', [], [Node()])
+    n = Function('~', [], [Node()])
+    zero2, one2 = Function('[0]', [], [Node()]), Function('[1]', [], [Node()])
+    one3, zero3 = Function('[1]', [], [Node(), Node()]), Function('[0]', [], [Node(), Node()])
+
+    fa, fo = Node(), Node()
+    f = Function('f', [twoone, two1, zero1, n, zero2, one2, one3, zero3, Wire(fa, two1.inputs[0]), Wire(two1.output, zero1.inputs[0]), Wire(zero1.output, n.inputs[0]), Wire(n.output, twoone.inputs[1]), Wire(fa, twoone.inputs[0]), Wire(n.output, zero2.inputs[0]), Wire(n.output, one2.inputs[0]), Wire(n.output, one3.inputs[0]), Wire(zero2.output, one3.inputs[1]), Wire(one3.output, zero3.inputs[0]), Wire(one2.output, zero3.inputs[1]), Wire(zero3.output, fo)], [fa], fo)
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+  
 
 #run all the tests
 import time

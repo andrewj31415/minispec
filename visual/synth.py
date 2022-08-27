@@ -280,7 +280,7 @@ with the corresponding value and pass the nodes around, attaching wires as neede
 
 class GlobalsHandler:
     def __init__(self):
-        self.currentComponent = None  # a function/module component. used during synthesis.
+        self.currentComponent: 'Function|Module' = None  # a function/module component. used during synthesis.
         self.parameterBindings = {}
         '''self.parameterBindings is a dictionary str -> int telling functions which parameters
         have been bound. Should be set whenever calling a function.'''
@@ -776,10 +776,41 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if ctx.varList:
             raise Exception("Not implemented")
         assert ctx.var, "Did the grammar change?"
-        if ctx.var.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-            raise Exception("Not implemented")
-        varName = ctx.var.getText()
-        self.collectedScopes.currentScope.set(value, varName)
+
+        if ctx.var.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+            # assign the variable
+            varName = ctx.var.getText()
+            self.collectedScopes.currentScope.set(value, varName)
+        else:
+            # insert the field/slice/index
+            lvalue = ctx.var
+            take = ""  # determine what field/slice/index is being taken and find the variable being changed
+            while lvalue.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+                if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
+                    raise Exception("Not implemented")
+                elif lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext:
+                    index = self.visit(lvalue.index)
+                    if not isMLiteral(index):
+                        raise Exception("Not implemented")
+                    take = "[" + str(index) + "]" + take
+                elif lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext:
+                    raise Exception("Not implemented")
+                else:
+                    raise Exception("Did the grammar change?")
+                lvalue = lvalue.lvalue()
+            varName = lvalue.getText()
+            originalValue = self.collectedScopes.currentScope.get(self, varName)
+            insertComponent = Function(take, [], [Node(), Node()])
+            if isMLiteral(originalValue):
+                originalValue = originalValue.getHardware(self)
+            originalWire = Wire(originalValue, insertComponent.inputs[0])
+            if isMLiteral(value):
+                value = value.getHardware(self)
+            updateWire = Wire(value, insertComponent.inputs[1])
+            for component in [originalWire, updateWire, insertComponent]:
+                self.globalsHandler.currentComponent.addChild(component)
+            # bind the variable in the current scope
+            self.collectedScopes.currentScope.set(insertComponent.output, varName)
 
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
         raise Exception("Not implemented")
