@@ -289,6 +289,14 @@ def _():
     expected = f
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+describe('''Assorted hardware''')
+
+@it('''Correctly handles assorted hardware''')
+def _():
+    text = pull('assortedtests')
+
+    output = synth.parseAndSynth(text, 'population_count', [])
+    print(output.__repr__())
 
 #run all the tests
 import time

@@ -63,6 +63,7 @@ class MLiteral():
             return BooleanLiteral(value)
         assert False, f"Unknown literal {value}"
     def getHardware(self, globalsHandler):
+        assert globalsHandler.isGlobalsHandler(), "Quick type check"
         constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.mtype))
         globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output

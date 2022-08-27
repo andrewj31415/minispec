@@ -288,6 +288,9 @@ class GlobalsHandler:
         '''self.lastParameterLookup is a list consisting of the last integer values used to look up
         a function call. Should be set whenever calling a function. Used to determine how to name
         the function in the corresponding component.'''
+    def isGlobalsHandler(self):
+        ''' Used by assert statements '''
+        return True
     
 
 class MinispecStructure:
@@ -802,10 +805,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             originalValue = self.collectedScopes.currentScope.get(self, varName)
             insertComponent = Function(take, [], [Node(), Node()])
             if isMLiteral(originalValue):
-                originalValue = originalValue.getHardware(self)
+                originalValue = originalValue.getHardware(self.globalsHandler)
             originalWire = Wire(originalValue, insertComponent.inputs[0])
             if isMLiteral(value):
-                value = value.getHardware(self)
+                value = value.getHardware(self.globalsHandler)
             updateWire = Wire(value, insertComponent.inputs[1])
             for component in [originalWire, updateWire, insertComponent]:
                 self.globalsHandler.currentComponent.addChild(component)
@@ -1022,6 +1025,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for i in range(len(ctx.expression())):
             expr = ctx.expression()[i]
             exprNode = self.visit(expr) # visit the expression and get the corresponding node
+            if isMLiteral(exprNode):
+                exprNode = exprNode.getHardware(self.globalsHandler)
             funcInputNode = funcComponent.inputs[i]
             wireIn = Wire(exprNode, funcInputNode)
             self.globalsHandler.currentComponent.addChild(wireIn)
