@@ -251,9 +251,13 @@ class Register(Module):
 class Function(Component):
     ''' children is a list of components. '''
     __slots__ = '_name', '_children', '_inputs', '_output'
-    def __init__(self, name: 'str', children: 'list[Component]', inputs: 'list[Node]', output: 'Node'=None):
+    def __init__(self, name: 'str', children: 'list[Component]'=None, inputs: 'list[Node]'=None, output: 'Node'=None):
         self.name = name
+        if children == None:
+            children = []
         self._children = children.copy() #copy the array but not the children themselves
+        if inputs == None:
+            inputs = []
         self._inputs = inputs
         if output == None:
             output = Node('_' + self.name + '_output')

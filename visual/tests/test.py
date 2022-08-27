@@ -233,8 +233,31 @@ def _():
     counter = Module('FourBitCounter', [count, mux, add, one, Wire(enable, mux.control), Wire(count.value, getCount), Wire(add.output, mux.inputs[0]), Wire(count.value, mux.inputs[1]), Wire(mux.output, count.input), Wire(count.value, add.inputs[0]), Wire(one.output, add.inputs[1])], {'enable': enable}, {'getCount': getCount})
     
     output = synth.parseAndSynth(text, 'FourBitCounter')
-    expected = counter    
+    expected = counter
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+describe('''Bit Manipulation''')
+
+@it('''Correctly modifies and collects bits''')
+def _():
+    text = pull('bits1')
+
+    fa, fo = Node(), Node()
+    n1, n2, zero, one, concat = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('[0]', [], [Node()]), Function('1', [], [Node()]), Function('{}', [], [Node(), Node()])
+    f = Function('f', [n1, n2, zero, one, concat, Wire(fa, zero.inputs[0]), Wire(fa, one.inputs[0]), Wire(zero.output, n1.inputs[0]), Wire(one.output, n2.inputs[0]), Wire(n1.output, concat.inputs[0]), Wire(n2.output, concat.inputs[1]), Wire(concat.output, fo)], [fa], fo)
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    
+    ga, go = Node(), Node()
+    n1, n2, zero, one, concat = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('[0]', [], [Node()]), Function('1', [], [Node()]), Function('{}', [], [Node(), Node()])
+    g = Function('f', [n1, n2, zero, one, concat, Wire(ga, zero.inputs[0]), Wire(ga, one.inputs[0]), Wire(zero.output, n1.inputs[0]), Wire(one.output, n2.inputs[0]), Wire(n1.output, concat.inputs[1]), Wire(n2.output, concat.inputs[0]), Wire(concat.output, go)], [ga], go)
+
+    output = synth.parseAndSynth(text, 'g')
+    expected = g
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 
 #run all the tests
