@@ -24,6 +24,8 @@ class Node:
         return "Node(" + str(self._name) + ": " + str(self._mtype) + ")"
     def setMType(self, value):
         self._mtype = value
+    def isNode(self):
+        return True
 
 class Component:
     '''
@@ -411,6 +413,8 @@ class Wire(Component):
     ''' src and dst are Nodes.'''
     __slots__ = "_src", "_dst"
     def __init__(self, src: 'Node', dst: 'Node'):
+        assert src.isNode(), "Must be a node"
+        assert dst.isNode(), "Must be a node"
         assert src is not dst, "wire must have distinct ends"
         self._src = src
         self._dst = dst

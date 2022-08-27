@@ -152,6 +152,11 @@ class Scope:
         self.name = name
         self.permanentValues = {}
         self.temporaryValues = {}
+        
+        ''' dictionary of registers, only used in a module, str is the variable name that points
+        to the register in the module scope  so that:
+            self.registers[someRegisterName] = self.get(self, someRegisterName) '''
+        self.registers: 'dict[str, Register]' = {} 
     def __str__(self):
         if len(self.permanentValues) == 0 and len(self.temporaryValues) == 0:
             return "Scope " + self.name
@@ -234,7 +239,7 @@ class BuiltInScope(Scope):
         self.name = name
         self.permanentValues = {}
         self.temporaryValues = {}
-    def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node':
+    def get(self, visitor, varName: 'str', parameters: 'list[int|MType]' = None) -> 'ctxType|Node':
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
         probably a ctx object (functionDef).
@@ -252,18 +257,19 @@ class BuiltInScope(Scope):
         if varName == 'Bool':
             return Bool
         if varName == 'Reg':
-            return BuiltinCtx('Register')
+            assert len(parameters) == 1, "A register takes exactly one parameter"
+            return BuiltinRegisterCtx(parameters[0])
         raise Exception(f"Couldn't find variable {varName} with parameters {parameters}")
 
 #type annotation for context objects.
 ctxType = ' | '.join([ctxType for ctxType in dir(build.MinispecPythonParser.MinispecPythonParser) if ctxType[-7:] == "Context"][:-3])
 
 
-class BuiltinCtx:
-    def __init__(self, visitorFunctionName: 'str'):
-        self._visitorFunctionName = visitorFunctionName
+class BuiltinRegisterCtx:
+    def __init__(self, mtype: 'MType'):
+        self.mtype = mtype
     def accept(self, visitor):
-        return eval('visitor.visit' + self._visitorFunctionName + '()')
+        return visitor.visitRegister(self.mtype)
 
 
 '''
@@ -456,9 +462,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     nodes of type exprPrimary return the node corresponding to their value.
     stmt do not return anything; they mutate the current scope and the current hardware.'''
 
-    def visitRegister(self):
+    def visitRegister(self, mtype: 'MType'):
         ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
-        return Register('register')
+        return Register('register with ' + str(mtype))
 
     def __init__(self, globalsHandler: 'GlobalsHandler', collectedScopes: 'MinispecStructure') -> None:
         self.globalsHandler = globalsHandler
@@ -621,13 +627,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for ruleDef in ruleDefs:
             self.visit(ruleDef)
 
-        print(inputDefs)
-        print(submoduleDecls)
-        print(methodDefs)
-        print(ruleDefs)
-
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
+
+        print("registers:", str(self.collectedScopes.currentScope))
+
         return moduleComponent
 
     def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
@@ -642,7 +646,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         the corresponding module output, while methods with args need to be somehow tracked as
         functions calls that can be visited and synthesized, returning their output. '''
         moduleDef = self.visit(ctx.typeName())
-        # print('constructing', moduleToConstruct)
         # args: 'list[int]' = []
         # if ctx.args():
         #     for arg in ctx.args().arg():
@@ -651,11 +654,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         #         args.append(value)
         # moduleDef = self.collectedScopes.currentScope.get(self, moduleToConstruct, args)
         # self.globalsHandler.lastParameterLookup = args
-        print('moduleDef', moduleDef)
         moduleComponent = self.visit(moduleDef)  #synthesize the module
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
         self.collectedScopes.currentScope.set(moduleComponent, submoduleName)
+
+        if moduleComponent.isRegister():  # if we have a register, we log it in the corresponding module.
+            self.collectedScopes.currentScope.registers[submoduleName] = moduleComponent
 
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
@@ -666,7 +671,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
         self.collectedScopes.currentScope.set(inputNode, inputName)
-        self.globalsHandler.currentComponent.addInput(inputName, inputNode)
+        self.globalsHandler.currentComponent.addInput(inputNode, inputName)
         # I think we might need to be a little fancy with default values.
         # If an input is assigned sometimes as determined by an if statement, then there will be a mux
         # leading to the input and the other branch of the mux should be the default value.
@@ -690,25 +695,36 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         When we synthesize a methodDef with args, we should return the output to the synthesized method.
         When there are no args, there is no need to return anything.
         '''
-        print('got a method', ctx.toStringTree(recog = parser))
         if not ctx.argFormals(): # there are no arguments, so we synthesize the method inside the current module and return the output node.
             if ctx.expression():
                 methodName = ctx.name.getText()
                 methodNode = self.visit(ctx.expression())
-                self.globalsHandler.currentComponent.addMethod(methodName, methodNode)
+                self.globalsHandler.currentComponent.addMethod(methodNode, methodName)
             else:
                 raise Exception("Not implemented")
         else:
             raise Exception("Not implemented")
 
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
-        ruleScope = ctx.scope
+        # registers keep their original value unless modified
+        for registerName in self.collectedScopes.currentScope.registers:
+            register = self.collectedScopes.currentScope.registers[registerName]
+            self.collectedScopes.currentScope.set(register.value, registerName)
+        ruleScope: 'Scope' = ctx.scope
         ruleScope.clearTemporaryValues # clear the temporary values
         previousScope = self.collectedScopes.currentScope
-        self.collectedScopes.currentScope = ruleScope
+        self.collectedScopes.currentScope = ruleScope # enter the rule scope
         for stmt in ctx.stmt():
             self.visit(stmt)
         self.collectedScopes.currentScope = previousScope
+        # wire in the register writes
+        for registerName in self.collectedScopes.currentScope.registers:
+            register = self.collectedScopes.currentScope.registers[registerName]
+            value = self.collectedScopes.currentScope.get(self, registerName)
+            if isMLiteral(value):  # convert value to hardware before assigning to register
+                value = value.getHardware(self.globalsHandler)
+            setWire = Wire(value, register.input)
+            self.globalsHandler.currentComponent.addChild(setWire)
 
     def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''Synthesizes the corresponding function and returns the entire function hardware.
@@ -970,15 +986,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitRegWrite(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RegWriteContext):
         '''To assign to a register, we put a wire from the value (rhs) to the register input.'''
         value = self.visit(ctx.rhs)
-        if isMLiteral(value):  # convert value to hardware before assigning to register
-            value = value.getHardware()
+        # if isMLiteral(value):  # convert value to hardware before assigning to register
+        #     value = value.getHardware(self.globalsHandler)  # I don't think we need to convert to hardware yet.
         if ctx.lhs.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
             raise Exception("Not implemented")
         regName = ctx.lhs.getText()
-        register: 'Register' = self.collectedScopes.currentScope.get(value, regName)
-        setWire = Wire(value, register.input)
-        self.globalsHandler.currentComponent.addChild(setWire)
-        print('register', register)
+        self.collectedScopes.currentScope.set(value, regName)
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
         #TODO figure out why we are visiting stmt and adjust as appropriate
@@ -1014,15 +1027,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for var in elseScope.temporaryValues:
                 varsToBind.add(var)
             for var in varsToBind:
-                if var in ifScope.temporaryValues and var not in elseScope.temporaryValues:
-                    originalScope.set(ifScope.get(self, var), var)
-                    raise Exception("Not implemented--need to create mux from original scope.")
-                if var in elseScope.temporaryValues and var not in ifScope.temporaryValues:
-                    originalScope.set(elseScope.get(self, var), var)
-                    raise Exception("Not implemented--need to create mux from original scope.")
+                # if var in ifScope.temporaryValues and var not in elseScope.temporaryValues:
+                #     originalScope.set(ifScope.get(self, var), var)
+                #     raise Exception("Not implemented--need to create mux from original scope.")
+                # if var in elseScope.temporaryValues and var not in ifScope.temporaryValues:
+                #     originalScope.set(elseScope.get(self, var), var)
+                #     raise Exception("Not implemented--need to create mux from original scope.")
+                if False:
+                    pass
                 else:
                     value1 = ifScope.get(self, var)
                     value2 = elseScope.get(self, var)
+                    print("value1", value1)
+                    print("value2", value2)
                     # since the control signal is hardware, we convert the values to hardware as well (if needed)
                     if isMLiteral(value1):
                         value1 = value1.getHardware(self.globalsHandler)
