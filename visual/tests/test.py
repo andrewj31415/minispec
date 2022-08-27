@@ -223,14 +223,19 @@ describe('''Modules''')
 @it('''Correctly handles a simple counter''')
 def _():
     text = pull('counters')
+
+    count = Register('Reg#(Bit#(4))')
+    mux = Mux([Node(), Node()])
+    add = Function('+', [], [Node(), Node()])
+    enable = Node()
+    getCount = Node()
+    one = Function('1', [], [])
+    counter = Module('FourBitCounter', [count, mux, add, one, Wire(enable, mux.control), Wire(count.value, getCount), Wire(add.output, mux.inputs[0]), Wire(count.value, mux.inputs[1]), Wire(mux.output, count.input), Wire(count.value, add.inputs[0]), Wire(one.output, add.inputs[1])], {'enable': enable}, {'getCount': getCount})
+    
     output = synth.parseAndSynth(text, 'FourBitCounter')
-    print(output.__repr__())
+    expected = counter    
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-    print()
-    for child in output.children:
-        print(child.__repr__())
-
-    raise Exception("TODO: finish writing test")
 
 #run all the tests
 import time

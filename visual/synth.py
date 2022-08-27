@@ -464,7 +464,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitRegister(self, mtype: 'MType'):
         ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
-        return Register('register with ' + str(mtype))
+        return Register('Reg#(' + str(mtype) + ')')
 
     def __init__(self, globalsHandler: 'GlobalsHandler', collectedScopes: 'MinispecStructure') -> None:
         self.globalsHandler = globalsHandler
@@ -630,8 +630,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
 
-        print("registers:", str(self.collectedScopes.currentScope))
-
         return moduleComponent
 
     def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
@@ -695,10 +693,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         When we synthesize a methodDef with args, we should return the output to the synthesized method.
         When there are no args, there is no need to return anything.
         '''
-        if not ctx.argFormals(): # there are no arguments, so we synthesize the method inside the current module and return the output node.
+        methodType = self.visit(ctx.typeName())
+        if not ctx.argFormals(): # there are no arguments, so we synthesize the method inside the current module.
             if ctx.expression():
                 methodName = ctx.name.getText()
-                methodNode = self.visit(ctx.expression())
+                methodNode = Node(methodName, methodType)
+                value = self.visit(ctx.expression())
+                if isMLiteral(value):  # convert value to hardware before linking to output node
+                    value = value.getHardware(self.globalsHandler)
+                setWire = Wire(value, methodNode)
+                self.globalsHandler.currentComponent.addChild(setWire)
                 self.globalsHandler.currentComponent.addMethod(methodNode, methodName)
             else:
                 raise Exception("Not implemented")
@@ -707,10 +711,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
         # registers keep their original value unless modified
+        ruleScope: 'Scope' = ctx.scope
         for registerName in self.collectedScopes.currentScope.registers:
             register = self.collectedScopes.currentScope.registers[registerName]
-            self.collectedScopes.currentScope.set(register.value, registerName)
-        ruleScope: 'Scope' = ctx.scope
+            ruleScope.set(register.value, registerName)
         ruleScope.clearTemporaryValues # clear the temporary values
         previousScope = self.collectedScopes.currentScope
         self.collectedScopes.currentScope = ruleScope # enter the rule scope
@@ -720,7 +724,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # wire in the register writes
         for registerName in self.collectedScopes.currentScope.registers:
             register = self.collectedScopes.currentScope.registers[registerName]
-            value = self.collectedScopes.currentScope.get(self, registerName)
+            value = ruleScope.get(self, registerName)
             if isMLiteral(value):  # convert value to hardware before assigning to register
                 value = value.getHardware(self.globalsHandler)
             setWire = Wire(value, register.input)
@@ -1038,8 +1042,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 else:
                     value1 = ifScope.get(self, var)
                     value2 = elseScope.get(self, var)
-                    print("value1", value1)
-                    print("value2", value2)
                     # since the control signal is hardware, we convert the values to hardware as well (if needed)
                     if isMLiteral(value1):
                         value1 = value1.getHardware(self.globalsHandler)

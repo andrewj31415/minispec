@@ -149,6 +149,78 @@ class Module(Component):
         self._methods[methodName] = methodNode
     def __repr__(self):
         return "Module(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.methods.__repr__() + ")"
+    def getNodeListRecursive(self):
+        '''returns a list of all nodes in self in a deterministic order'''
+        nodes = []
+        inputNameList = list(self._inputs)
+        inputNameList.sort()
+        for inputName in inputNameList:
+            nodes.append(self._inputs[inputName])
+        methodNameList = list(self._methods)
+        methodNameList.sort()
+        for methodName in methodNameList:
+            nodes.append(self._methods[methodName])
+        for child in self._children:
+            nodes = nodes + child.getNodeListRecursive()
+        return nodes
+    def matchStructure(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
+        if self.__class__ != other.__class__:
+            return False
+        if self.name != other.name:
+            return False
+        if len(self._inputs) != len(other._inputs):
+            return False
+        if len(self._methods) != len(other._methods):
+            return False
+        if len(self._children) != len(other._children):
+            return False
+        for i in range(len(self._children)):
+            if not self._children[i].matchStructure(other._children[i]):
+                return False
+        return True
+    def matchOrdered(self, other):
+        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
+        if not self.matchStructure(other):
+            return False
+        selfnodes = self.getNodeListRecursive()
+        othernodes = other.getNodeListRecursive()
+        if len(selfnodes) != len(othernodes):
+            return False
+        for i in range(len(selfnodes)):
+            for j in range(i):
+                if selfnodes[i] is selfnodes[j] and othernodes[i] is not othernodes[j]:
+                    return False
+                if selfnodes[i] is not selfnodes[j] and othernodes[i] is othernodes[j]:
+                    return False
+        return True
+    def matchStep(self, other, i):
+        '''tries to make self and other match by permuting other[i],...,other[-1].
+        assumes self and other have the same length of children lists.
+        mutates other to have matching order in children lists, even if the comparison fails.'''
+        if i >= len(self._children):
+            return self.matchOrdered(other)
+        for j in range(i, len(self._children)):
+            if other._children[j].match(self._children[i]):
+                other._children[i], other._children[j] = other._children[j], other._children[i]
+                if self.matchStep(other, i+1):
+                    return True
+                other._children[i], other._children[j] = other._children[j], other._children[i]
+        return False
+    def match(self, other):
+        '''returns true if self and other represent the same hardware.
+        mutates other to have matching order in children lists.'''
+        if self.__class__ != other.__class__:
+            return False
+        if self.name != other.name:
+            return False
+        if len(self._children) != len(other._children):
+            return False
+        if set(self._inputs) != set(other._inputs):
+            return False
+        if set(self._methods) != set(other._methods):
+            return False
+        return self.matchStep(other, 0)
     def prune(self):
         pass
         #TODO
@@ -225,7 +297,7 @@ class Function(Component):
             return "Function " + self.name
         return "Function " + self.name + " with children " + " | ".join(str(x) for x in self._children)
     def getNodeListRecursive(self):
-        '''returns a set of all nodes in self'''
+        '''returns a list of all nodes in self in a deterministic order'''
         nodes = self.inputs.copy()
         nodes.append(self.output)
         for child in self._children:
