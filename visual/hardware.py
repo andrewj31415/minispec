@@ -246,7 +246,7 @@ class Register(Module):
     @value.setter
     def value(self, value: Node()):
         raise Exception("Can't directly modify this property")
-       
+   
 
 class Function(Component):
     ''' children is a list of components. '''
@@ -340,13 +340,15 @@ class Function(Component):
         '''tries to make self and other match by permuting other[i],...,other[-1].
         assumes self and other have the same length of children lists.
         mutates other to have matching order in children lists, even if the comparison fails.'''
-        #print('matching a step', self.name)
         if i >= len(self._children):
             return self.matchOrdered(other)
         for j in range(i, len(self._children)):
             if other._children[j].match(self._children[i]):
                 other._children[i], other._children[j] = other._children[j], other._children[i]
                 #see if the nodes set up so far are the same graph
+                #checking this now improves matching speed when there are lots of wires, since issues with
+                #wire ordering can only be detected by looking at nodes--without partial node checks, we
+                #would have to try every permutation of the wires.
                 selfNodesSoFar = []
                 for k in range(i+1):
                     selfNodesSoFar += self._children[k].getNodeListRecursive()
