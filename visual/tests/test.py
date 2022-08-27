@@ -218,7 +218,19 @@ def _():
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
+describe('''Modules''')
 
+@it('''Correctly handles a simple counter''')
+def _():
+    text = pull('counters')
+    output = synth.parseAndSynth(text, 'FourBitCounter')
+    print(output.__repr__())
+
+    print()
+    for child in output.children:
+        print(child.__repr__())
+
+    raise Exception("TODO: finish writing test")
 
 #run all the tests
 import time

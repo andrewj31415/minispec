@@ -1,5 +1,6 @@
 
 
+from unicodedata import name
 from literals import *
 from mtypes import *
 
@@ -26,8 +27,10 @@ class Node:
 
 class Component:
     '''
-    Component = Function(children: list[Component], inputs: list[Node])
+    Component = Function(children: list[Component], inputs: list[Node], output: Node)
                 + Wire(src: Node, dst: Node)
+                + Mux(inputs: list[Node], control: Node, output: Node)
+                + Module(children: list[Component], inputs: dict[str -> Node], methods: dict[str -> Node])
 
     TODO big change: Node object names no longer matter and are just for debugging.
     Thus hardware may be the same without matching node names.
@@ -85,8 +88,91 @@ class Component:
     def outputNodes(self):
         '''Returns the set of all output nodes in self, eg a wire's dst or a function's output.'''
         raise Exception("Not implemented")
-        
+    def isRegister(self):
+        '''Return true if self is a register. This is used when a register's value is used in an expression,
+        since most modules' methods can only be accessed by name while a register's output may be accessed
+        by referring to the register itself (so we need to determine when a module is actually a register).'''
+        return False
+    def isComponent(self):
+        '''Used by assert statements'''
+        return True
 
+class Module(Component):
+    ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
+    __slots__ = '_name', '_children', '_inputs', '_methods'
+    def __init__(self, name: 'str', children: 'list[Component]', inputs: 'dict[str, Node]', methods: 'dict[str, Node]'):
+        self.name = name
+        self._children = children.copy() #copy the array but not the children themselves
+        self._inputs = inputs.copy()
+        self._methods = methods.copy()
+    @property
+    def name(self):
+        '''The name of the module'''
+        return self._name
+    @name.setter
+    def name(self, name: 'str'):
+        self._name = name
+    @property
+    def children(self):
+        '''The hardware inside the module'''
+        return self._children.copy()
+    @children.setter
+    def children(self, children: 'list[Component]'):
+        raise Exception("Can't directly modify this property")
+    def addChild(self, child: 'Component'):
+        '''Adds the given hardware to the current module'''
+        assert child.isComponent(), "Only components can be children of a module"
+        self._children.append(child)
+    @property
+    def inputs(self):
+        '''Returns a copy of the dict of input Nodes to this module'''
+        return self._inputs.copy()
+    @inputs.setter
+    def inputs(self, inputs: 'dict[str, Node]'):
+        raise Exception("Can't directly modify this property")
+    def addInput(self, inputNode: 'Node', inputName: 'str'):
+        '''Add the input with the given name'''
+        assert inputName not in self.inputs, f"Can't overwrite existing input {inputName}"
+        self._inputs[inputName] = inputNode
+    @property
+    def methods(self):
+        '''Returns a copy of the dict of method output Nodes of this module'''
+        return self._methods.copy()
+    @methods.setter
+    def methods(self, methods: 'dict[str, Node]'):
+        raise Exception("Can't directly modify this property")
+    def addMethod(self, methodNode: 'Node', methodName: 'str'):
+        '''Add the method output node. Used when a method has no arguments.'''
+        assert methodName not in self.methods, f"Can't overwrite existing input {methodName}"
+        self._methods[methodName] = methodNode
+    def __repr__(self):
+        return "Module(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.methods.__repr__() + ")"
+    def prune(self):
+        pass
+        #TODO
+
+class Register(Module):
+    '''A module corresponding to a register'''
+    def __init__(self, name: 'str'):
+        super().__init__(name, [], {'_input':Node('input')}, {'_value':Node('value')})
+        self.name = name
+    def isRegister(self):
+        return True
+    @property
+    def input(self):
+        '''The input node to the register'''
+        return self._inputs['_input']
+    @input.setter
+    def input(self, value: Node()):
+        raise Exception("Can't directly modify this property")
+    @property
+    def value(self):
+        '''The node with the value of the register'''
+        return self._methods['_value']
+    @value.setter
+    def value(self, value: Node()):
+        raise Exception("Can't directly modify this property")
+       
 
 class Function(Component):
     ''' children is a list of components. '''
@@ -114,6 +200,7 @@ class Function(Component):
         raise Exception("Can't directly modify this property")
     def addChild(self, child: 'Component'):
         '''Adds the given hardware to the current function'''
+        assert child.isComponent(), "Only components can be children of a function"
         self._children.append(child)
     @property
     def inputs(self):
@@ -230,6 +317,8 @@ class Function(Component):
         return set(self.inputs)
     def outputNodes(self):
         return {self.output}
+
+
 
 class Mux(Component):
     __slots__ = '_inputs', '_control', '_output'

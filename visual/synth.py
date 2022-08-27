@@ -1,5 +1,6 @@
 from email.utils import parseaddr
 import inspect
+from operator import mod
 
 import antlr4
 import build.MinispecPythonParser
@@ -236,11 +237,8 @@ class BuiltInScope(Scope):
     def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node':
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
-        probably a ctx object (functionDef) or a node object (variable value).
-        Returns an object.
-        Returns a tuple (object, paramMappings) where paramMappings is a dictionary
-        str -> int that shows how the stored parameters were mapped to match parameters to
-        the stored parameters.'''
+        probably a ctx object (functionDef).
+        Returns a ctx object or a typeName.'''
         if varName == 'Bit':
             assert len(parameters) == 1, "bit takes exactly one parameter"
             n = parameters[0]
@@ -253,9 +251,20 @@ class BuiltInScope(Scope):
             return Vector.createdVectors[(k, typeValue)]
         if varName == 'Bool':
             return Bool
+        if varName == 'Reg':
+            return BuiltinCtx('Register')
+        raise Exception(f"Couldn't find variable {varName} with parameters {parameters}")
 
 #type annotation for context objects.
 ctxType = ' | '.join([ctxType for ctxType in dir(build.MinispecPythonParser.MinispecPythonParser) if ctxType[-7:] == "Context"][:-3])
+
+
+class BuiltinCtx:
+    def __init__(self, visitorFunctionName: 'str'):
+        self._visitorFunctionName = visitorFunctionName
+    def accept(self, visitor):
+        return eval('visitor.visit' + self._visitorFunctionName + '()')
+
 
 '''
 Functions/modules/components will have nodes. Wires will be attached to nodes.
@@ -319,6 +328,37 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
     def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''We have defined a function, so we step back into the parent scope.'''
         assert len(self.collectedScopes.currentScope.parents) == 1, "function can only have parent scope"
+        self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
+
+    def enterModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
+        '''We are defining a module. We need to give this module a corresponding scope.'''
+        moduleName = ctx.moduleId().name.getText() # get the name of the module
+        params = []
+        if ctx.moduleId().paramFormals():
+            assert False, "Parametric modules not implemented yet"
+        #log the module's scope
+        self.collectedScopes.currentScope.setPermanent(ctx, moduleName, params)
+        functionScope = Scope(self.globalsHandler, moduleName, [self.collectedScopes.currentScope])
+        ctx.scope = functionScope
+        self.collectedScopes.currentScope = functionScope
+        self.collectedScopes.allScopes.append(functionScope)
+
+    def exitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
+        '''We have defined a module, so we step back into the parent scope.'''
+        assert len(self.collectedScopes.currentScope.parents) == 1, "module can only have parent scope"
+        self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
+
+    def enterRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
+        '''Rules get a scope'''
+        ruleName = ctx.name.getText()
+        ruleScope = Scope(self.globalsHandler, ruleName, [self.collectedScopes.currentScope])
+        ctx.scope = ruleScope
+        self.collectedScopes.currentScope = ruleScope
+        self.collectedScopes.allScopes.append(ruleScope)
+
+    def exitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
+        '''We have defined a rule, so we step back into the parent scope.'''
+        assert len(self.collectedScopes.currentScope.parents) == 1, "module can only have parent scope"
         self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
 
     def enterVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
@@ -416,6 +456,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     nodes of type exprPrimary return the node corresponding to their value.
     stmt do not return anything; they mutate the current scope and the current hardware.'''
 
+    def visitRegister(self):
+        ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
+        return Register('register')
+
     def __init__(self, globalsHandler: 'GlobalsHandler', collectedScopes: 'MinispecStructure') -> None:
         self.globalsHandler = globalsHandler
         self.collectedScopes = collectedScopes
@@ -447,7 +491,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitParam(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamContext):
         if ctx.intParam:
             return self.visit(ctx.intParam)
-        assert False, "typeName lookups are not yet supported"
+        assert ctx.typeName(), "Should have a typeName. Did the grammar change?"
+        return self.visit(ctx.typeName())
 
     def visitParams(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamsContext):
         raise Exception("Not implemented")
@@ -527,25 +572,143 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not visited--handled under varBinding to access typeName.")
 
     def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
-        raise Exception("Not implemented")
+        moduleName = ctx.moduleId().name.getText()
+        if ctx.moduleId().paramFormals():
+            raise Exception("Modules with parameters not currently supported")
+        functionScope = ctx.scope
+        functionScope.clearTemporaryValues # clear the temporary values
+        # log the current scope
+        previousScope = self.collectedScopes.currentScope
+        self.collectedScopes.currentScope = functionScope
+
+        moduleComponent = Module(moduleName, [], {}, {})
+        # log the current component
+        previousComponent = self.globalsHandler.currentComponent
+        self.globalsHandler.currentComponent = moduleComponent
+
+        # synthesize the module internals
+
+        inputDefs = []
+        submoduleDecls = []
+        methodDefs = []
+        ruleDefs = []
+
+        for moduleStmt in ctx.moduleStmt():
+            if moduleStmt.inputDef():
+                inputDefs.append(moduleStmt.inputDef())
+            elif moduleStmt.submoduleDecl():
+                submoduleDecls.append(moduleStmt.submoduleDecl())
+            elif moduleStmt.methodDef():
+                methodDefs.append(moduleStmt.methodDef())
+            elif moduleStmt.ruleDef():
+                ruleDefs.append(moduleStmt.ruleDef())
+            elif moduleStmt.stmt():
+                raise Exception("moduleStmt stmt is not implemented")
+            elif moduleStmt.functionDef():
+                continue # Only synthesize functions when called
+            else:
+                raise Exception("Unknown variant. Did the grammar change?")
+
+        # synthesize inputs, submodules, methods, and rules, in that order
+
+        for inputDef in inputDefs:
+            self.visit(inputDef)
+        for submoduleDecl in submoduleDecls:
+            self.visit(submoduleDecl)
+        for methodDef in methodDefs:
+            if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
+                self.visit(methodDef)
+        for ruleDef in ruleDefs:
+            self.visit(ruleDef)
+
+        print(inputDefs)
+        print(submoduleDecls)
+        print(methodDefs)
+        print(ruleDefs)
+
+        self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
+        self.collectedScopes.currentScope = previousScope
+        return moduleComponent
 
     def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
         raise Exception("Not implemented")
 
     def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
-        raise Exception("Not implemented")
+        raise Exception("Not accessed directly, handled in moduleDef")
 
     def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext):
-        raise Exception("Not implemented")
+        ''' We have a submodule, so we synthesize it and add it to the current module.
+        We also need to bind to submodule's methods somehow; methods with no args bind to
+        the corresponding module output, while methods with args need to be somehow tracked as
+        functions calls that can be visited and synthesized, returning their output. '''
+        moduleDef = self.visit(ctx.typeName())
+        # print('constructing', moduleToConstruct)
+        # args: 'list[int]' = []
+        # if ctx.args():
+        #     for arg in ctx.args().arg():
+        #         value = self.visit(arg.expression())
+        #         assert value.__class__ == IntegerLiteral, "Module parameters must be integer literals"
+        #         args.append(value)
+        # moduleDef = self.collectedScopes.currentScope.get(self, moduleToConstruct, args)
+        # self.globalsHandler.lastParameterLookup = args
+        print('moduleDef', moduleDef)
+        moduleComponent = self.visit(moduleDef)  #synthesize the module
+        self.globalsHandler.currentComponent.addChild(moduleComponent)
+        submoduleName = ctx.name.getText()
+        self.collectedScopes.currentScope.set(moduleComponent, submoduleName)
 
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
-        raise Exception("Not implemented")
+        ''' Add the appropriate input to the module, with hardware to handle the default value.
+        Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').) '''
+        if ctx.defaultVal:
+            raise Exception("Not implemented")
+        inputName = ctx.name.getText()
+        inputType = self.visit(ctx.typeName())
+        inputNode = Node(inputName, inputType)
+        self.collectedScopes.currentScope.set(inputNode, inputName)
+        self.globalsHandler.currentComponent.addInput(inputName, inputNode)
+        # I think we might need to be a little fancy with default values.
+        # If an input is assigned sometimes as determined by an if statement, then there will be a mux
+        # leading to the input and the other branch of the mux should be the default value.
+        # Alternatively, if the input is never assigned, then the default value should be hard-coded in.
+        # For now, we will not implement default values.
 
     def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
-        raise Exception("Not implemented")
+        '''
+        I think methods with arguments need to be handled separately from methods without arguments.
+        - No args:
+          This can be a bunch of wires/functions inside the module, synthesized with the module,
+          such that the output of the method is a single output node of the module.
+          So each method with no args gets synthesized once, with the module.
+        - With args:
+          A function outside of the module, wherever it gets called from. Synthsized each time
+          it is called. For each register that the method calls from, we make the register value
+          into a method with no args exactly once (this would need to be kept track of).
+        - Things to check:
+          What does minispec do with a top-level module with methods with arguments?
+            Does it synthesize each one once, or does it leave them out?
+        When we synthesize a methodDef with args, we should return the output to the synthesized method.
+        When there are no args, there is no need to return anything.
+        '''
+        print('got a method', ctx.toStringTree(recog = parser))
+        if not ctx.argFormals(): # there are no arguments, so we synthesize the method inside the current module and return the output node.
+            if ctx.expression():
+                methodName = ctx.name.getText()
+                methodNode = self.visit(ctx.expression())
+                self.globalsHandler.currentComponent.addMethod(methodName, methodNode)
+            else:
+                raise Exception("Not implemented")
+        else:
+            raise Exception("Not implemented")
 
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
-        raise Exception("Not implemented")
+        ruleScope = ctx.scope
+        ruleScope.clearTemporaryValues # clear the temporary values
+        previousScope = self.collectedScopes.currentScope
+        self.collectedScopes.currentScope = ruleScope
+        for stmt in ctx.stmt():
+            self.visit(stmt)
+        self.collectedScopes.currentScope = previousScope
 
     def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''Synthesizes the corresponding function and returns the entire function hardware.
@@ -699,10 +862,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         #assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
 
     def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
+        ''' Return the Node or MLiteral corresponding to the expression '''
         if not ctx.op:  # our unopExpr is actually just an exprPrimary.
             value = self.visit(ctx.exprPrimary())
             if not isNodeOrMLiteral(value):
-                value = self.visit(value)
+                if hasattr(value, 'isRegister') and value.isRegister():
+                    value: 'Register' = value.value
+                else:
+                    value = self.visit(value)
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
             return value
         value = self.visit(ctx.exprPrimary())
@@ -723,7 +890,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
         '''We are visiting a variable/function name. We look it up and return the correpsonding information
         (which may be a Node or a ctx or a tuple (ctx/Node, paramMappings), for instance).'''
-        return self.collectedScopes.currentScope.get(self, ctx.var.getText())
+        if ctx.params():
+            raise Exception("Not implemented")
+        value = self.collectedScopes.currentScope.get(self, ctx.var.getText())
+        return value
 
     def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
         raise Exception("Not implemented")
@@ -798,7 +968,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.visit(stmt)
 
     def visitRegWrite(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RegWriteContext):
-        raise Exception("Not implemented")
+        '''To assign to a register, we put a wire from the value (rhs) to the register input.'''
+        value = self.visit(ctx.rhs)
+        if isMLiteral(value):  # convert value to hardware before assigning to register
+            value = value.getHardware()
+        if ctx.lhs.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+            raise Exception("Not implemented")
+        regName = ctx.lhs.getText()
+        register: 'Register' = self.collectedScopes.currentScope.get(value, regName)
+        setWire = Wire(value, register.input)
+        self.globalsHandler.currentComponent.addChild(setWire)
+        print('register', register)
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
         #TODO figure out why we are visiting stmt and adjust as appropriate
