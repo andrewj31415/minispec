@@ -424,14 +424,14 @@ visitCaseExpr:
 visitCaseExprItem: 
 visitBinopExpr: Node or MLiteral corresponding to the value of the expression
 visitUnopExpr: Node or MLiteral corresponding to the value of the expression
-visitVarExpr: 
-visitBitConcat: 
+visitVarExpr: Returns the result upon looking up the variable name and associated parameters.
+visitBitConcat: Returns the result (node) of concatenation
 visitStringLiteral: No returns, does nothing
 visitIntLiteral: Corresponding MLiteral
 visitReturnExpr: Nothing, mutates current function hardware
 visitStructExpr: 
 visitUndefinedExpr: Corresponding MLiteral
-visitSliceExpr: 
+visitSliceExpr: Returns the result (node) upon slicing
 visitCallExpr: Returns the output node of the function call or a literal (if the function gets constant-folded)
     Note that constant-folding elimination of function components occurs here, not in functionDef, so that the function to synthesize is not eliminated.
 visitFieldExpr: 
@@ -916,7 +916,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return value
 
     def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
-        raise Exception("Not implemented")
+        ''' Bit concatenation is just a function. Returns the function output. '''
+        toConcat = []
+        for expr in ctx.expression():
+            toConcat.append(self.visit(expr))
+        inputs = []
+        for node in toConcat:
+            inputNode = Node()
+            inputWire = Wire(node, inputNode)
+            self.globalsHandler.currentComponent.addChild(inputWire)
+            inputs.append(inputNode)
+        sliceComponent = Function('{}', [], inputs)
+        self.globalsHandler.currentComponent.addChild(sliceComponent)
+        return sliceComponent.output
 
     def visitStringLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StringLiteralContext):
         pass
@@ -941,7 +953,21 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
-        raise Exception("Not implemented")
+        ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
+        Returns the result of slicing (the output of the slicing function). '''
+        toModify = self.visit(ctx.array)
+        assert toModify.isNode(), "Expected a node"
+        if ctx.lsb:
+            raise Exception("Not implemented")
+        msb = self.visit(ctx.msb) #most significant bit
+        if not isMLiteral(msb):
+            raise Exception("Not implemented")
+        inNode = Node()
+        sliceComponent = Function('[' + str(msb) + ']', [], [inNode])
+        inWire = Wire(toModify, inNode)
+        self.globalsHandler.currentComponent.addChild(sliceComponent)
+        self.globalsHandler.currentComponent.addChild(inWire)
+        return sliceComponent.output
 
     def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
         '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
@@ -1031,26 +1057,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for var in elseScope.temporaryValues:
                 varsToBind.add(var)
             for var in varsToBind:
-                # if var in ifScope.temporaryValues and var not in elseScope.temporaryValues:
-                #     originalScope.set(ifScope.get(self, var), var)
-                #     raise Exception("Not implemented--need to create mux from original scope.")
-                # if var in elseScope.temporaryValues and var not in ifScope.temporaryValues:
-                #     originalScope.set(elseScope.get(self, var), var)
-                #     raise Exception("Not implemented--need to create mux from original scope.")
-                if False:
-                    pass
-                else:
-                    value1 = ifScope.get(self, var)
-                    value2 = elseScope.get(self, var)
-                    # since the control signal is hardware, we convert the values to hardware as well (if needed)
-                    if isMLiteral(value1):
-                        value1 = value1.getHardware(self.globalsHandler)
-                    if isMLiteral(value2):
-                        value2 = value2.getHardware(self.globalsHandler)
-                    muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
-                    for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
-                        self.globalsHandler.currentComponent.addChild(component)
-                    originalScope.set(muxComponent.output, var)
+                value1 = ifScope.get(self, var)   # if var doesn't appear in one of these scopes, the lookup will find its original value
+                value2 = elseScope.get(self, var)
+                # since the control signal is hardware, we convert the values to hardware as well (if needed)
+                if isMLiteral(value1):
+                    value1 = value1.getHardware(self.globalsHandler)
+                if isMLiteral(value2):
+                    value2 = value2.getHardware(self.globalsHandler)
+                muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
+                for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
+                    self.globalsHandler.currentComponent.addChild(component)
+                originalScope.set(muxComponent.output, var)
 
     def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):
         '''I'm considering implementing case statements as a sequence of if statements.

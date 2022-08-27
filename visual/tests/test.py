@@ -243,7 +243,7 @@ def _():
     text = pull('bits1')
 
     fa, fo = Node(), Node()
-    n1, n2, zero, one, concat = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('[0]', [], [Node()]), Function('1', [], [Node()]), Function('{}', [], [Node(), Node()])
+    n1, n2, zero, one, concat = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('[0]', [], [Node()]), Function('[1]', [], [Node()]), Function('{}', [], [Node(), Node()])
     f = Function('f', [n1, n2, zero, one, concat, Wire(fa, zero.inputs[0]), Wire(fa, one.inputs[0]), Wire(zero.output, n1.inputs[0]), Wire(one.output, n2.inputs[0]), Wire(n1.output, concat.inputs[0]), Wire(n2.output, concat.inputs[1]), Wire(concat.output, fo)], [fa], fo)
 
     output = synth.parseAndSynth(text, 'f')
@@ -251,8 +251,8 @@ def _():
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
     
     ga, go = Node(), Node()
-    n1, n2, zero, one, concat = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('[0]', [], [Node()]), Function('1', [], [Node()]), Function('{}', [], [Node(), Node()])
-    g = Function('f', [n1, n2, zero, one, concat, Wire(ga, zero.inputs[0]), Wire(ga, one.inputs[0]), Wire(zero.output, n1.inputs[0]), Wire(one.output, n2.inputs[0]), Wire(n1.output, concat.inputs[1]), Wire(n2.output, concat.inputs[0]), Wire(concat.output, go)], [ga], go)
+    n1, n2, zero, one, concat = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('[0]', [], [Node()]), Function('[1]', [], [Node()]), Function('{}', [], [Node(), Node()])
+    g = Function('g', [n1, n2, zero, one, concat, Wire(ga, zero.inputs[0]), Wire(ga, one.inputs[0]), Wire(zero.output, n1.inputs[0]), Wire(one.output, n2.inputs[0]), Wire(n1.output, concat.inputs[1]), Wire(n2.output, concat.inputs[0]), Wire(concat.output, go)], [ga], go)
 
     output = synth.parseAndSynth(text, 'g')
     expected = g
