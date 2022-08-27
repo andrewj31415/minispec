@@ -272,7 +272,23 @@ def _():
     output = synth.parseAndSynth(text, 'f')
     expected = f
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
-  
+
+describe('''For Loops''')
+
+@it('''Correctly handles for loop''')
+def _():
+    text = pull('for')
+
+    zero, one, two, three = Function('[0]', [], [Node()]), Function('[1]', [], [Node()]), Function('[2]', [], [Node()]), Function('[3]', [], [Node()])
+    output = Function('0')
+    xor0, xor1, xor2, xor3 = Function('^', [], [Node(), Node()]), Function('^', [], [Node(), Node()]), Function('^', [], [Node(), Node()]), Function('^', [], [Node(), Node()])
+    fa, fo = Node(), Node()
+    f = Function('parity#(4)', [zero, one, two, three, output, xor0, xor1, xor2, xor3, Wire(fa, zero.inputs[0]), Wire(fa, one.inputs[0]), Wire(fa, two.inputs[0]), Wire(fa, three.inputs[0]), Wire(output.output, xor0.inputs[0]), Wire(xor0.output, xor1.inputs[0]), Wire(xor1.output, xor2.inputs[0]), Wire(xor2.output, xor3.inputs[0]), Wire(xor3.output, fo), Wire(zero.output, xor0.inputs[1]), Wire(one.output, xor1.inputs[1]), Wire(two.output, xor2.inputs[1]), Wire(three.output, xor3.inputs[1])], [fa], fo)
+
+    output = synth.parseAndSynth(text, 'parity', [4])
+    expected = f
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 #run all the tests
 import time

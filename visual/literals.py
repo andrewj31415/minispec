@@ -96,7 +96,8 @@ class MLiteral():
     def sright(first, second):
         raise Exception("Not implemented")
     def lt(first, second):
-        raise Exception("Not implemented")
+        first, second = MLiteral.coerceArithmetic(first, second)
+        return first.lt(second)
     def le(first, second):
         raise Exception("Not implemented")
     def gt(first, second):

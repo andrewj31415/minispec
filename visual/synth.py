@@ -445,7 +445,7 @@ visitIfStmt: No returns, mutates existing hardware
 visitCaseStmt: No returns, mutates existing hardware
 visitCaseStmtItem: 
 visitCaseStmtDefaultItem: 
-visitForStmt: 
+visitForStmt: No returns, mutates existing hardware
 
 
 '''
@@ -1113,7 +1113,20 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
-        raise Exception("Not implemented")
+        iterVarName = ctx.initVar.getText()
+        initVal = self.visit(ctx.expression(0))
+        assert isMLiteral(initVal), "For loops must be unrolled before synthesis"
+        self.collectedScopes.currentScope.set(initVal, iterVarName)
+        checkDone = self.visit(ctx.expression(1))
+        assert isMLiteral(checkDone) and checkDone.__class__ == BooleanLiteral, "For loops must be unrolled before synthesis"
+        while checkDone.value:
+            self.visit(ctx.stmt())
+            nextIterVal = self.visit(ctx.expression(2))
+            assert isMLiteral(nextIterVal), "For loops must be unrolled before synthesis"
+            self.collectedScopes.currentScope.set(nextIterVal, iterVarName)
+            checkDone = self.visit(ctx.expression(1))
+            assert isMLiteral(checkDone) and checkDone.__class__ == BooleanLiteral, "For loops must be unrolled before synthesis"
+        
 
 def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None) -> 'Component':
     if topLevelParameters == None:
