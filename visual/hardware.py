@@ -4,6 +4,10 @@ from unicodedata import name
 from literals import *
 from mtypes import *
 
+def getELK(component: 'Component'):
+    ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
+    return f'{{ id: "root", layoutOptions: {{ "algorithm": "layered" }}, children: [ {component.toELK()} ], edges: [ ] }}'
+
 '''Private methods/fields begin with a single underscore. See help(property) for details.
 Slots are used to enforce which fields may be set.'''
 
@@ -26,6 +30,12 @@ class Node:
         self._mtype = value
     def isNode(self):
         return True
+    def elkID(self) -> str:
+        ''' Returns the id of self in ELK '''
+        return f'"node{self._id}"'
+    def toELK(self) -> str:
+        ''' Converts the node into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
+        return f"{{ id: {self.elkID()}, width: {2}, height: {2} }}"
 
 class Component:
     '''
@@ -67,7 +77,11 @@ class Component:
     This should not matter since the order of the components should not matter.
 
     '''
-    __slots__ = tuple()
+    _num_components_created = 0  #one for each component created, so each component has a unique id
+    __slots__ = '_id'
+    def __init__(self):
+        self._id = Component._num_components_created
+        Component._num_components_created += 1
     def getNodeListRecursive(self):
         '''returns a list of all nodes in self in a deterministic order'''
         raise Exception("Not implemented")
@@ -98,11 +112,18 @@ class Component:
     def isComponent(self) -> Bool:
         '''Used by assert statements'''
         return True
+    def elkID(self) -> str:
+        ''' Returns the id of self in ELK '''
+        return f'"component{self._id}"'
+    def toELK(self) -> str:
+        ''' Converts the component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
+        raise Exception("Not implemented")
 
 class Module(Component):
     ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
     __slots__ = '_name', '_children', '_inputs', '_methods'
     def __init__(self, name: 'str', children: 'list[Component]', inputs: 'dict[str, Node]', methods: 'dict[str, Node]'):
+        Component.__init__(self)
         self.name = name
         self._children = children.copy() #copy the array but not the children themselves
         self._inputs = inputs.copy()
@@ -252,6 +273,7 @@ class Function(Component):
     ''' children is a list of components. '''
     __slots__ = '_name', '_children', '_inputs', '_output'
     def __init__(self, name: 'str', children: 'list[Component]'=None, inputs: 'list[Node]'=None, output: 'Node'=None):
+        Component.__init__(self)
         self.name = name
         if children == None:
             children = []
@@ -418,12 +440,15 @@ class Function(Component):
         return set(self.inputs)
     def outputNodes(self):
         return {self.output}
+    def toELK(self) -> str:
+        return f'{{ id: {self.elkID()}, ports: [ {", ".join([node.toELK() for node in self.inputs+[self.output]])} ], children: [ {", ".join([child.toELK() for child in self.children if child.__class__ != Wire])} ], edges: [ {", ".join([child.toELK() for child in self.children if child.__class__ == Wire])} ] }}'
 
 
 
 class Mux(Component):
     __slots__ = '_inputs', '_control', '_output'
     def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
+        Component.__init__(self)
         self._inputs = inputs
         if control == None:
             control = Node('_mux_control')
@@ -512,6 +537,7 @@ class Wire(Component):
     ''' src and dst are Nodes.'''
     __slots__ = "_src", "_dst"
     def __init__(self, src: 'Node', dst: 'Node'):
+        Component.__init__(self)
         assert src.isNode(), "Must be a node"
         assert dst.isNode(), "Must be a node"
         assert src is not dst, "wire must have distinct ends"
@@ -553,3 +579,5 @@ class Wire(Component):
         return {self.src}
     def outputNodes(self):
         return {self.dst}
+    def toELK(self) -> str:
+        return f"{{ id: {self.elkID()}, sources: [ {self.src.elkID()} ], targets: [ {self.dst.elkID()} ] }}"

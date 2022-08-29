@@ -15,6 +15,9 @@ The final program will have four parts:
 
 3. The placement algorithm. The placement algorithm will determine the layout of the output. Our current synthesis program uses netlistsvg (TODO link), which in turn depends on ElkJS. ElkJS has a few different algorithm options, but they all use the same paradigm: placing all components onto a grid and rearranging via heuristics (TODO details + link). This paradigm does not seem particularly difficult to implement, and since there are quite a few minispec-specific heuristics (for instance, if the ouput of a mux leads into a register, then the mux should be placed before the register), I think it would be best to write our own implementation.
 
+Actually, since the Eclipse Layout Kernel (ELK) https://www.eclipse.org/elk/ includes support for nodes-within-nodes, it might be possible to use some form of ELK directly.
+An online demo is here: https://rtsys.informatik.uni-kiel.de/elklive/json.html
+
     3a. The timing computations. We would like to display latency information for each component in the circuit. Since we have the minispec source for every component, it should be possible to feed the corresponding source into our existing synth program to get accurate timings. There are a few points of note to consider:
 
     - The source for some components (like a mux) may be scattered throughout the source code.

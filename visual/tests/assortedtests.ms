@@ -159,3 +159,11 @@ endfunction
 function Bit#(1) parity4(Bit#(4) n);
     return xor1(xor1(xor1(n[0], n[1]), n[2]), n[3]);
 endfunction
+
+function Bit#(1) doubleInverter(Bit#(1) n);
+  return ~(~n);
+endfunction
+
+/*function Bit#(1) doubleInverter(Bit#(1) n);
+  return n;
+endfunction*/
