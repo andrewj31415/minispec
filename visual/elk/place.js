@@ -1,28 +1,26 @@
 // to run: node place.js
 
+const fs = require("fs");
+
 const ELK = require("./elk.bundled.js");
 const elk = new ELK();
 
-const graph = {
-    id: "root",
-    layoutOptions: { "elk.algorithm": "layered" },
-    children: [
-        { id: "n1", width: 30, height: 30 },
-        { id: "n2", width: 30, height: 30 },
-        { id: "n3", width: 30, height: 30 },
-    ],
-    edges: [
-        { id: "e1", sources: ["n1"], targets: ["n2"] },
-        { id: "e2", sources: ["n1"], targets: ["n3"] },
-    ],
-};
+inputJSON = fs.readFileSync("./elk/elkInput.txt", (err) => {
+    if (err) {
+        console.error(err);
+    }
+}); // read from the input file into a buffer object
 
-// See https://nodejs.org/en/knowledge/command-line/how-to-parse-command-line-arguments/
-console.log(process.argv);
+inputJSON = JSON.parse(inputJSON); // convert the buffer object into JSON
 
-elk.layout(graph)
+elk.layout(inputJSON) // layout the graph
     .then((output) => {
-        console.log(output);
-        console.log(JSON.stringify(output));
+        outputJSON = JSON.stringify(output); // convert elk's json output into a string
+        fs.writeFile("./elk/elkOutput.txt", outputJSON, (err) => {
+            // put the output string into the output file
+            if (err) {
+                console.error(err);
+            }
+        });
     })
     .catch(console.error);
