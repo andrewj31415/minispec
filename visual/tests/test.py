@@ -295,9 +295,9 @@ describe('''Assorted hardware''')
 def _():
     text = pull('assortedtests')
 
-    #output = synth.parseAndSynth(text, 'population_count', [])
+    output = synth.parseAndSynth(text, 'population_count', [])
     #output = synth.parseAndSynth(text, 'doubleInverter', [])
-    output = synth.parseAndSynth(text, 'combine', [])
+    #output = synth.parseAndSynth(text, 'combine', [])
     print(output.__repr__())
     print()
     #print(output.toELK())
