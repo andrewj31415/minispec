@@ -18,12 +18,28 @@ def elkID(item: 'Component|Node') -> str:
         return f"component{item._id}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
-def toELK(item: 'Component|Node') -> 'dict[str, Any]':
-    ''' Converts the node or component into the ELK JSON format as a python object. '''
+def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
+    ''' Converts the node or component into the ELK JSON format as a python object. 
+    See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html '''
+    if not properties:
+        properties = {}
     if item.__class__ == Node:
-        return { 'id': elkID(item), 'width': 2, 'height': 2 }
+        jsonObj = { 'id': elkID(item), 'width': 2, 'height': 2, 'properties': properties }
+        return jsonObj
     elif item.__class__ == Function:
-        jsonObj = { 'id': elkID(item), 'labels': [ { 'text': item.name, 'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ], 'ports': [ toELK(node) for node in item.inputs+[item.output] ], 'children': [ toELK(child) for child in item.children if child.__class__ != Wire ], 'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ] }
+        ports = []
+        ind = len(item.inputs)
+        for node in item.inputs:
+            ports.append(toELK(node, {'port.side': 'WEST', 'port.index': ind}))
+            ind -= 1
+        ports.append( toELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
+        jsonObj = { 'id': elkID(item),
+                    'labels': [ { 'text': item.name,
+                    'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ],
+                    'ports': ports,
+                    'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
+                    'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
+                    'properties': { 'portConstraints': 'FIXED_ORDER' } }
         if len(item.children) == 0:
             jsonObj['width'] = 15
             jsonObj['height'] = 15

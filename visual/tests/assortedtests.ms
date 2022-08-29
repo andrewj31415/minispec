@@ -167,3 +167,8 @@ endfunction
 /*function Bit#(1) doubleInverter(Bit#(1) n);
   return n;
 endfunction*/
+
+function Bit#(1) combine(Bit#(1) a, Bit#(1) b, Bit#(1) c);
+  Bit#(1) cout = and1( or1(b, a), xor1(c, b) );
+  return cout;
+endfunction
