@@ -9,10 +9,10 @@ import synth
 
 import pathlib
 
-minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("assortedtests.ms")
+minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("counters.ms")
 minispecCode = minispecCodeFile.read_text()
 
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'population_count', [])
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'FourBitCounter', [])
 
 # input/output files for elk
 pythonToJSFile = pathlib.Path(__file__).with_name("elk").joinpath("elkInput.txt")
