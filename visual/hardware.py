@@ -4,10 +4,12 @@ from unicodedata import name
 from literals import *
 from mtypes import *
 
+import json
+
 def getELK(component: 'Component'):
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
-    return f'{{ id: "root", layoutOptions: {{ "algorithm": "layered" }}, children: [ {component.toELK()} ], edges: [ ] }}'
-
+    return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered' }, 'children': [ component.toELK() ], 'edges': [] } )
+    
 '''Private methods/fields begin with a single underscore. See help(property) for details.
 Slots are used to enforce which fields may be set.'''
 
@@ -32,10 +34,10 @@ class Node:
         return True
     def elkID(self) -> str:
         ''' Returns the id of self in ELK '''
-        return f'"node{self._id}"'
+        return 'node' + str(self._id)
     def toELK(self) -> str:
         ''' Converts the node into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
-        return f"{{ id: {self.elkID()}, width: {2}, height: {2} }}"
+        return { 'id': self.elkID(), 'width': 2, 'height': 2 }
 
 class Component:
     '''
@@ -114,7 +116,7 @@ class Component:
         return True
     def elkID(self) -> str:
         ''' Returns the id of self in ELK '''
-        return f'"component{self._id}"'
+        return f"component{self._id}"
     def toELK(self) -> str:
         ''' Converts the component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
         raise Exception("Not implemented")
@@ -440,9 +442,12 @@ class Function(Component):
         return set(self.inputs)
     def outputNodes(self):
         return {self.output}
-    def toELK(self) -> str:
-        return f'{{ id: {self.elkID()}, ports: [ {", ".join([node.toELK() for node in self.inputs+[self.output]])} ], children: [ {", ".join([child.toELK() for child in self.children if child.__class__ != Wire])} ], edges: [ {", ".join([child.toELK() for child in self.children if child.__class__ == Wire])} ] }}'
-
+    def toELK(self):
+        jsonObj = { 'id': self.elkID(), 'labels': [ { 'text': self.name, 'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ], 'ports': [ node.toELK() for node in self.inputs+[self.output] ], 'children': [ child.toELK() for child in self.children if child.__class__ != Wire ], 'edges': [ child.toELK() for child in self.children if child.__class__ == Wire ] }
+        if len(self.children) == 0:
+            jsonObj['width'] = 15
+            jsonObj['height'] = 15
+        return jsonObj
 
 
 class Mux(Component):
@@ -580,4 +585,5 @@ class Wire(Component):
     def outputNodes(self):
         return {self.dst}
     def toELK(self) -> str:
+        return { 'id': self.elkID(), 'sources': [ self.src.elkID() ], 'targets': [ self.dst.elkID() ] }
         return f"{{ id: {self.elkID()}, sources: [ {self.src.elkID()} ], targets: [ {self.dst.elkID()} ] }}"
