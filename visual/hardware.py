@@ -6,10 +6,32 @@ from mtypes import *
 
 import json
 
-def getELK(component: 'Component'):
+def getELK(component: 'Component') -> str:
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
-    return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered' }, 'children': [ component.toELK() ], 'edges': [] } )
-    
+    return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered' }, 'children': [ toELK(component) ], 'edges': [] } )
+
+def elkID(item: 'Component|Node') -> str:
+    ''' Returns a unique id for the node or component for use in ELK '''
+    if item.__class__ == Node:
+        return 'node' + str(item._id)
+    elif issubclass(item.__class__, Component):
+        return f"component{item._id}"
+    raise Exception(f"Unrecognized class {item.__class__}.")
+
+def toELK(item: 'Component|Node') -> 'dict[str, Any]':
+    ''' Converts the node or component into the ELK JSON format as a python object. '''
+    if item.__class__ == Node:
+        return { 'id': elkID(item), 'width': 2, 'height': 2 }
+    elif item.__class__ == Function:
+        jsonObj = { 'id': elkID(item), 'labels': [ { 'text': item.name, 'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ], 'ports': [ toELK(node) for node in item.inputs+[item.output] ], 'children': [ toELK(child) for child in item.children if child.__class__ != Wire ], 'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ] }
+        if len(item.children) == 0:
+            jsonObj['width'] = 15
+            jsonObj['height'] = 15
+        return jsonObj
+    elif item.__class__ == Wire:
+        return { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
+    raise Exception(f"Unrecognized class {item.__class__}.")
+
 '''Private methods/fields begin with a single underscore. See help(property) for details.
 Slots are used to enforce which fields may be set.'''
 
@@ -32,12 +54,7 @@ class Node:
         self._mtype = value
     def isNode(self):
         return True
-    def elkID(self) -> str:
-        ''' Returns the id of self in ELK '''
-        return 'node' + str(self._id)
-    def toELK(self) -> str:
-        ''' Converts the node into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
-        return { 'id': self.elkID(), 'width': 2, 'height': 2 }
+
 
 class Component:
     '''
@@ -114,12 +131,7 @@ class Component:
     def isComponent(self) -> Bool:
         '''Used by assert statements'''
         return True
-    def elkID(self) -> str:
-        ''' Returns the id of self in ELK '''
-        return f"component{self._id}"
-    def toELK(self) -> str:
-        ''' Converts the component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
-        raise Exception("Not implemented")
+
 
 class Module(Component):
     ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
@@ -442,12 +454,6 @@ class Function(Component):
         return set(self.inputs)
     def outputNodes(self):
         return {self.output}
-    def toELK(self):
-        jsonObj = { 'id': self.elkID(), 'labels': [ { 'text': self.name, 'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ], 'ports': [ node.toELK() for node in self.inputs+[self.output] ], 'children': [ child.toELK() for child in self.children if child.__class__ != Wire ], 'edges': [ child.toELK() for child in self.children if child.__class__ == Wire ] }
-        if len(self.children) == 0:
-            jsonObj['width'] = 15
-            jsonObj['height'] = 15
-        return jsonObj
 
 
 class Mux(Component):
@@ -584,6 +590,4 @@ class Wire(Component):
         return {self.src}
     def outputNodes(self):
         return {self.dst}
-    def toELK(self) -> str:
-        return { 'id': self.elkID(), 'sources': [ self.src.elkID() ], 'targets': [ self.dst.elkID() ] }
-        return f"{{ id: {self.elkID()}, sources: [ {self.src.elkID()} ], targets: [ {self.dst.elkID()} ] }}"
+
