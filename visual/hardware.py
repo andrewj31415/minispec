@@ -243,7 +243,6 @@ class Module(Component):
     def __repr__(self):
         return "Module(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.methods.__repr__() + ")"
     def getNodeListRecursive(self):
-        '''returns a list of all nodes in self in a deterministic order'''
         nodes = []
         inputNameList = list(self._inputs)
         inputNameList.sort()
@@ -418,7 +417,6 @@ class Function(Component):
             return "Function " + self.name
         return "Function " + self.name + " with children " + " | ".join(str(x) for x in self._children)
     def getNodeListRecursive(self):
-        '''returns a list of all nodes in self in a deterministic order'''
         nodes = self.inputs.copy()
         nodes.append(self.output)
         for child in self._children:
@@ -581,7 +579,6 @@ class Mux(Component):
     def __str__(self):
         return "Mux"
     def getNodeListRecursive(self):
-        '''returns a set of all nodes in self'''
         nodes = self.inputs.copy()
         nodes.append(self.output)
         nodes.append(self.control)
@@ -615,7 +612,7 @@ class Mux(Component):
             return False
         if len(self.inputs) != len(other.inputs):
             return False
-        return True
+        return self.matchOrdered(other)
     def prune(self):
         pass #no children
     def inputNodes(self):
@@ -624,6 +621,75 @@ class Mux(Component):
         return nodes
     def outputNodes(self):
         return {self.output}
+
+
+class Splitter(Component):
+    ''' For assignments {a, b, c} = some_bitstring '''
+    __slots__ = '_input', '_outputs'
+    def __init__(self, input: 'Node', outputs: 'list[Node]'):
+        Component.__init__(self)
+        self._input = input
+        self._outputs = outputs
+    @property
+    def name(self):
+        '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
+        return self._name
+    @name.setter
+    def name(self, name: 'str'):
+        self._name = name
+    @property
+    def input(self):
+        ''' The input Node '''
+        return self._input
+    @input.setter
+    def inputs(self, input: 'Node'):
+        raise Exception("Can't directly modify this property")
+    @property
+    def outputs(self):
+        '''Return a copy of the list of output Nodes'''
+        return self._outputs.copy()
+    @outputs.setter
+    def outputs(self, outputs: 'list[Node]'):
+        raise Exception("Can't directly modify this property")
+    def __repr__(self):
+        return "Splitter(" + self.input.__repr__() + ", " + self.outputs.__repr__() + ")"
+    def __str__(self):
+        return "Splitter"
+    def getNodeListRecursive(self):
+        return [self._input] + self._outputs.copy()
+    def matchStructure(self, other):
+        if self.__class__ != other.__class__:
+            return False
+        if len(self.outputs) != len(other.outputs):
+            return False
+        return True
+    def matchOrdered(self, other):
+        if not self.matchStructure(other):
+            return False
+        selfnodes = self.getNodeListRecursive()
+        othernodes = other.getNodeListRecursive()
+        if len(selfnodes) != len(othernodes):
+            return False
+        for i in range(len(selfnodes)):
+            for j in range(i):
+                if selfnodes[i] is selfnodes[j] and othernodes[i] is not othernodes[j]:
+                    return False
+                if selfnodes[i] is not selfnodes[j] and othernodes[i] is othernodes[j]:
+                    return False
+        return True
+    def match(self, other):
+        if self.__class__ != other.__class__:
+            return False
+        if len(self.outputs) != len(other.outputs):
+            return False
+        return self.matchOrdered(other)
+    def prune(self):
+        pass #no children
+    def inputNodes(self):
+        return {self.input}
+    def outputNodes(self):
+        return set(self.outputs)
+
 
 class Wire(Component):
     ''' src and dst are Nodes.'''
@@ -654,7 +720,6 @@ class Wire(Component):
     def __str__(self):
         return "wire from " + str(self.src) + " to " + str(self.dst)
     def getNodeListRecursive(self):
-        '''returns a list of all nodes in self in a deterministic order'''
         return [self.src, self.dst]
     def matchStructure(self, other):
         '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''

@@ -23,19 +23,11 @@ newline = '\n' #used to format f-strings such as "Hi{newline}there" since backsl
 '''
 Implementation Agenda:
 
-
-Notes for parametrics:
-    paramFormals are used when defining functions/modules/types, and may be Integer n or
-    5 (or an expression that evaluates to an integer) or 'type' X (as in creating a typedef alias of vector).
-    params are used when calling functions/synth modules/invoking custom parameterized types, and may
-    only be an integer or the name of a type.
-
-    - Indexing
     - Structs
     - Module methods with arguments
     - Modules with arguments
-    - Shared modules
     - Case statements
+    - Shared modules
     - Other files (imports)
     - BSV imports
 
@@ -49,6 +41,13 @@ Implemented:
     - If/case statements (+ muxes)
     - For loops
     - Modules
+    - Indexing/Slicing
+
+Notes for parametrics:
+    paramFormals are used when defining functions/modules/types, and may be Integer n or
+    5 (or an expression that evaluates to an integer) or 'type' X (as in creating a typedef alias of vector).
+    params are used when calling functions/synth modules/invoking custom parameterized types, and may
+    only be an integer or the name of a type.
 
 '''
 
@@ -619,8 +618,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if not ctx.rhs:
             return  #if there is no assignment, we can skip this line
         rhsNode = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
-        varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-        self.collectedScopes.currentScope.set(rhsNode, varName)
+        if len(ctx.lowerCaseIdentifier()) == 1:
+            varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
+            self.collectedScopes.currentScope.set(rhsNode, varName)
+        else:
+            raise Exception("Not Implemented")
+        
         # for now, we only handle the case of assigning a single variable (no concatenations).
         # nothing to return.
         #TODO handle other cases
