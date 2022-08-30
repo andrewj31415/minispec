@@ -1,4 +1,5 @@
 import inspect
+from urllib.parse import parse_qsl
 
 import antlr4
 import build.MinispecPythonParser
@@ -462,9 +463,9 @@ visitFunctionDef: Returns the function hardware
 visitFunctionId: Error, this node handled in functionDef and should not be visited
 visitVarAssign: No returns, mutates existing hardware
 visitMemberLvalue: 
-visitIndexLvalue: 
-visitSimpleLvalue: 
-visitSliceLvalue: 
+visitIndexLvalue: a tuple ( str, tuple[Node], str ), see method for details
+visitSimpleLvalue: a tuple ( str, tuple[Node], str ), see method for details
+visitSliceLvalue: a tuple ( str, tuple[Node], str ), see method for details
 visitOperatorExpr: Node or MLiteral corresponding to the value of the expression
 visitCondExpr: Node or MLiteral corresponding to the value of the expression
 visitCaseExpr: 
@@ -500,9 +501,12 @@ visitForStmt: No returns, mutates existing hardware
 def isMLiteral(value):
     '''Returns whether or not value is an MLiteral'''
     return issubclass(value.__class__, MLiteral)
+def isNode(value):
+    '''Returns whether or not value is a Node'''
+    return value.__class__ == Node
 def isNodeOrMLiteral(value):
     '''Returns whether or not value is a literal or a node.'''
-    return isMLiteral(value) or value.__class__ == Node
+    return isMLiteral(value) or isNode(value)
 
 class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     '''Each method returns a component (module/function/etc.)
@@ -848,7 +852,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Handled from functionDef, should never be visited")
 
     def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
-        # TODO refactor
         value = self.visit(ctx.expression())
         assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
         if ctx.varList:
@@ -856,7 +859,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert ctx.var, "Did the grammar change?"
 
         if ctx.var.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-            # assign the variable
+            # assign the variable, no slicing/subfields needed
             varName = ctx.var.getText()
             self.collectedScopes.currentScope.set(value, varName)
         else:
@@ -874,45 +877,63 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         self.globalsHandler.currentComponent.addChild(updateWire)
                         return
             lvalue = ctx.var
-            take = ""  # determine what field/slice/index is being taken and find the variable being changed
-            while lvalue.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-                if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
-                    raise Exception("Not implemented")
-                elif lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext:
-                    index = self.visit(lvalue.index)
-                    if not isMLiteral(index):
-                        raise Exception("Not implemented")
-                    take = "[" + str(index) + "]" + take
-                elif lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext:
-                    raise Exception("Not implemented")
-                else:
-                    raise Exception("Did the grammar change?")
-                lvalue = lvalue.lvalue()
-            varName = lvalue.getText()
-            originalValue = self.collectedScopes.currentScope.get(self, varName)
-            insertComponent = Function(take, [], [Node(), Node()])
-            if isMLiteral(originalValue):
-                originalValue = originalValue.getHardware(self.globalsHandler)
-            originalWire = Wire(originalValue, insertComponent.inputs[0])
+            text, nodes, varName = self.visit(lvalue)
+            insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
+            for i in range(len(nodes)):
+                wire = Wire(nodes[i], insertComponent.inputs[i])
+                self.globalsHandler.currentComponent.addChild(wire)
             if isMLiteral(value):
                 value = value.getHardware(self.globalsHandler)
-            updateWire = Wire(value, insertComponent.inputs[1])
-            for component in [originalWire, updateWire, insertComponent]:
-                self.globalsHandler.currentComponent.addChild(component)
-            # bind the variable in the current scope
+            newWire = Wire(value, insertComponent.inputs[len(nodes)])
+            self.globalsHandler.currentComponent.addChild(insertComponent)
+            self.globalsHandler.currentComponent.addChild(newWire)
             self.collectedScopes.currentScope.set(insertComponent.output, varName)
 
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
         raise Exception("Not implemented")
 
     def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
-        raise Exception("Not implemented")
+        ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
+        tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
+        and the last str is varName, the name of the variable being updated. '''
+        text, nodes, varName = self.visit(ctx.lvalue())
+        index = self.visit(ctx.index)
+        text += '['
+        if isNode(index):
+            nodes += (index,)
+            text += '_'
+        else:
+            text += str(index)
+        text += ']'
+        return (text, nodes, varName)
 
     def visitSimpleLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext):
-        raise Exception("Not implemented")
+        ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
+        tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
+        and the last str is varName, the name of the variable being updated. '''
+        return ("", (self.collectedScopes.currentScope.get(self, ctx.getText()),), ctx.getText())
 
     def visitSliceLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext):
-        raise Exception("Not implemented")
+        ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
+        tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
+        and the last str is varName, the name of the variable being updated. '''
+        text, nodes, varName = self.visit(ctx.lvalue())
+        msb = self.visit(ctx.msb)
+        lsb = self.visit(ctx.lsb)
+        text += '['
+        if isNode(msb):
+            nodes += (msb,)
+            text += '_'
+        else:
+            text += str(msb)
+        text += ':'
+        if isNode(lsb):
+            nodes += (lsb,)
+            text += '_'
+        else:
+            text += str(lsb)
+        text += ']'
+        return (text, nodes, varName)
 
     def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
         '''This is an expression corresponding to a binary operation (which may be a unary operation,
@@ -1079,18 +1100,40 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
         Returns the result of slicing (the output of the slicing function). '''
-        toModify = self.visit(ctx.array)
-        assert toModify.isNode(), "Expected a node"
-        if ctx.lsb:
-            raise Exception("Not implemented")
-        msb = self.visit(ctx.msb) #most significant bit
-        if not isMLiteral(msb):
-            raise Exception("Not implemented")
+        toSliceFrom = self.visit(ctx.array)
+        assert isNode(toSliceFrom), "Expected a node"
+        text = "["
         inNode = Node()
-        sliceComponent = Function('[' + str(msb) + ']', [], [inNode])
-        inWire = Wire(toModify, inNode)
+        inputs = [inNode]
+        inWire = Wire(toSliceFrom, inNode)
+        inWires = [inWire]
+        msb = self.visit(ctx.msb) #most significant bit
+        if isMLiteral(msb):
+            text += str(msb)
+        else:
+            assert isNode(msb), "Expected a node"
+            text += '_'
+            inNode1 = Node()
+            inputs.append(inNode1)
+            inWire1 = Wire(msb, inNode1)
+            inWires.append(inWire1)
+        if ctx.lsb:
+            text += ':'
+            lsb = self.visit(ctx.lsb) #least significant bit
+            if isMLiteral(lsb):
+                text += str(lsb)
+            else:
+                assert isNode(lsb), "Expected a node"
+                text += '_'
+                inNode2 = Node()
+                inputs.append(inNode2)
+                inWire2 = Wire(lsb, inNode2)
+                inWires.append(inWire2)
+        text += "]"
+        sliceComponent = Function(text, [], inputs)
         self.globalsHandler.currentComponent.addChild(sliceComponent)
-        self.globalsHandler.currentComponent.addChild(inWire)
+        for wire in inWires:
+            self.globalsHandler.currentComponent.addChild(wire)
         return sliceComponent.output
 
     def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):

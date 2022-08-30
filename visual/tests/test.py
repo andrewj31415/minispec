@@ -317,6 +317,25 @@ def _():
     expected = f
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly handles variable indices and slice assignment''')
+def _():
+    text = pull('bits3')
+
+    fa, fi, fj, fk, fo = Node(), Node(), Node(), Node(), Node()
+    s1 = Function('[1][_:_][_]', [], [Node(), Node(), Node(), Node(), Node()])
+    #s2 = Function('[_][_:2][0]', [], [Node(), Node(), Node()])
+    s21 = Function('[_]', [], [Node(), Node()])
+    s22 = Function('[_:2]', [], [Node(), Node()])
+    s23 = Function('[0]', [], [Node()])
+    n = Function('~', [], [Node()])
+    s3 = Function('[2][3:1]', [], [Node(), Node()])
+    six = Function('6')
+    f = Function('f', [s1, s21, s22, s23, n, s3, six, Wire(fa, s21.inputs[0]), Wire(s21.output, s22.inputs[0]), Wire(s22.output, s23.inputs[0]), Wire(fk, s21.inputs[1]), Wire(fj, s22.inputs[1]), Wire(s23.output, n.inputs[0]), Wire(n.output, s1.inputs[4]), Wire(fa, s1.inputs[0]), Wire(fi, s1.inputs[1]), Wire(fj, s1.inputs[2]), Wire(fk, s1.inputs[3]), Wire(s1.output, s3.inputs[0]), Wire(six.output, s3.inputs[1]), Wire(s3.output, fo)], [fa, fi, fj, fk], fo)
+    
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 describe('''For Loops''')
 
 @it('''Correctly handles for loop''')
