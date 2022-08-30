@@ -1,6 +1,4 @@
-from email.utils import parseaddr
 import inspect
-from operator import mod
 
 import antlr4
 import build.MinispecPythonParser
@@ -19,12 +17,11 @@ lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
 stream = antlr4.CommonTokenStream(lexer)
 parser = build.MinispecPythonParser.MinispecPythonParser(stream)
 
-newline = '\n' #used to format f-strings
+newline = '\n' #used to format f-strings such as "Hi{newline}there" since backslash is not allowed in f-strings
 
 '''
 Implementation Agenda:
 
-    - Parametrics (+ associated variable lookups)
 
 Notes for parametrics:
     paramFormals are used when defining functions/modules/types, and may be Integer n or
@@ -34,64 +31,92 @@ Notes for parametrics:
 
     - Indexing
     - Structs
-    - Modules
-    - For loops
+    - Module methods with arguments
+    - Modules with arguments
+    - Shared modules
     - Case statements
-    - Other files
+    - Other files (imports)
+    - BSV imports
 
 Implemented:
 
     - Function calls
     - Binary operations
-    - Parametrics
+    - Parametrics (+ associated variable lookups)
     - Type handling (+ associated python type objects)
     - Literals
     - If/case statements (+ muxes)
+    - For loops
+    - Modules
+
 '''
 
 '''
 Overall specs:
 
-ANTLR produces a parse tree ("tree" in the code). This parse tree has nodes corresponding
+ANTLR produces a parse tree ("tree" in the code). This parse tree has nodes ("ctx" in the code) corresponding
 to different parts of the minispec grammar (packageDef, exprPrimary, returnExpr, etc.).
 We will:
 1. Run a tree walker through the parse tree to add static elaboration information, eg, 
-  a callExpr node (corresponding to a function call) will get a pointer to the definition
-  of the function being called, which will be a functionDef node.
-2. Locate the module/function to synthesize, then use a visitor to go through the tree (starting
-  at the module/function to synthesize) and synthesize the minispec code.
+  collecting all scopes that arise across various files/modules and binding all declared
+  functions/modules in the relevant scopes.
+2. Locate the module/function to synthesize, then use a visitor to go through the tree
+  (starting at the module/function to synthesize) and synthesize the minispec code into
+  a hardware representation (see hardware.py).
 
 Notes:
-- Scope objects will need to keep temporary and permanent values separate (think synthesizing the
-  same function twice with different parameterizations).
+- Scope objects keep temporary and permanent values separate (think synthesizing the
+  same module twice with different parameterizations).
 
-
-Overall data structure:
+Overall data structures:
 
 -------------
 |ANTLR4 tree|
 -------------
       |
-    |file node|
+    |file ctx|
       |
-    |function node|
+    |function ctx|
       |
-    |more nodes|
+    |more ctx|
 
-------------
-|parsedCode|
-------------
-  |         |
-  |         currentScope (the scope currently of interest)
-allScopes
-(list of all scope objects)
+---------------------
+| Synthesis Visitor |
+---------------------
+  |             |
+  |           collectedScopes
+  |             |       |
+  |             |    currentScope (the scope currently of interest)
+  |           allScopes
+  |           (list of all scope objects, useful for debugging)
+  |
+globalsHandler:
+        currentComponent: the function/module component currently being synthesized.
+                            if wires or other components are created during synthesis,
+                            they will be added to the current component via .addChild.
+        parameterBindings: a dictionary str -> int telling functions which parameters
+                            have been bound. Should be set whenever calling a function.
+        lastParameterLookup:  a list consisting of the last integer values used to look up
+                                a call to a parametric function. Should be set whenever calling a function.
+                                Used to determine how to name the function in the corresponding
+                                component. #TODO: use for parametric modules as well.
+        outputNode: The output node of the function or method currently being synthesized.
+                    Return statements attach their value to the node here.
+  
+
+Each scope has a parent pointer or list of parent pointers.
+Only files have a list of parent pointers; files have one parent pointer for
+each ms file imported. All other scopes have one parent pointer.
+Arrangement of scopes:
 
 built-in scope
   ^ (parent pointer)
+other files
+  ^ ^ ^
 file to parse scope
   ^
-various function scopes
-  ...
+various function/module scopes
+  ... etc.
 
 StaticTypeListener:
   This listener detects scope information and static declarations.
@@ -107,16 +132,15 @@ StaticTypeListener:
     do not declare named constants, just variables)).
 
 SynthesizerVisitor:
-  This visitor,  upon visiting a node in the parse tree, returns hardware corresponding
-  to this node. Expressions return Node objects, functions/modules return full components, etc.
+  This visitor,  upon visiting a ctx node in the parse tree, mutates existing hardware and possibly
+  returns hardware corresponding to the ctx. Expressions return Node/MLiteral objects,
+  functions/modules return full components, etc. A full listing of returns is just before
+  the code for the visitor.
   - When visiting a function definition (which has its own scope) to synthesize it,
     the visitor looks up the function scope (at .scope in the node), clears the temporary
     value dictionary (.values), and does the synthesize one line (stmt) at a time. The
-    current scope is stored in parsedCode.currentScope, which must be restored after finishing
+    current scope is stored in self.collectedScopes.currentScope, which must be restored after finishing
     the function synthesis.
-
-  TODO: spec has changed ^^. nodes now either mutate parsedCode.currentComponent or return Node instances
-  corresponding to their value. Some nodes might return entire hardware as well.
 
 Note:
   It seems that in a file scope, all definitions are permanent, while in a module scope,
@@ -126,12 +150,6 @@ Note:
   This is important to note since in a file scope, named constants should perhaps be logged
   in some way using static elaboration; in a function scope, there are no constants; and
   in a moduleDef scope, I don't know what is going on.
-
-Note:
-  When parsing a module, we will need to handle all inputs before synthesizing functions (rules/etc.)
-  so that the rules can refer to the inputs. Same with registers/submodules and module methods.
-
-    TODO rename all parse nodes to ctx objects in documentation
 
 '''
 
@@ -417,7 +435,7 @@ visitParam:
 visitParams: 
 visitParamFormal: 
 visitParamFormals: 
-visitTypeName: Returns the relevant type object or module ctx (if the type is a module type)
+visitTypeName: Returns the relevant type object or a module ctx (if the type is a module type)
 visitPackageDef: Error, should only be visited by the static information listener
 visitPackageStmt: Error, should only be visited by the static information listener
 visitImportDecl: 
@@ -432,15 +450,16 @@ visitStructMember:
 visitVarBinding: No returns, binds the given variables to the right-hand-sides in the appropriate scope
 visitLetBinding: No returns, binds the given variables as appropriate in the current scope
 visitVarInit: Not visited, varInits are handled in visitVarBinding since only varBinding has access to the assigned typeName ctx.
-visitModuleDef: 
-visitModuleId: 
-visitModuleStmt: 
-visitSubmoduleDecl: 
-visitInputDef: 
-visitMethodDef: 
-visitRuleDef: 
+visitModuleDef: Returns the module hardware
+visitModuleId: Error, this node handled in functionDef and should not be visited
+visitModuleStmt: Error, this node handled in functionDef and should not be visited
+visitSubmoduleDecl: No returns, mutates existing hardware
+visitInputDef: No returns, mutates existing hardware
+visitMethodDef: If the method has no args, no returns. If the method has args, then visiting the method is like
+    calling a function and will return the output node (this has not yet been implemented).
+visitRuleDef: No returns, mutates existing hardware
 visitFunctionDef: Returns the function hardware
-visitFunctionId: 
+visitFunctionId: Error, this node handled in functionDef and should not be visited
 visitVarAssign: No returns, mutates existing hardware
 visitMemberLvalue: 
 visitIndexLvalue: 
@@ -460,17 +479,17 @@ visitReturnExpr: Nothing, mutates current function hardware
 visitStructExpr: 
 visitUndefinedExpr: Corresponding MLiteral
 visitSliceExpr: Returns the result (node) upon slicing
-visitCallExpr: Returns the output node of the function call or a literal (if the function gets constant-folded)
+visitCallExpr: Returns the output node of the function call or a literal (if the function gets constant-folded --constant-folding through functions is not yet implemented.)
     Note that constant-folding elimination of function components occurs here, not in functionDef, so that the function to synthesize is not eliminated.
 visitFieldExpr: 
 visitParenExpr: Node or MLiteral corresponding to the value of the expression
 visitMemberBinds: 
 visitMemberBind: 
 visitBeginEndBlock: No returns, mutates existing hardware
-visitRegWrite: 
-visitStmt: No returns since stmt mutates existing hardware
+visitRegWrite: No returns, mutates existing hardware
+visitStmt: No returns, mutates existing hardware
 visitIfStmt: No returns, mutates existing hardware
-visitCaseStmt: No returns, mutates existing hardware
+visitCaseStmt: 
 visitCaseStmtItem: 
 visitCaseStmtDefaultItem: 
 visitForStmt: No returns, mutates existing hardware
@@ -671,7 +690,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return moduleComponent
 
     def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
-        raise Exception("Not implemented")
+        ''' Handled in moduleDef '''
+        raise Exception("Handled in moduleDef, should never be visited")
 
     def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
         raise Exception("Not accessed directly, handled in moduleDef")
@@ -710,6 +730,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # leading to the input and the other branch of the mux should be the default value.
         # Alternatively, if the input is never assigned, then the default value should be hard-coded in.
         # For now, we will not implement default values.
+
+        # I think that just as a module keeps a list of all of its registers for reg writes, 
+        # a module will also need to keep a list of all submodule inputs for handling default values.
+        # The mechanism should work identically.
 
     def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
         '''
@@ -820,9 +844,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return funcComponent
 
     def visitFunctionId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionIdContext):
-        raise Exception("Not implemented")
+        ''' Handled from functionDef '''
+        raise Exception("Handled from functionDef, should never be visited")
 
     def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
+        # TODO refactor
         value = self.visit(ctx.expression())
         assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
         if ctx.varList:
@@ -1048,7 +1074,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
-        raise Exception("Not implemented")
+        return DontCareLiteral()
 
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
@@ -1129,7 +1155,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.collectedScopes.currentScope.set(value, regName)
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
-        #TODO figure out why we are visiting stmt and adjust as appropriate
+        ''' Each variety of statement is handled separately. '''
         return self.visitChildren(ctx)
 
     def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
