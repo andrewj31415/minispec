@@ -288,6 +288,7 @@ class GlobalsHandler:
         '''self.lastParameterLookup is a list consisting of the last integer values used to look up
         a function call. Should be set whenever calling a function. Used to determine how to name
         the function in the corresponding component.'''
+        self.outputNode = None  # the output node to which a return statement should go, used in functions and methods
     def isGlobalsHandler(self):
         ''' Used by assert statements '''
         return True
@@ -367,7 +368,20 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
 
     def exitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
         '''We have defined a rule, so we step back into the parent scope.'''
-        assert len(self.collectedScopes.currentScope.parents) == 1, "module can only have parent scope"
+        assert len(self.collectedScopes.currentScope.parents) == 1, "rule can only have parent scope"
+        self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
+
+    def enterMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
+        '''Methods get a scope'''
+        methodName = ctx.name.getText()
+        methodScope = Scope(self.globalsHandler, methodName, [self.collectedScopes.currentScope])
+        ctx.scope = methodScope
+        self.collectedScopes.currentScope = methodScope
+        self.collectedScopes.allScopes.append(methodScope)
+
+    def exitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
+        '''We have defined a method, so we step back into the parent scope.'''
+        assert len(self.collectedScopes.currentScope.parents) == 1, "method can only have parent scope"
         self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
 
     def enterVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
@@ -708,7 +722,21 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(setWire)
                 self.globalsHandler.currentComponent.addMethod(methodNode, methodName)
             else:
-                raise Exception("Not implemented")
+                methodName = ctx.name.getText()
+                methodOutput = Node(methodName, methodType)  # set up the output node
+                self.globalsHandler.outputNode = methodOutput
+                self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
+                methodScope = ctx.scope
+                for registerName in self.collectedScopes.currentScope.registers:  # bind the registers
+                    register = self.collectedScopes.currentScope.registers[registerName]
+                    methodScope.set(register.value, registerName)
+                methodScope.clearTemporaryValues # clear the temporary values
+                previousScope = self.collectedScopes.currentScope
+                self.collectedScopes.currentScope = methodScope # enter the method scope
+                for stmt in ctx.stmt():  # evaluate the method
+                    self.visit(stmt)
+                self.collectedScopes.currentScope = previousScope
+                self.globalsHandler.outputNode = None  # methods can't occur inside a function, so there is no need to remember any previous output node.
         else:
             raise Exception("Not implemented")
 
@@ -760,6 +788,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             functionScope.set(argNode, argName)
             inputNodes.append(argNode)
         funcComponent = Function(functionName, [], inputNodes)
+        previousOutputNode = self.globalsHandler.outputNode
+        self.globalsHandler.outputNode = funcComponent.output
         # log the current component
         previousComponent = self.globalsHandler.currentComponent
         self.globalsHandler.currentComponent = funcComponent
@@ -768,6 +798,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.visit(stmt)
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
+        self.globalsHandler.outputNode = previousOutputNode
         return funcComponent
 
     def visitFunctionId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionIdContext):
@@ -786,6 +817,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.collectedScopes.currentScope.set(value, varName)
         else:
             # insert the field/slice/index
+            # first, detect if we are setting a module input (vectors of modules are not yet implemented)
+            if ctx.var.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
+                if ctx.var.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+                    settingOverall = self.collectedScopes.currentScope.get(self, ctx.var.lvalue().getText())
+                    if settingOverall.__class__ == Module:  # we are, in fact, setting a module input
+                        inputName = ctx.var.lowerCaseIdentifier().getText()
+                        inputNode = settingOverall.inputs[inputName]
+                        if isMLiteral(value):
+                            value = value.getHardware(self.globalsHandler)
+                        updateWire = Wire(value, inputNode)
+                        self.globalsHandler.currentComponent.addChild(updateWire)
+                        return
             lvalue = ctx.var
             take = ""  # determine what field/slice/index is being taken and find the variable being changed
             while lvalue.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
@@ -977,7 +1020,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''This is the return expression in a function. We need to put the correct wire
         attaching the right hand side to the output of the function.'''
         rhs = self.visit(ctx.expression())  # the node with the value to return
-        returnWire = Wire(rhs, self.globalsHandler.currentComponent.output)
+        if isMLiteral(rhs):
+            rhs = rhs.getHardware(self.globalsHandler)
+        outputNode = self.globalsHandler.outputNode
+        returnWire = Wire(rhs, outputNode)
         self.globalsHandler.currentComponent.addChild(returnWire)
 
     def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):
@@ -1034,7 +1080,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return funcComponent.output  # return the value of this call, which is the output of the function
 
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
-        raise Exception("Not implemented")
+        toAccess = self.visit(ctx.exprPrimary())
+        if toAccess.__class__ == Module:
+            fieldToAccess = ctx.field.getText()
+            return toAccess.methods[fieldToAccess]
+        else:
+            raise Exception("Not implemented")
 
     def visitParenExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParenExprContext):
         return self.visit(ctx.expression())

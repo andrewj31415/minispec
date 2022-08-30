@@ -236,6 +236,17 @@ def _():
     expected = counter
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly handles a more complicated counter''')
+def _():
+    text = pull('counters')
+
+    output = synth.parseAndSynth(text, 'EightBitCounter')
+
+    raise Exception("Finish writing test")
+    # expected = counter
+    # assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
 describe('''Bit Manipulation''')
 
 @it('''Correctly modifies and collects bits''')
@@ -289,19 +300,6 @@ def _():
     expected = f
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-describe('''Assorted hardware''')
-
-@it('''Correctly handles assorted hardware''')
-def _():
-    text = pull('assortedtests')
-
-    output = synth.parseAndSynth(text, 'population_count', [])
-    #output = synth.parseAndSynth(text, 'doubleInverter', [])
-    #output = synth.parseAndSynth(text, 'combine', [])
-    print(output.__repr__())
-    print()
-    #print(output.toELK())
-    print(getELK(output))
 
 #run all the tests
 import time
@@ -366,7 +364,7 @@ print()
 #report details of failing tests (if any)
 for i in range(len(failedTests)):
     failedTest = failedTests[i]
-    category, testName, errorMessage = failedTest
+    categoryName, testName, errorMessage = failedTest
     print("  " + str(i+1) + ")", categoryName)
     print("      " + testName + ":")
     print()
