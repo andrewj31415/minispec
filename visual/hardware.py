@@ -296,8 +296,31 @@ class Module(Component):
         for j in range(i, len(self._children)):
             if other._children[j].match(self._children[i]):
                 other._children[i], other._children[j] = other._children[j], other._children[i]
-                if self.matchStep(other, i+1):
-                    return True
+                #see if the nodes set up so far are the same graph
+                #checking this now improves matching speed when there are lots of wires, since issues with
+                #wire ordering can only be detected by looking at nodes--without partial node checks, we
+                #would have to try every permutation of the wires.
+                selfNodesSoFar = []
+                for k in range(i+1):
+                    selfNodesSoFar += self._children[k].getNodeListRecursive()
+                otherNodesSoFar = []
+                for k in range(i+1):
+                    otherNodesSoFar += other._children[k].getNodeListRecursive()
+                failed = False
+                for ii in range(len(selfNodesSoFar)):
+                    for jj in range(ii):
+                        if selfNodesSoFar[ii] is selfNodesSoFar[jj] and otherNodesSoFar[ii] is not otherNodesSoFar[jj]:
+                            failed = True
+                        if selfNodesSoFar[ii] is not selfNodesSoFar[jj] and otherNodesSoFar[ii] is otherNodesSoFar[jj]:
+                            failed = True
+                        if failed:
+                            break
+                    if failed:
+                        break
+                if not failed:
+                    #recursively try to match the rest
+                    if self.matchStep(other, i+1):
+                        return True
                 other._children[i], other._children[j] = other._children[j], other._children[i]
         return False
     def match(self, other):

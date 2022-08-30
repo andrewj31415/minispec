@@ -324,13 +324,10 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         if ctx.functionId().paramFormals():
             for param in ctx.functionId().paramFormals().paramFormal():
                 # each parameter is either an integer or a name.
-                print('got a function parameter', param.toStringTree(recog=parser))
                 if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
                     params.append(param.param())
-                    print('actual integer')
                 elif param.intName:  # param is a variable name. extract the name.
                     params.append(param.intName.getText())
-                    print('var name')
                 else:
                     assert False, "parameters with typeValues are not supported yet"
         #log the function's scope
@@ -354,13 +351,10 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         if ctx.moduleId().paramFormals():
             for param in ctx.moduleId().paramFormals().paramFormal():
                 # each parameter is either an integer or a name.
-                print('got a module parameter', param.toStringTree(recog=parser))
                 if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
                     params.append(param.param())
-                    print('actual integer')
                 elif param.intName:  # param is a variable name. extract the name.
                     params.append(param.intName.getText())
-                    print('var name')
                 else:
                     assert False, "parameters with typeValues are not supported yet"
         # log the module's scope
@@ -612,29 +606,23 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not visited--handled under varBinding to access typeName.")
 
     def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
-        print("="*50)
-        print('visiting', ctx.moduleId().getText(), self.globalsHandler.parameterBindings)
         moduleName = ctx.moduleId().name.getText()
         if ctx.argFormals():
             raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
         moduleScope = ctx.scope
-        #moduleScope.clearTemporaryValues # clear the temporary values
         # log the current scope
         previousScope = self.collectedScopes.currentScope
         self.collectedScopes.currentScope = moduleScope
-        #bind any parameters in the module scope
 
-        previousTemporaryValues = moduleScope.temporaryValues
+        previousTemporaryValues = moduleScope.temporaryValues  # in case any submodules are recursive and change the current temporary values
         moduleScope.clearTemporaryValues() # clear the temporary values
-        print("="*50)
-        print('previous bindings', previousTemporaryValues)
         
+        #bind any parameters in the module scope
         bindings = self.globalsHandler.parameterBindings
         for var in bindings:  
             val = bindings[var]
             moduleScope.set(val, var)
-        print('binding', bindings)
 
         moduleComponent = Module(moduleName, [], {}, {})
         # log the current component
@@ -676,11 +664,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for ruleDef in ruleDefs:
             self.visit(ruleDef)
 
-        if 'n' in previousTemporaryValues:
-            print('restoring', previousTemporaryValues['n'])
-        moduleScope.temporaryValues = previousTemporaryValues  # in case the submodule is recursive and changes the current temporary values
-
-        
+        moduleScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values        
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
 

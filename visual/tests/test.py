@@ -240,17 +240,40 @@ def _():
 def _():
     text = pull('counters')
 
+    ucount = Register('Reg#(Bit#(4))')
+    umux = Mux([Node(), Node()])
+    uadd = Function('+', [], [Node(), Node()])
+    uenable = Node()
+    ugetCount = Node()
+    uone = Function('1', [], [])
+    ucounter = Module('FourBitCounter', [ucount, umux, uadd, uone, Wire(uenable, umux.control), Wire(ucount.value, ugetCount), Wire(uadd.output, umux.inputs[0]), Wire(ucount.value, umux.inputs[1]), Wire(umux.output, ucount.input), Wire(ucount.value, uadd.inputs[0]), Wire(uone.output, uadd.inputs[1])], {'enable': uenable}, {'getCount': ugetCount})
+    
+    lcount = Register('Reg#(Bit#(4))')
+    lmux = Mux([Node(), Node()])
+    ladd = Function('+', [], [Node(), Node()])
+    lenable = Node()
+    lgetCount = Node()
+    lone = Function('1', [], [])
+    lcounter = Module('FourBitCounter', [lcount, lmux, ladd, lone, Wire(lenable, lmux.control), Wire(lcount.value, lgetCount), Wire(ladd.output, lmux.inputs[0]), Wire(lcount.value, lmux.inputs[1]), Wire(lmux.output, lcount.input), Wire(lcount.value, ladd.inputs[0]), Wire(lone.output, ladd.inputs[1])], {'enable': lenable}, {'getCount': lgetCount})
+    
+    concat = Function('{}', [], [Node(), Node()])
+    fifteen = Function('15')
+    eq = Function('==', [], [Node(), Node()])
+    a = Function('&&', [], [Node(), Node()])
+    enable = Node()
+    getCount = Node()
+    counter = Module('EightBitCounter', [ucounter, lcounter, concat, fifteen, eq, a, Wire(lgetCount, eq.inputs[0]), Wire(fifteen.output, eq.inputs[1]), Wire(eq.output, a.inputs[1]), Wire(enable, a.inputs[0]), Wire(enable, lenable), Wire(a.output, uenable), Wire(lgetCount, concat.inputs[1]), Wire(ugetCount, concat.inputs[0]), Wire(concat.output, getCount)], {'enable': enable}, {'getCount': getCount})
+
     output = synth.parseAndSynth(text, 'EightBitCounter')
+    expected = counter
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-    raise Exception("Finish writing test")
-    # expected = counter
-    # assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
-
-@it('''Correctly handles parametric counter''')
+@it('''Correctly handles recursive parametric counter''')
 def _():
     text = pull('counters')
 
-    output = synth.parseAndSynth(text, 'Counter', [4])
+    output = synth.parseAndSynth(text, 'Counter', [2])
+    #print(output.__repr__())
 
     raise Exception("Finish writing test")
     # expected = counter
