@@ -199,9 +199,6 @@ class Scope:
         if varName in self.temporaryValues:
             return self.temporaryValues[varName]
         if varName in self.permanentValues:
-            print('looking up', varName, parameters)
-            for storedParams, ctx in self.permanentValues[varName][::-1]:
-                print('stored', storedParams)
             for storedParams, ctx in self.permanentValues[varName][::-1]: #iterate backwards through the stored values, looking for the most recent match.
                 d = Scope.matchParams(visitor, parameters, storedParams)
                 if d != None:
@@ -616,22 +613,27 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         print("="*50)
-        print('visiting', ctx.moduleId().getText())
+        print('visiting', ctx.moduleId().getText(), self.globalsHandler.parameterBindings)
         moduleName = ctx.moduleId().name.getText()
         if ctx.argFormals():
             raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
         moduleScope = ctx.scope
-        moduleScope.clearTemporaryValues # clear the temporary values
+        #moduleScope.clearTemporaryValues # clear the temporary values
         # log the current scope
         previousScope = self.collectedScopes.currentScope
         self.collectedScopes.currentScope = moduleScope
         #bind any parameters in the module scope
+
+        previousTemporaryValues = moduleScope.temporaryValues
+        moduleScope.clearTemporaryValues() # clear the temporary values
+        print("="*50)
+        print('previous bindings', previousTemporaryValues)
+        
         bindings = self.globalsHandler.parameterBindings
         for var in bindings:  
             val = bindings[var]
             moduleScope.set(val, var)
-        print("="*50)
         print('binding', bindings)
 
         moduleComponent = Module(moduleName, [], {}, {})
@@ -674,6 +676,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for ruleDef in ruleDefs:
             self.visit(ruleDef)
 
+        if 'n' in previousTemporaryValues:
+            print('restoring', previousTemporaryValues['n'])
+        moduleScope.temporaryValues = previousTemporaryValues  # in case the submodule is recursive and changes the current temporary values
+
+        
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
 
