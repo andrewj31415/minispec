@@ -19,6 +19,8 @@ lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
 stream = antlr4.CommonTokenStream(lexer)
 parser = build.MinispecPythonParser.MinispecPythonParser(stream)
 
+newline = '\n' #used to format f-strings
+
 '''
 Implementation Agenda:
 
@@ -197,6 +199,9 @@ class Scope:
         if varName in self.temporaryValues:
             return self.temporaryValues[varName]
         if varName in self.permanentValues:
+            print('looking up', varName, parameters)
+            for storedParams, ctx in self.permanentValues[varName][::-1]:
+                print('stored', storedParams)
             for storedParams, ctx in self.permanentValues[varName][::-1]: #iterate backwards through the stored values, looking for the most recent match.
                 d = Scope.matchParams(visitor, parameters, storedParams)
                 if d != None:
@@ -322,10 +327,13 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         if ctx.functionId().paramFormals():
             for param in ctx.functionId().paramFormals().paramFormal():
                 # each parameter is either an integer or a name.
+                print('got a function parameter', param.toStringTree(recog=parser))
                 if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
                     params.append(param.param())
+                    print('actual integer')
                 elif param.intName:  # param is a variable name. extract the name.
                     params.append(param.intName.getText())
+                    print('var name')
                 else:
                     assert False, "parameters with typeValues are not supported yet"
         #log the function's scope
@@ -343,15 +351,27 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
     def enterModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We are defining a module. We need to give this module a corresponding scope.'''
         moduleName = ctx.moduleId().name.getText() # get the name of the module
+        if ctx.argFormals():
+            raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
         params = []
         if ctx.moduleId().paramFormals():
-            assert False, "Parametric modules not implemented yet"
-        #log the module's scope
+            for param in ctx.moduleId().paramFormals().paramFormal():
+                # each parameter is either an integer or a name.
+                print('got a module parameter', param.toStringTree(recog=parser))
+                if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
+                    params.append(param.param())
+                    print('actual integer')
+                elif param.intName:  # param is a variable name. extract the name.
+                    params.append(param.intName.getText())
+                    print('var name')
+                else:
+                    assert False, "parameters with typeValues are not supported yet"
+        # log the module's scope
         self.collectedScopes.currentScope.setPermanent(ctx, moduleName, params)
-        functionScope = Scope(self.globalsHandler, moduleName, [self.collectedScopes.currentScope])
-        ctx.scope = functionScope
-        self.collectedScopes.currentScope = functionScope
-        self.collectedScopes.allScopes.append(functionScope)
+        moduleScope = Scope(self.globalsHandler, moduleName, [self.collectedScopes.currentScope])
+        ctx.scope = moduleScope
+        self.collectedScopes.currentScope = moduleScope
+        self.collectedScopes.allScopes.append(moduleScope)
 
     def exitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We have defined a module, so we step back into the parent scope.'''
@@ -406,7 +426,7 @@ visitParam:
 visitParams: 
 visitParamFormal: 
 visitParamFormals: 
-visitTypeName: Returns the relevant type object
+visitTypeName: Returns the relevant type object or module ctx (if the type is a module type)
 visitPackageDef: Error, should only be visited by the static information listener
 visitPackageStmt: Error, should only be visited by the static information listener
 visitImportDecl: 
@@ -595,14 +615,24 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not visited--handled under varBinding to access typeName.")
 
     def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
+        print("="*50)
+        print('visiting', ctx.moduleId().getText())
         moduleName = ctx.moduleId().name.getText()
-        if ctx.moduleId().paramFormals():
-            raise Exception("Modules with parameters not currently supported")
-        functionScope = ctx.scope
-        functionScope.clearTemporaryValues # clear the temporary values
+        if ctx.argFormals():
+            raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
+
+        moduleScope = ctx.scope
+        moduleScope.clearTemporaryValues # clear the temporary values
         # log the current scope
         previousScope = self.collectedScopes.currentScope
-        self.collectedScopes.currentScope = functionScope
+        self.collectedScopes.currentScope = moduleScope
+        #bind any parameters in the module scope
+        bindings = self.globalsHandler.parameterBindings
+        for var in bindings:  
+            val = bindings[var]
+            moduleScope.set(val, var)
+        print("="*50)
+        print('binding', bindings)
 
         moduleComponent = Module(moduleName, [], {}, {})
         # log the current component
@@ -659,16 +689,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' We have a submodule, so we synthesize it and add it to the current module.
         We also need to bind to submodule's methods somehow; methods with no args bind to
         the corresponding module output, while methods with args need to be somehow tracked as
-        functions calls that can be visited and synthesized, returning their output. '''
-        moduleDef = self.visit(ctx.typeName())
-        # args: 'list[int]' = []
-        # if ctx.args():
-        #     for arg in ctx.args().arg():
-        #         value = self.visit(arg.expression())
-        #         assert value.__class__ == IntegerLiteral, "Module parameters must be integer literals"
-        #         args.append(value)
-        # moduleDef = self.collectedScopes.currentScope.get(self, moduleToConstruct, args)
-        # self.globalsHandler.lastParameterLookup = args
+        functions calls that can be visited and synthesized, returning their output.
+        function/module analogy:
+            moduleDef <-> functionDef
+            submoduleDecl <-> callExpr
+         '''
+        moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
+
         moduleComponent = self.visit(moduleDef)  #synthesize the module
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()

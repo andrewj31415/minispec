@@ -609,7 +609,7 @@ class Wire(Component):
         Component.__init__(self)
         assert src.isNode(), "Must be a node"
         assert dst.isNode(), "Must be a node"
-        assert src is not dst, "wire must have distinct ends"
+        #assert src is not dst, "wire must have distinct ends"  #TODO uncomment this line
         self._src = src
         self._dst = dst
     @property

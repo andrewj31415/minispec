@@ -12,7 +12,8 @@ import pathlib
 minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("counters.ms")
 minispecCode = minispecCodeFile.read_text()
 
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'EightBitCounter', [])
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter', [3])
+# synthesizedComponent = synth.parseAndSynth(minispecCode, 'EightBitCounter')
 
 # input/output files for elk
 pythonToJSFile = pathlib.Path(__file__).with_name("elk").joinpath("elkInput.txt")

@@ -246,6 +246,16 @@ def _():
     # expected = counter
     # assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly handles parametric counter''')
+def _():
+    text = pull('counters')
+
+    output = synth.parseAndSynth(text, 'Counter', [4])
+
+    raise Exception("Finish writing test")
+    # expected = counter
+    # assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 describe('''Bit Manipulation''')
 

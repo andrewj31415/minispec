@@ -172,3 +172,23 @@ function Bit#(1) combine(Bit#(1) a, Bit#(1) b, Bit#(1) c);
   Bit#(1) cout = and1( or1(b, a), xor1(c, b) );
   return cout;
 endfunction
+
+
+function Bit#(1) casing(Bit#(1) a, Bit#(1) b);
+  return case (a)
+    0: ~b;
+    0: b;
+    1: b;
+  endcase;
+endfunction
+
+function Bit#(2) cased(Bit#(1) a, Bit#(1) b);
+  Bit#(2) x = 0;
+  case (a)
+    0: x = {b, b};
+    0: x = {~b, ~b};
+    0: x = {b, b};
+    1: x = {b, b};
+  endcase
+  return x;
+endfunction

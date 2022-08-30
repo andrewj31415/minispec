@@ -78,7 +78,8 @@ class MLiteral():
         return first, second
     '''binary operations'''
     def pow(first, second):
-        raise Exception("Not implemented")
+        assert first.__class__ == IntegerLiteral and second.__class__ == IntegerLiteral, "pow can only be done with integer literals"
+        return first.pow(second)
     def mul(first, second):
         first, second = MLiteral.coerceArithmetic(first, second)
         return first.mul(second)
