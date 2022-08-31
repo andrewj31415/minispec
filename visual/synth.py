@@ -8,7 +8,6 @@ import build.MinispecPythonListener
 import build.MinispecPythonVisitor
 
 from hardware import *
-from literals import *
 from mtypes import *
 
 #sets up parser for use in debugging:
@@ -267,13 +266,12 @@ class BuiltInScope(Scope):
         if varName == 'Bit':
             assert len(parameters) == 1, "bit takes exactly one parameter"
             n = parameters[0]
-            return Bit.getBit(n)
+            return Bit(n)
         if varName == 'Vector':
+            #TODO refactor this
             assert len(parameters) == 2, "vector takes exactly two parameters"
             k, typeValue = parameters
-            if (k, typeValue) not in Vector.createdVectors:
-                Vector.createdVectors[(k, typeValue)] = Vector(k, typeValue)
-            return Vector.createdVectors[(k, typeValue)]
+            return Vector(k, typeValue)
         if varName == 'Bool':
             return Bool
         if varName == 'Reg':

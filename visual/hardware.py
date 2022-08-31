@@ -1,7 +1,6 @@
 
 
 from unicodedata import name
-from literals import *
 from mtypes import *
 
 import json
@@ -623,6 +622,7 @@ class Mux(Component):
         return {self.output}
 
 
+#not currently used for anything--consider removing.
 class Splitter(Component):
     ''' For assignments {a, b, c} = some_bitstring '''
     __slots__ = '_input', '_outputs'
