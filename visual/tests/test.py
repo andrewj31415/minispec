@@ -70,7 +70,7 @@ def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
     inner1, inner2, innerOut = Node(), Node(), Node()
-    output = synth.parseAndSynth(text, 'f', [2,2]) #the original f
+    output = synth.parseAndSynth(text, 'f#(2,2)') #the original f
     expected = Function('f#(2,2)', [Function('+', [], [inner1, inner2], innerOut), Wire(fa, inner1), Wire(fb, inner2), Wire(innerOut, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -78,7 +78,7 @@ def _():
 def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
-    output = synth.parseAndSynth(text, 'f', [1]) #the second f
+    output = synth.parseAndSynth(text, 'f#(1)') #the second f
     expected = Function('f#(1)', [Wire(fa, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -86,7 +86,7 @@ def _():
 def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
-    output = synth.parseAndSynth(text, 'f', [2,1]) #the third f
+    output = synth.parseAndSynth(text, 'f#(2,1)') #the third f
     expected = Function('f#(2,1)', [Wire(fb, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -95,7 +95,7 @@ def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
     inner1, inner2, innerOut = Node(), Node(), Node()
-    output = synth.parseAndSynth(text, 'f', [1,1]) #the fourth f
+    output = synth.parseAndSynth(text, 'f#(1,1)') #the fourth f
     expected = Function('f#(1,1)', [Function('f', [Wire(inner1, innerOut)], [inner1, inner2], innerOut), Wire(fa, inner2), Wire(fb, inner1), Wire(innerOut, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -111,7 +111,7 @@ def _():
 def _():
     text = pull('params2')
     fa, fb, fo = Node(), Node(), Node()
-    output = synth.parseAndSynth(text, 'f', [10, 0]) #the second f
+    output = synth.parseAndSynth(text, 'f#(10,0)') #the second f
     expected  = Function('f#(10,0)', [Wire(fa, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -119,7 +119,7 @@ def _():
 def _():
     text = pull('params2')
     fa, fb, fo = Node(), Node(), Node()
-    output = synth.parseAndSynth(text, 'f', [1, 7]) #the third f
+    output = synth.parseAndSynth(text, 'f#(1,7)') #the third f
     expected  = Function('f#(1,7)', [Wire(fb, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -145,7 +145,7 @@ def _():
     mulf = Function('*', [], [mulf1, mulf2], mulfo)
     f = Function('f', [xor, eq, g, mulf, five, seven, Wire(fa, mulf1), Wire(five.output, mulf2), Wire(mulfo, xor1), Wire(fa, ga), Wire(go, xor2), Wire(xoro, eq1), Wire(seven.output, eq2), Wire(eqo, fo)], [fa], fo)
     
-    output = synth.parseAndSynth(text, 'g', [15])
+    output = synth.parseAndSynth(text, 'g#(15)')
     expected = g
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -168,7 +168,7 @@ def _():
     mux = Mux([mux1, mux2], muxc)
     f2 = Function("f#(2)", [eq, four, two, mux, Wire(fa, eq1), Wire(four.output, eq2), Wire(eq.output, muxc), Wire(fa, mux1), Wire(two.output, mux2), Wire(mux.output, fo)], [fa], fo)
 
-    output = synth.parseAndSynth(text, 'f', [2])
+    output = synth.parseAndSynth(text, 'f#(2)')
     expected = f2
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -182,7 +182,7 @@ def _():
     xor1, xor2 = xor.inputs
     f0 = Function("f#(0)", [xor, one, Wire(one.output, xor1), Wire(fa, xor2), Wire(xor.output, fo)], [fa], fo)
 
-    output = synth.parseAndSynth(text, 'f', [0])
+    output = synth.parseAndSynth(text, 'f#(0)')
     expected = f0
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -271,7 +271,7 @@ def _():
 def _():
     text = pull('counters')
 
-    output = synth.parseAndSynth(text, 'Counter', [2])
+    output = synth.parseAndSynth(text, 'Counter#(2)')
     #print(output.__repr__())
 
     raise Exception("Finish writing test")
@@ -347,7 +347,7 @@ def _():
     fa, fo = Node(), Node()
     f = Function('parity#(4)', [zero, one, two, three, output, xor0, xor1, xor2, xor3, Wire(fa, zero.inputs[0]), Wire(fa, one.inputs[0]), Wire(fa, two.inputs[0]), Wire(fa, three.inputs[0]), Wire(output.output, xor0.inputs[0]), Wire(xor0.output, xor1.inputs[0]), Wire(xor1.output, xor2.inputs[0]), Wire(xor2.output, xor3.inputs[0]), Wire(xor3.output, fo), Wire(zero.output, xor0.inputs[1]), Wire(one.output, xor1.inputs[1]), Wire(two.output, xor2.inputs[1]), Wire(three.output, xor3.inputs[1])], [fa], fo)
 
-    output = synth.parseAndSynth(text, 'parity', [4])
+    output = synth.parseAndSynth(text, 'parity#(4)')
     expected = f
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 

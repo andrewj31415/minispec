@@ -1333,9 +1333,7 @@ def getParseTree(text: 'str') -> 'build.MinispecPythonParser.MinispecPythonParse
     #print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
     return tree
 
-def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None) -> 'Component':
-    if topLevelParameters == None:
-        topLevelParameters = []
+def parseAndSynth(text, topLevel) -> 'Component':
 
     tree = getParseTree(text)
 
@@ -1354,8 +1352,6 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None) -> 'Co
     #     print(scope)
 
     synthesizer = SynthesizerVisitor(globalsHandler, collectedScopes)
-
-    topLevel += "#(" + ",".join(str(i) for i in topLevelParameters) + ")"
 
     topLevel = f'''
 function Bool _();
