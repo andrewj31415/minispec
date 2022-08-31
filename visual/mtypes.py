@@ -51,6 +51,17 @@ Names for methods in code:
 
 '''
 
+def Synonym(mtype: 'MType', newName: 'str'):
+    ''' Returns a class which is a synonym of the given class, with the appropriate name.
+    Used for typedef synonyms. '''
+    class TypeDef(mtype):
+        _name = newName
+        @classmethod
+        def untypedef(cls):
+            return mtype.untypedef()
+    return TypeDef
+
+
 class MType(type):
     ''' The type of a minispec type '''
     def __str__(self):
@@ -64,6 +75,13 @@ class MType(type):
 
 class MLiteral(metaclass=MType):
     ''' A minispec type '''
+    def __init__(self):
+        raise Exception("Not implemented")
+    @classmethod
+    def untypedef(cls):
+        ''' Return the original untypedef-ed type.
+        If we run typedef Bit#(32) Word, then Word.untypedef() will give back Bit#(32). '''
+        return cls
     def getHardware(self, globalsHandler):
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
         constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
@@ -216,15 +234,15 @@ def Bit(n: 'IntegerLiteral'):
             to be in the range -2**(n-1), ..., (2**n)-1. '''
             self.n = n
             assert value.__class__ == int
-            self.value = value % (2**n)
+            self.value = value % (2**n.value)
         def __repr__(self):
             return "BitLiteral(" + str(self.n) + "," + str(self.value) + ")"
         def __str__(self):
             output = ""
             val = self.value
-            for i in range(self.n):
-                output = output + (val % 2)
-                val /= 2
+            for i in range(self.n.value):
+                output = str(val % 2) + output
+                val //= 2
             return str(self.n) + "'b" + output
         def fromIntegerLiteral(self, i: 'IntegerLiteral'):
             assert -(2**(self.n-1)) <= i.toInt() < 2**self.n, "Bluespec requires Bit#(n) literals to be in range -2**(n-1),...,2**n-1."
@@ -385,7 +403,7 @@ class Maybe(MLiteral):
     def booleanor(self, other):
         raise Exception("Not implemented")
 
-class DontCare(MLiteral):
+class DontCareLiteral(MLiteral):
     '''only one kind, "?" '''
     def __init__(self):
         pass
@@ -430,3 +448,12 @@ class DontCare(MLiteral):
         return self
     def booleanor(self, other):
         return self
+
+if __name__ == '__main__':
+    #Create a synonym of Bit#(32). For testing purposes.
+    Word = Synonym(Bit(Integer(32)), 'Word')
+    print(Word)
+    print(Word.__class__)
+    print(Word.untypedef())
+    a = Word(31)
+    print(a)

@@ -351,6 +351,13 @@ def _():
     expected = f
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+describe('''Types''')
+
+@it('''Handles typedef synonyms''')
+def _():
+    #text = pull('synonym')
+    pass
+    raise Exception("Finish writing test")
 
 #run all the tests
 import time

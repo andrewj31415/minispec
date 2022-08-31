@@ -1,6 +1,5 @@
 
 
-from unicodedata import name
 from mtypes import *
 
 import json
