@@ -369,7 +369,19 @@ def _():
 @it('''Handles enum types''')
 def _():
     text = pull('enum')
-    raise Exception("Finish writing test")
+
+    fa, fo = Node(), Node()
+    a2, a1, a4, a3 = Function('A2'), Function('A1'), Function('A4'), Function('A3')
+    m1, m2, m3 = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
+    eq1, eq2, eq3 = Function('==', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('==', [], [Node(), Node()])
+    ea1, ea2, ea3 = Function('A1'), Function('A2'), Function('A3')
+    permute = Function('permute', [a2, a1, a4, a3, m1, m2, m3, eq1, eq2, eq3, ea1, ea2, ea3, Wire(eq1.output, m1.control), Wire(eq2.output, m2.control), Wire(eq3.output, m3.control), Wire(ea1.output, eq1.inputs[1]), Wire(ea2.output, eq2.inputs[1]), Wire(ea3.output, eq3.inputs[1]), Wire(fa, eq1.inputs[0]), Wire(fa, eq2.inputs[0]), Wire(fa, eq3.inputs[0]), Wire(m1.output, fo), Wire(m2.output, m1.inputs[1]), Wire(m3.output, m2.inputs[1]), Wire(a4.output, m3.inputs[0]), Wire(a3.output, m3.inputs[1]), Wire(a1.output, m2.inputs[0]), Wire(a2.output, m1.inputs[0])], [fa], fo)
+
+    output = synth.parseAndSynth(text, 'permute')
+    expected = permute
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
 
 @it('''Handles struct types''')
 def _():

@@ -423,6 +423,18 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
             raise Exception("Not implemented")
         self.collectedScopes.currentScope.setPermanent(ctx, ctx.typeId().getText())
 
+    def enterTypeDefEnum(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumContext):
+        ''' Evaluate the typedef and log the appropriate variables. '''
+        enumName = ctx.upperCaseIdentifier().getText()
+        enumNames = []
+        for element in ctx.typeDefEnumElement():
+            enumNames.append(element.tag.getText())
+        enumType = Enum(enumName, set(enumNames))
+        self.collectedScopes.currentScope.setPermanent(enumType, enumName)
+        for name in enumNames:
+            self.collectedScopes.currentScope.setPermanent(enumType(name), name)
+        
+
 '''
 Documentation for SynthesizerVisitor visit method return types:
 
@@ -597,11 +609,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
+        ''' We look up the original type, then construct and return a synonym. '''
         if ctx.typeId().paramFormals():
             raise Exception("Not implemented")
         originalType = self.visit(ctx.typeName())
         return Synonym(originalType, ctx.typeId().getText())
-        
 
     def visitTypeId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeIdContext):
         raise Exception("Not implemented")

@@ -66,12 +66,15 @@ def Synonym(mtype: 'MType', newName: 'str'):
 def Enum(name: 'str', values: 'set[str]'):
     ''' Returns a class which represents an enum type. '''
     class Enum(MLiteral):
-        ''' The only operations which are defined for enum literals are eq/neq #TODO check this '''
+        ''' value is the tag of the enum instance to create. Must be one of the types in the enum.
+        The only operations which are defined for enum literals are eq/neq #TODO check this '''
         _name = name
         def __init__(self, value: 'str'):
             ''' Create an enum literal '''
             assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
             self.value = value
+        def __str__(self):
+            return self.value
     return Enum
 
 def Struct(name: 'str', fields: 'dict[str:"MType"]'):
