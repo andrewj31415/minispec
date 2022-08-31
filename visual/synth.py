@@ -855,42 +855,100 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Handled from functionDef, should never be visited")
 
     def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
+        # value = self.visit(ctx.expression())
+        # assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
+        # if ctx.varList:
+        #     raise Exception("Not implemented")
+        # assert ctx.var, "Did the grammar change?"
+
+        # if ctx.var.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+        #     # assign the variable, no slicing/subfields needed
+        #     varName = ctx.var.getText()
+        #     self.collectedScopes.currentScope.set(value, varName)
+        # else:
+        #     # insert the field/slice/index
+        #     # first, detect if we are setting a module input (vectors of modules are not yet implemented)
+        #     if ctx.var.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
+        #         if ctx.var.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+        #             settingOverall = self.collectedScopes.currentScope.get(self, ctx.var.lvalue().getText())
+        #             if settingOverall.__class__ == Module:  # we are, in fact, setting a module input
+        #                 inputName = ctx.var.lowerCaseIdentifier().getText()
+        #                 inputNode = settingOverall.inputs[inputName]
+        #                 if isMLiteral(value):
+        #                     value = value.getHardware(self.globalsHandler)
+        #                 updateWire = Wire(value, inputNode)
+        #                 self.globalsHandler.currentComponent.addChild(updateWire)
+        #                 return
+        #     lvalue = ctx.var
+        #     text, nodes, varName = self.visit(lvalue)
+        #     insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
+        #     for i in range(len(nodes)):
+        #         wire = Wire(nodes[i], insertComponent.inputs[i])
+        #         self.globalsHandler.currentComponent.addChild(wire)
+        #     if isMLiteral(value):
+        #         value = value.getHardware(self.globalsHandler)
+        #     newWire = Wire(value, insertComponent.inputs[len(nodes)])
+        #     self.globalsHandler.currentComponent.addChild(insertComponent)
+        #     self.globalsHandler.currentComponent.addChild(newWire)
+        #     self.collectedScopes.currentScope.set(insertComponent.output, varName)
         value = self.visit(ctx.expression())
         assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
-        if ctx.varList:
-            raise Exception("Not implemented")
-        assert ctx.var, "Did the grammar change?"
-
-        if ctx.var.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-            # assign the variable, no slicing/subfields needed
+        if ctx.var and ctx.var.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+            # we have a single variable to assign, no slicing/subfields needed
             varName = ctx.var.getText()
             self.collectedScopes.currentScope.set(value, varName)
         else:
-            # insert the field/slice/index
-            # first, detect if we are setting a module input (vectors of modules are not yet implemented)
-            if ctx.var.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
-                if ctx.var.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-                    settingOverall = self.collectedScopes.currentScope.get(self, ctx.var.lvalue().getText())
-                    if settingOverall.__class__ == Module:  # we are, in fact, setting a module input
-                        inputName = ctx.var.lowerCaseIdentifier().getText()
-                        inputNode = settingOverall.inputs[inputName]
-                        if isMLiteral(value):
-                            value = value.getHardware(self.globalsHandler)
-                        updateWire = Wire(value, inputNode)
-                        self.globalsHandler.currentComponent.addChild(updateWire)
-                        return
-            lvalue = ctx.var
-            text, nodes, varName = self.visit(lvalue)
-            insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
-            for i in range(len(nodes)):
-                wire = Wire(nodes[i], insertComponent.inputs[i])
-                self.globalsHandler.currentComponent.addChild(wire)
+            # Otherwise, we convert to hardware.
             if isMLiteral(value):
                 value = value.getHardware(self.globalsHandler)
-            newWire = Wire(value, insertComponent.inputs[len(nodes)])
-            self.globalsHandler.currentComponent.addChild(insertComponent)
-            self.globalsHandler.currentComponent.addChild(newWire)
-            self.collectedScopes.currentScope.set(insertComponent.output, varName)
+            # The "relevant node" is value, if there is one assignment, or the corresponding output node
+            #   from the splitter, if there are multiple assignments.
+            # Each entry to assign to is either:
+            #   1. An ordinary variable -- assign with .set to the relevant node.
+            #   2. A module input -- wire the relevant node to the given input.
+            #   3. A sliced/fielded variable -- create hardware for slicing, with input from
+            #      the relevant node, then assign the outer variable to the result.
+            #TODO "varList" in the Minispec grammar points to a curly brace '{', not a list of variables.
+            #   This is confusing and not useful--should 'varList=' be removed from the grammar?
+            varList = ctx.lvalue()  #all vars to be assigned to
+            values = None #the values to assign to the entries on the varList
+            if len(varList) == 1: # no splitter
+                values = [value]
+            else:
+                splitter = Splitter(Node(), [Node() for assignment in varList])
+                self.globalsHandler.currentComponent.addChild(splitter)
+                inWire = Wire(value, splitter.input)
+                self.globalsHandler.currentComponent.addChild(inWire)
+                values = splitter.outputs
+            for i in range(len(varList)):
+                value = values[i]  # the value to assign to the lvalue; either the original lhs or the correct node from the splitter.
+                lvalue = varList[i]
+                if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+                    # assign the variable, no slicing/subfields needed
+                    varName = lvalue.getText()
+                    self.collectedScopes.currentScope.set(value, varName)
+                else:
+                    # insert the field/slice/index
+                    # first, detect if we are setting a module input (vectors of modules are not yet implemented)
+                    if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
+                        if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+                            settingOverall = self.collectedScopes.currentScope.get(self, lvalue.lvalue().getText())
+                            if settingOverall.__class__ == Module:  # we are, in fact, setting a module input
+                                inputName = lvalue.lowerCaseIdentifier().getText()
+                                inputNode = settingOverall.inputs[inputName]
+                                inputWire = Wire(value, inputNode)
+                                self.globalsHandler.currentComponent.addChild(inputWire)
+                                continue
+                    text, nodes, varName = self.visit(lvalue)
+                    insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
+                    for i in range(len(nodes)):
+                        wire = Wire(nodes[i], insertComponent.inputs[i])
+                        self.globalsHandler.currentComponent.addChild(wire)
+                    newWire = Wire(value, insertComponent.inputs[len(nodes)])
+                    self.globalsHandler.currentComponent.addChild(insertComponent)
+                    self.globalsHandler.currentComponent.addChild(newWire)
+                    self.collectedScopes.currentScope.set(insertComponent.output, varName)
+
 
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
         raise Exception("Not implemented")

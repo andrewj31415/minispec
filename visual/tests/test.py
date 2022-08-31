@@ -236,9 +236,6 @@ def _():
     output = synth.parseAndSynth(text, 'f')
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
-   
-
-    raise Exception("Finish writing test")
 
 describe('''Modules''')
 
