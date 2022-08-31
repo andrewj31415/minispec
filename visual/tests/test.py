@@ -381,7 +381,7 @@ def _():
     expected = permute
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-
+#TODO test enum literals
 
 @it('''Handles struct types''')
 def _():

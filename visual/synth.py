@@ -1096,9 +1096,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
         '''We are visiting a variable/function name. We look it up and return the correpsonding information
         (which may be a Node or a ctx or a tuple (ctx/Node, paramMappings), for instance).'''
+        params: 'list[int]' = []
         if ctx.params():
-            raise Exception("Not implemented")
-        value = self.collectedScopes.currentScope.get(self, ctx.var.getText())
+            for param in ctx.params().param():
+                value = self.visit(param) #visit the parameter and extract the corresponding expression, parsing it to an integer
+                #note that params may be either integers (which can be used as-is)
+                #   or variables (which need to be looked up) or expressions in integers (which need
+                #   to be evaluated and must evaluate to an integer).
+                assert value.__class__ == IntegerLiteral
+                params.append(value)
+        value = self.collectedScopes.currentScope.get(self, ctx.var.getText(), params)
+        self.globalsHandler.lastParameterLookup = params
         return value
 
     def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
@@ -1315,16 +1323,21 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             assert isMLiteral(checkDone) and checkDone.__class__ == BooleanLiteral, "For loops must be unrolled before synthesis"
         
 
-def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None) -> 'Component':
-    if topLevelParameters == None:
-        topLevelParameters = []
-
+def getParseTree(text: 'str') -> 'build.MinispecPythonParser.MinispecPythonParser.PackageDefContext':
+    ''' Given text minispec code, return the corresponding parse tree. '''
     data = antlr4.InputStream(text)
     lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
     stream = antlr4.CommonTokenStream(lexer)
     parser = build.MinispecPythonParser.MinispecPythonParser(stream)
     tree = parser.packageDef()  #start parsing at the top-level packageDef rule (so "tree" is the root of the parse tree)
     #print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
+    return tree
+
+def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None) -> 'Component':
+    if topLevelParameters == None:
+        topLevelParameters = []
+
+    tree = getParseTree(text)
 
     globalsHandler = GlobalsHandler()
 
@@ -1342,14 +1355,19 @@ def parseAndSynth(text, topLevel, topLevelParameters: 'list[int]' = None) -> 'Co
 
     synthesizer = SynthesizerVisitor(globalsHandler, collectedScopes)
 
-    topLevelParameters = [IntegerLiteral(i) for i in topLevelParameters]
-    ctxToSynth = startingFile.get(synthesizer, topLevel, topLevelParameters)
-    assert ctxToSynth != None, "Failed to find topLevel function/module"
-    # log parameters in the appropriate global
-    globalsHandler.lastParameterLookup = topLevelParameters
+    topLevel += "#(" + ",".join(str(i) for i in topLevelParameters) + ")"
 
-    output = synthesizer.visit(ctxToSynth) #look up the function in the given file and synthesize it. store the result in 'output'
-    
+    topLevel = f'''
+function Bool _();
+    return {topLevel};
+endfunction
+'''
+
+    topLevelParseTree = getParseTree(topLevel)
+    ctxOfNote = topLevelParseTree.packageStmt(0).functionDef().stmt(0).exprPrimary().expression().binopExpr().unopExpr().exprPrimary()
+    outputDef = synthesizer.visit(ctxOfNote)  # follow the call to the function and get back the functionDef/moduleDef.
+    output = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+
     # for scope in collectedScopes.allScopes:
     #     print(scope)
 
