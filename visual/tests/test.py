@@ -217,26 +217,6 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-describe('''Concatenation Assignments''')
-
-@it('''Correctly assigns to multiple variables in let binding''')
-def _():
-    #I'm not sure this can ever happen, since a let binding won't know the bit widths ... #TODO figure this out
-    raise Exception("Finish writing test")
-
-@it('''Correctly assigns to multiple variables in varAssign''')
-def _():
-    text = pull('split')
-
-    a = Function('+', [], [Node(), Node()])
-    s = Splitter(Node(), [Node(), Node()])
-    fa, fo = Node(), Node()
-    f = Function('f', [a, s, Wire(fa, s.input), Wire(s.outputs[0], a.inputs[0]), Wire(s.outputs[1], a.inputs[1]), Wire(a.output, fo)], [fa], fo)
-    
-    output = synth.parseAndSynth(text, 'f')
-    expected = f
-    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
-
 describe('''Modules''')
 
 @it('''Correctly handles a simple counter''')
