@@ -364,8 +364,18 @@ def _():
     expected = Function('f', [n1, n2, n3, Wire(fa, n1.inputs[0]), Wire(n1.output, n2.inputs[0]), Wire(n2.output, n3.inputs[0]), Wire(n3.output, fo)], [fa], fo)
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-
 #TODO test synonyms in a module register
+
+@it('''Handles enum types''')
+def _():
+    text = pull('enum')
+    raise Exception("Finish writing test")
+
+@it('''Handles struct types''')
+def _():
+    text = pull('struct')
+    raise Exception("Finish writing test")
+
 
 #run all the tests
 import time

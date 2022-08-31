@@ -417,6 +417,11 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
             if varInit.rhs:
                 self.collectedScopes.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
 
+    def enterTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
+        ''' Log the typedef under the appropriate name. It will be evalauted when it is looked up. '''
+        if ctx.typeId().paramFormals():
+            raise Exception("Not implemented")
+        self.collectedScopes.currentScope.setPermanent(ctx, ctx.typeId().getText())
 
 '''
 Documentation for SynthesizerVisitor visit method return types:
@@ -565,6 +570,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         typeName = ctx.name.getText()
         typeObject = self.collectedScopes.currentScope.get(self, typeName, params)
         assert typeObject != None, f"Failed to find type {typeName} with parameters {params}"
+        if typeObject.__class__ == MType:
+            # we have a type
+            return typeObject
+        if issubclass(typeObject.__class__, Component):
+            # we have a module/register
+            return typeObject
+        if typeObject.__class__ == build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext:
+            # we have a type context
+            typeObject = self.visit(typeObject)
         return typeObject
 
     def visitPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
@@ -583,7 +597,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
-        raise Exception("Not implemented")
+        if ctx.typeId().paramFormals():
+            raise Exception("Not implemented")
+        originalType = self.visit(ctx.typeName())
+        return Synonym(originalType, ctx.typeId().getText())
+        
 
     def visitTypeId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeIdContext):
         raise Exception("Not implemented")
