@@ -51,6 +51,8 @@ Names for methods in code:
 
 '''
 
+#TODO we're not implementing parameterized typedefs for a while.
+
 def Synonym(mtype: 'MType', newName: 'str'):
     ''' Returns a class which is a synonym of the given class, with the appropriate name.
     Used for typedef synonyms. '''
@@ -61,6 +63,28 @@ def Synonym(mtype: 'MType', newName: 'str'):
             return mtype.untypedef()
     return TypeDef
 
+def Enum(name: 'str', values: 'set[str]'):
+    ''' Returns a class which represents an enum type. '''
+    class Enum(MLiteral):
+        ''' The only operations which are defined for enum literals are eq/neq #TODO check this '''
+        _name = name
+        def __init__(self, value: 'str'):
+            ''' Create an enum literal '''
+            assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
+            self.value = value
+    return Enum
+
+def Struct(name: 'str', fields: 'dict[str:"MType"]'):
+    ''' Returns a class which represents a struct type. '''
+    class Struct(MLiteral):
+        ''' The only operations which are defined for struct literals are eq/neq #TODO check this '''
+        _name = name
+        def __init__(self, fieldBinds: 'dict[str:MLiteral]'):
+            assert set(fieldBinds) == set(fields), f"Must specify fields {set(fields)} but instead specified fields {set(fieldBinds)}"
+            for field in fieldBinds:
+                assert fieldBinds[field].untypedef() == fields[field].untypedef(), f"Received type {fieldBinds[field]} but expected type {fields[field]}"
+            self.fieldBinds = fieldBinds.copy
+    return Struct
 
 class MType(type):
     ''' The type of a minispec type '''
@@ -78,7 +102,7 @@ class MLiteral(metaclass=MType):
     def __init__(self):
         raise Exception("Not implemented")
     @classmethod
-    def untypedef(cls):
+    def untypedef(cls):  #TODO consider renaming "untypedef" to just "class" or "getClass" ...
         ''' Return the original untypedef-ed type.
         If we run typedef Bit#(32) Word, then Word.untypedef() will give back Bit#(32). '''
         return cls
@@ -160,6 +184,7 @@ class Integer(MLiteral):
     '''An integer type'''
     _name = "Integer"
     def __init__(self, value):
+        ''' Create an integer literal '''
         assert value.__class__ == int
         self.value = value
     def __repr__(self):
@@ -229,7 +254,8 @@ def Bit(n: 'IntegerLiteral'):
         ''' self.n: 'int' is the number of bits. self.value: 'int' is an integer 0 <= value < 2**n. '''
         _name = f"Bit#({n})"
         def __init__(self, value: 'int'):
-            ''' value is an integer which will be assigned (mod 2**n) to self.value.
+            ''' Create a Bit#(n) literal.
+            value is an integer which will be assigned (mod 2**n) to self.value.
             Value may be any integer even though bsc requires Bit#(n) literals
             to be in the range -2**(n-1), ..., (2**n)-1. '''
             self.n = n

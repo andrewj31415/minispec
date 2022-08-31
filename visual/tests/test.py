@@ -355,9 +355,17 @@ describe('''Types''')
 
 @it('''Handles typedef synonyms''')
 def _():
-    #text = pull('synonym')
-    pass
-    raise Exception("Finish writing test")
+    text = pull('synonym')
+
+    n1, n2, n3 = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('~', [], [Node()])
+    fa, fo = Node(), Node()
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = Function('f', [n1, n2, n3, Wire(fa, n1.inputs[0]), Wire(n1.output, n2.inputs[0]), Wire(n2.output, n3.inputs[0]), Wire(n3.output, fo)], [fa], fo)
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
+#TODO test synonyms in a module register
 
 #run all the tests
 import time
