@@ -276,6 +276,12 @@ class BuiltInScope(Scope):
         if varName == 'Reg':
             assert len(parameters) == 1, "A register takes exactly one parameter"
             return BuiltinRegisterCtx(parameters[0])
+        if varName == 'True':
+            assert len(parameters) == 0, "A boolean literal has no parameters"
+            return Bool(True)
+        if varName == 'False':
+            assert len(parameters) == 0, "A boolean literal has no parameters"
+            return Bool(False)
         raise Exception(f"Couldn't find variable {varName} with parameters {parameters}")
 
 #type annotation for context objects.
@@ -821,10 +827,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.outputNode = methodOutput
                 self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
                 methodScope = ctx.scope
+                methodScope.clearTemporaryValues() # clear the temporary values
                 for registerName in self.collectedScopes.currentScope.registers:  # bind the registers
                     register = self.collectedScopes.currentScope.registers[registerName]
                     methodScope.set(register.value, registerName)
-                methodScope.clearTemporaryValues # clear the temporary values
                 previousScope = self.collectedScopes.currentScope
                 self.collectedScopes.currentScope = methodScope # enter the method scope
                 for stmt in ctx.stmt():  # evaluate the method
@@ -837,10 +843,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
         # registers keep their original value unless modified
         ruleScope: 'Scope' = ctx.scope
+        ruleScope.clearTemporaryValues() # clear the temporary values
         for registerName in self.collectedScopes.currentScope.registers:
             register = self.collectedScopes.currentScope.registers[registerName]
             ruleScope.set(register.value, registerName)
-        ruleScope.clearTemporaryValues # clear the temporary values
         previousScope = self.collectedScopes.currentScope
         self.collectedScopes.currentScope = ruleScope # enter the rule scope
         for stmt in ctx.stmt():
@@ -864,7 +870,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if len(params) > 0:  #attach parameters to the function name if present
             functionName += "#(" + ",".join(str(i) for i in params) + ")"
         functionScope = ctx.scope
-        functionScope.clearTemporaryValues # clear the temporary values
+        previousTemporaryValues = functionScope.temporaryValues  # in case this function is recursive parametric and changes the current temporary values
+        functionScope.clearTemporaryValues() # clear the temporary values
         # log the current scope
         previousScope = self.collectedScopes.currentScope
         self.collectedScopes.currentScope = functionScope
@@ -890,6 +897,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # synthesize the function internals
         for stmt in ctx.stmt():
             self.visit(stmt)
+        functionScope.temporaryValues = previousTemporaryValues  # in case this function is recursive and changed the current temporary values        
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
         self.globalsHandler.outputNode = previousOutputNode
@@ -1362,10 +1370,50 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 originalScope.set(muxComponent.output, var)
 
     def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):
-        '''I'm considering implementing case statements as a sequence of if statements.
-        The case statement seems to run from top to bottom, with default only running if no other
-        statements run (statements can overlap).'''
+        ''' The case statement:
+        case (expr)
+          expr1: stmt1;
+          expr2: stmt2;
+          ...
+          default: stmt0;
+        endcase
+        is equivalent to:
+        value = expr;
+        if (value == expr1)
+            stmt1
+        else if (value == expr2):
+            stmt2
+        ...
+        else stmt0;
+        Because of the nested if statments, the default clause criteria will be extracted naturally from the nested if statements.
+        If there is no default statement, there is no final else statement. (In an inline case expr, and only in an inline case expr, the final clause becomes the final else statement if there is no default clause.)
+        Optimizations: if all expr evaluate to literals, we only run the correct branch.
+        If all expri evaluate to literals and all possibilities are covered, we run each branch in parallel
+        and use multi-input muxes.
+        '''
+        expr = self.visit(ctx.expression())
+        print('expr', expr)
+        allExprLiteral = isMLiteral(expr)
+        allExpriLiteral = False
+        expri = []  # list of tuples (exprCtx, stmtCtx) in order that they should be considered, excluding the default case
+        for caseStmtItem in ctx.caseStmtItem():
+            for expression in caseStmtItem.expression():
+                currentExpr = self.visit(expression)
+                if not isMLiteral(currentExpr):
+                    allExprLiteral = False
+                    allExpriLiteral = False
+                expri.append((currentExpr, caseStmtItem.stmt()))
+        print(expri)
+        if allExprLiteral:  # we can fold the case statement and select only the relevant branch
+            for comp, stmt in expri:
+                if expr.eq(comp):
+                    self.visit(stmt)
+                    return
+            if ctx.caseStmtDefaultItem():
+                self.visit(ctx.caseStmtDefaultItem().stmt())
+            return
         raise Exception("Not implemented")
+        
 
     def visitCaseStmtItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtItemContext):
         raise Exception("Not implemented")

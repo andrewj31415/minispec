@@ -393,6 +393,8 @@ class Bool(MLiteral):
         if self.__class__ != other.__class__:
             return False
         return self.value == other.value
+    def __bool__(self):
+        return self.value
     def pow(self, other):
         raise Exception("Not implemented")
     def mul(self, other):

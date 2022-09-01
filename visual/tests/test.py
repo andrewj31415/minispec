@@ -22,6 +22,20 @@ def it(name: 'str'):
 def describe(categoryName: 'str'):
     tests.append(categoryName)
 
+def compare(output: 'Function|Module', expected: 'Function|Module'):
+    ''' Prints a comparison of two pieces of hardware. Helpful for debugging. '''
+    print()
+    print('output')
+    for child in output.children:
+        print(child.__repr__())
+    print(len(output.children))
+    print()
+    print('expected')
+    for child in expected.children:
+        print(child.__repr__())
+    print(len(expected.children))
+    print()
+
 describe("Function Calls")
 
 @it('''A simple function wrapping an xor''')
@@ -234,7 +248,7 @@ def _():
     fa2, fo2 = Node(), Node()
     add2 = Function('+', [], [Node(), Node()])
     zero = Function('0')
-    f2 = Function('addFib#(2,4)', [f0, f1, Wire(fa2, f1.inputs[0]), Wire(f1.output, add2.inputs[0]), Wire(zero.output, f0.inputs[0]), Wire(f0.output, add2.inputs[1]), Wire(add2.output, fo2)], [fa2], fo2)
+    f2 = Function('addFib#(2,4)', [f0, f1, add2, zero, Wire(fa2, f1.inputs[0]), Wire(f1.output, add2.inputs[0]), Wire(zero.output, f0.inputs[0]), Wire(f0.output, add2.inputs[1]), Wire(add2.output, fo2)], [fa2], fo2)
 
     fa13, fo13 = Node(), Node()
     add13 = Function('+', [], [Node(), Node()])
@@ -258,7 +272,6 @@ def _():
     expected = f2
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-
     output = synth.parseAndSynth(text, 'addFib#(3, 4)')
     expected = f3
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
@@ -270,12 +283,25 @@ def _():
     fa, fb, fc, fd, fo = Node(), Node(), Node(), Node(), Node()
     zero, one, two, four, zeroy, oney = Function('0'), Function('1'), Function('2'), Function('4'), Function('0'), Function('1')
     concat = Function('{}', [], [Node(), Node()])
-    ma, mb, mc, md, my = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
+    ma, mb, mc, md = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
+    may, mby, mcy, mdy = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
 
-    #TODO wires #TODO default logic
-    f = Function('f', [zero, one, two, four, zeroy, oney, ma, mb, mc, md, my, concat, Wire(concat.output, fo)], [fa, fb, fc, fd], fo)
+    f = Function('f', [zero, one, two, four, zeroy, oney, ma, mb, mc, md, may, mby, mcy, mdy, concat, Wire(concat.output, fo)], [fa, fb, fc, fd], fo)
 
     output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly handles dynamic case statement''')
+def _():
+    text = pull('cases3')
+
+    fa, fb, fop, fo = Node(), Node(), Node(), Node()
+    add, sub, mul = Function('+', [], [Node(), Node()] ), Function('-', [], [Node(), Node()] ), Function('*', [], [Node(), Node()] )
+    mux = Mux([Node(), Node(), Node()])
+    f = Function('f#(4)', [add, sub, mul, mux, Wire(mux.output, fo), Wire(fa, add.inputs[0]), Wire(fb, add.inputs[1]), Wire(fa, sub.inputs[0]), Wire(fb, sub.inputs[1]), Wire(fa, mul.inputs[0]), Wire(fb, mul.inputs[1]), Wire(add.output, mux.inputs[0]), Wire(sub.output, mux.inputs[1]), Wire(mul.output, mux.inputs[2]), Wire(fop, mux.control)], [fa, fb, fop], fo)
+
+    output = synth.parseAndSynth(text, 'f#(4)')
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
