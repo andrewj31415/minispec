@@ -372,9 +372,13 @@ class Function(Component):
         self._children = children.copy() #copy the array but not the children themselves
         if inputs == None:
             inputs = []
+        assert inputs.__class__ == list, f"Function input list must be list['Node'], not {inputs} which is {inputs.__class__}"
+        for input in inputs:
+            assert input.isNode(), f"Function input node must be a Node, not {input} which is {input.__class__}"
         self._inputs = inputs
         if output == None:
             output = Node('_' + self.name + '_output')
+        assert output.isNode(), f"Function output node must be a Node, not {output} which is {output.__class__}"
         self._output = output
     @property
     def name(self):

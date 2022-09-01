@@ -383,10 +383,32 @@ def _():
 
 #TODO test enum literals
 
+@it('''Handles struct type literals''')
+def _():
+    text = pull('struct')
+
+    a, b, o = Node(), Node(), Node()
+    de = Function('Packet{data:1,index:1}')
+
+    output = synth.parseAndSynth(text, 'combine#(1, 1, 1, 1)')
+    expected = Function('combine#(1,1,1,1)', [de, Wire(de.output, o)], [a, b], o)
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 @it('''Handles struct types''')
 def _():
     text = pull('struct')
-    raise Exception("Finish writing test")
+
+    a, b, o = Node(), Node(), Node()
+    inp1, ind = Function('.data', [], [Node()]), Function('.index', [], [Node()])
+    inp2, inp3 = Function('.data', [], [Node()]), Function('.data', [], [Node()])
+    inpset = Function('.data', [], [Node(), Node()])
+    r = Function('|', [], [Node(), Node()])
+    pack = Function('Packet{}', [], [Node(), Node()])
+
+    output = synth.parseAndSynth(text, 'combine#(1, 1, 1, 2)')
+    expected = Function('combine#(1,1,1,2)', [inp1, ind, inp2, inp3, inpset, r, pack, Wire(a, inp1.inputs[0]), Wire(b, ind.inputs[0]), Wire(inp1.output, pack.inputs[0]), Wire(ind.output, pack.inputs[1]), Wire(pack.output, inpset.inputs[0]), Wire(pack.output, inp2.inputs[0]), Wire(b, inp3.inputs[0]), Wire(inp2.output, r.inputs[0]), Wire(inp3.output, r.inputs[1]), Wire(r.output, inpset.inputs[1]), Wire(inpset.output, o)], [a, b], o)
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 
 #run all the tests

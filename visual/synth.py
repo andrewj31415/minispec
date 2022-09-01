@@ -433,6 +433,14 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         self.collectedScopes.currentScope.setPermanent(enumType, enumName)
         for name in enumNames:
             self.collectedScopes.currentScope.setPermanent(enumType(name), name)
+
+    def enterTypeDefStruct(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext):
+        ''' Log the typedef under the appropriate name. It will be evalauted when it is looked up. '''
+        if ctx.typeId().paramFormals():
+            raise Exception("Not implemented")
+        ctx.typeDefValue = None  # will point to the type object after being looked up for the first time,
+        # then will be returned again on later lookups.
+        self.collectedScopes.currentScope.setPermanent(ctx, ctx.typeId().getText())
         
 
 '''
@@ -466,17 +474,17 @@ visitVarBinding: No returns, binds the given variables to the right-hand-sides i
 visitLetBinding: No returns, binds the given variable as appropriate in the current scope
 visitVarInit: Not visited, varInits are handled in visitVarBinding since only varBinding has access to the assigned typeName ctx.
 visitModuleDef: Returns the module hardware
-visitModuleId: Error, this node handled in functionDef and should not be visited
-visitModuleStmt: Error, this node handled in functionDef and should not be visited
+visitModuleId: Error, this node is handled in moduleDef and should not be visited
+visitModuleStmt: Error, this node is handled in moduleDef and should not be visited
 visitSubmoduleDecl: No returns, mutates existing hardware
 visitInputDef: No returns, mutates existing hardware
 visitMethodDef: If the method has no args, no returns. If the method has args, then visiting the method is like
     calling a function and will return the output node (this has not yet been implemented).
 visitRuleDef: No returns, mutates existing hardware
 visitFunctionDef: Returns the function hardware
-visitFunctionId: Error, this node handled in functionDef and should not be visited
+visitFunctionId: Error, this node is handled in functionDef and should not be visited
 visitVarAssign: No returns, mutates existing hardware
-visitMemberLvalue: 
+visitMemberLvalue: a tuple ( str, tuple[Node], str ), see method for details
 visitIndexLvalue: a tuple ( str, tuple[Node], str ), see method for details
 visitSimpleLvalue: a tuple ( str, tuple[Node], str ), see method for details
 visitSliceLvalue: a tuple ( str, tuple[Node], str ), see method for details
@@ -491,15 +499,15 @@ visitBitConcat: Returns the result (node) of concatenation
 visitStringLiteral: No returns, does nothing
 visitIntLiteral: Corresponding MLiteral
 visitReturnExpr: Nothing, mutates current function hardware
-visitStructExpr: 
+visitStructExpr: Node or MLiteral corresponding to the value of the expression
 visitUndefinedExpr: Corresponding MLiteral
 visitSliceExpr: Returns the result (node) upon slicing
 visitCallExpr: Returns the output node of the function call or a literal (if the function gets constant-folded --constant-folding through functions is not yet implemented.)
     Note that constant-folding elimination of function components occurs here, not in functionDef, so that the function to synthesize is not eliminated.
 visitFieldExpr: 
 visitParenExpr: Node or MLiteral corresponding to the value of the expression
-visitMemberBinds: 
-visitMemberBind: 
+visitMemberBinds: Error, this node is handled in structExpr and should not be visited
+visitMemberBind: Error, this node is handled in structExpr and should not be visited
 visitBeginEndBlock: No returns, mutates existing hardware
 visitRegWrite: No returns, mutates existing hardware
 visitStmt: No returns, mutates existing hardware
@@ -588,7 +596,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if issubclass(typeObject.__class__, Component):
             # we have a module/register
             return typeObject
-        if typeObject.__class__ == build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext:
+        if typeObject.__class__ == build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext or typeObject.__class__ == build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext:
             # we have a type context
             typeObject = self.visit(typeObject)
         return typeObject
@@ -606,7 +614,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not implemented")
 
     def visitTypeDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDeclContext):
-        raise Exception("Not implemented")
+        raise Exception('Handled during static elaboration. Only subtypes typeDefSynonym and typeDefStruct should be visited.')
 
     def visitTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
         ''' We look up the original type, then construct and return a synonym. '''
@@ -616,16 +624,26 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return Synonym(originalType, ctx.typeId().getText())
 
     def visitTypeId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeIdContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled directly, should not be visited.")
 
     def visitTypeDefEnum(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled during static elaboration.")
 
     def visitTypeDefEnumElement(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumElementContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled during static elaboration.")
 
     def visitTypeDefStruct(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext):
-        raise Exception("Not implemented")
+        if not ctx.typeDefValue:
+            if ctx.typeId().paramFormals():
+                raise Exception("Not implemented")
+            typeName = ctx.typeId().getText()
+            fields = {}
+            for structMember in ctx.structMember():
+                fieldTypeName = self.visit(structMember.typeName())
+                fieldName = structMember.lowerCaseIdentifier().getText()
+                fields[fieldName] = fieldTypeName
+            ctx.typeDefValue = Struct(typeName, fields)
+        return ctx.typeDefValue
 
     def visitStructMember(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructMemberContext):
         raise Exception("Not implemented")
@@ -900,6 +918,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         #      the relevant node, then assign the outer variable to the result.
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
             # we have a single variable to assign, no slicing/subfields needed
+            # we don't visit the simplelvalue context since simplelvalue automatically produces hardware
+            #   for slicing/indexing/etc. (as all other remaining cases require this).
             varName = ctx.var.getText()
             self.collectedScopes.currentScope.set(value, varName)
             return
@@ -934,7 +954,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
 
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
-        raise Exception("Not implemented")
+        ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
+        tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
+        and the last str is varName, the name of the variable being updated. '''
+        text, nodes, varName = self.visit(ctx.lvalue())
+        text += '.' + ctx.lowerCaseIdentifier().getText()
+        return (text, nodes, varName)  # no new selection input nodes since field selection is not dynamic
 
     def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
@@ -955,7 +980,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        return ("", (self.collectedScopes.currentScope.get(self, ctx.getText()),), ctx.getText())
+        valueFound = self.collectedScopes.currentScope.get(self, ctx.getText())
+        if isMLiteral(valueFound):
+            valueFound = valueFound.getHardware(self.globalsHandler)
+        return ("", (valueFound,), ctx.getText())
 
     def visitSliceLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
@@ -1103,7 +1131,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #note that params may be either integers (which can be used as-is)
                 #   or variables (which need to be looked up) or expressions in integers (which need
                 #   to be evaluated and must evaluate to an integer).
-                assert value.__class__ == IntegerLiteral
+                assert value.__class__ == IntegerLiteral, f"Parameters must be an integer, not {value} which is {value.__class__}"
                 params.append(value)
         value = self.collectedScopes.currentScope.get(self, ctx.var.getText(), params)
         self.globalsHandler.lastParameterLookup = params
@@ -1144,7 +1172,29 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(returnWire)
 
     def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):
-        raise Exception("Not implemented")
+        structType = self.visit(ctx.typeName())
+        fieldValues = {}
+        packingHardware = False
+        for memberBind in ctx.memberBinds().memberBind():
+            fieldName = memberBind.field.getText()
+            fieldValue = self.visit(memberBind.expression())
+            if not isMLiteral(fieldValue):
+                packingHardware = True
+            fieldValues[fieldName] = fieldValue
+        if packingHardware:  # at least one of the fields is hardware, so we convert all of the fields to hardware, combine them, and return the output node.
+            combineComp = Function(str(structType) + "{}", [], [Node() for field in fieldValues])
+            fieldList = list(fieldValues)
+            for i in range(len(fieldValues)):
+                fieldName = fieldList[i]
+                fieldValue = fieldValues[fieldName]
+                if isMLiteral(fieldValue):
+                    fieldValue = fieldValue.getHardware(self.globalsHandler)
+                wireIn = Wire(fieldValue, combineComp.inputs[i])
+                self.globalsHandler.currentComponent.addChild(wireIn)
+            self.globalsHandler.currentComponent.addChild(combineComp)
+            return combineComp.output
+        else:
+            return structType(fieldValues)  # no hardware, just a struct literal
 
     def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
         return DontCareLiteral()
@@ -1201,7 +1251,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #note that params may be either integers (which can be used as-is)
                 #   or variables (which need to be looked up) or expressions in integers (which need
                 #   to be evaluated and must evaluate to an integer).
-                assert value.__class__ == IntegerLiteral
+                assert value.__class__ == IntegerLiteral, f"Parameters must be an integer, not {value} which is {value.__class__}"
                 params.append(value)
         functionDef = self.collectedScopes.currentScope.get(self, functionToCall, params)
         self.globalsHandler.lastParameterLookup = params
@@ -1224,16 +1274,23 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             fieldToAccess = ctx.field.getText()
             return toAccess.methods[fieldToAccess]
         else:
-            raise Exception("Not implemented")
+            field = ctx.field.getText()
+            if isMLiteral(toAccess):
+                return toAccess.fieldBinds[field]
+            fieldExtractComp = Function('.'+field, [], [Node()])
+            wireIn = Wire(toAccess, fieldExtractComp.inputs[0])
+            self.globalsHandler.currentComponent.addChild(fieldExtractComp)
+            self.globalsHandler.currentComponent.addChild(wireIn)
+            return fieldExtractComp.output
 
     def visitParenExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParenExprContext):
         return self.visit(ctx.expression())
 
     def visitMemberBinds(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberBindsContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled in structExpr, should not be visited")
 
     def visitMemberBind(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberBindContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled in structExpr, should not be visited")
 
     def visitBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
         for stmt in ctx.stmt():

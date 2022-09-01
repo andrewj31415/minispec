@@ -37,7 +37,7 @@ Names for methods in code:
 Unary operators:
 '!' | '~' | '&' | '~&' | '|' | '~|' | '^' | '^~' | '~^' | '+' | '-'
 Names for methods in code:
-'!' is not.
+'!' is booleaninv.
 '~' is inv.
 '&' is redand.
 '~&' is #TODO
@@ -50,44 +50,6 @@ Names for methods in code:
 '-' is neg
 
 '''
-
-#TODO we're not implementing parameterized typedefs for a while.
-
-def Synonym(mtype: 'MType', newName: 'str'):
-    ''' Returns a class which is a synonym of the given class, with the appropriate name.
-    Used for typedef synonyms. '''
-    class TypeDef(mtype):
-        _name = newName
-        @classmethod
-        def untypedef(cls):
-            return mtype.untypedef()
-    return TypeDef
-
-def Enum(name: 'str', values: 'set[str]'):
-    ''' Returns a class which represents an enum type. '''
-    class Enum(MLiteral):
-        ''' value is the tag of the enum instance to create. Must be one of the types in the enum.
-        The only operations which are defined for enum literals are eq/neq #TODO check this '''
-        _name = name
-        def __init__(self, value: 'str'):
-            ''' Create an enum literal '''
-            assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
-            self.value = value
-        def __str__(self):
-            return self.value
-    return Enum
-
-def Struct(name: 'str', fields: 'dict[str:"MType"]'):
-    ''' Returns a class which represents a struct type. '''
-    class Struct(MLiteral):
-        ''' The only operations which are defined for struct literals are eq/neq #TODO check this '''
-        _name = name
-        def __init__(self, fieldBinds: 'dict[str:MLiteral]'):
-            assert set(fieldBinds) == set(fields), f"Must specify fields {set(fields)} but instead specified fields {set(fieldBinds)}"
-            for field in fieldBinds:
-                assert fieldBinds[field].untypedef() == fields[field].untypedef(), f"Received type {fieldBinds[field]} but expected type {fields[field]}"
-            self.fieldBinds = fieldBinds.copy
-    return Struct
 
 class MType(type):
     ''' The type of a minispec type '''
@@ -176,6 +138,62 @@ class MLiteral(metaclass=MType):
     '''unary operations'''
     def neg(first):
         return first.neg()
+    def booleaninv(first):
+        return first.booleaninv()
+        
+
+#TODO we're not implementing parameterized typedefs for a while.
+
+def Synonym(mtype: 'MType', newName: 'str'):
+    ''' Returns a class which is a synonym of the given class, with the appropriate name.
+    Used for typedef synonyms. '''
+    class TypeDef(mtype):
+        _name = newName
+        @classmethod
+        def untypedef(cls):
+            return mtype.untypedef()
+    return TypeDef
+
+def Enum(name: 'str', values: 'set[str]'):
+    ''' Returns a class which represents an enum type. '''
+    class Enum(MLiteral):
+        ''' value is the tag of the enum instance to create. Must be one of the types in the enum.
+        The only operations which are defined for enum literals are eq/neq #TODO check this '''
+        _name = name
+        def __init__(self, value: 'str'):
+            ''' Create an enum literal '''
+            assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
+            self.value = value
+        def __str__(self):
+            return self.value
+    return Enum
+
+def Struct(name: 'str', fields: 'dict[str:MType]'):
+    ''' Returns a class which represents a struct type.
+    fields is a dict[str:MType] mapping a field name to the type the field should have. '''
+    class Struct(MLiteral):
+        ''' The only operations which are defined for struct literals are eq/neq #TODO check this '''
+        _name = name
+        def __init__(self, fieldBinds: 'dict[str:MLiteral]'):
+            assert set(fieldBinds) == set(fields), f"Must specify fields {set(fields)} but instead specified fields {set(fieldBinds)}"
+            for field in fieldBinds:
+                pass #TODO modify this to allow implicit conversion Integer -> Bit#(n).
+                #assert fieldBinds[field].__class__.untypedef() == fields[field].untypedef(), f"Received type {fieldBinds[field].__class__} but expected type {fields[field]}"
+            self.fieldBinds = fieldBinds.copy()
+        def __str__(self):
+            return name + "{" + ",".join([str(field) + ":" + str(self.fieldBinds[field]) for field in self.fieldBinds]) + "}"
+        def eq(self, other):
+            if self.__class__ != other.__class__:
+                return Bool(False)
+            if set(self.fieldBinds) != set(other.fieldBinds):
+                return Bool(False)
+            for field in self.fieldBinds:
+                if self.fieldBinds[field].eq(other.fieldBinds[field]) == Bool(False):
+                    return Bool(False)
+            return Bool(True)
+        def neq(self, other):
+            return self.eq(other).booleaninv()
+    return Struct
 
 class Any(MLiteral):
     '''An unknown type'''
@@ -375,6 +393,9 @@ class Bool(MLiteral):
         return BooleanLiteral(self.value and other.value)
     def booleanor(self, other):
         return BooleanLiteral(self.value or other.value)
+    '''Unary operations'''
+    def booleaninv(self):
+        return BooleanLiteral(not self.value)
 BooleanLiteral = Bool  #useful alias
         
 def Vector(k: 'int', typeValue: 'MLiteral'):
