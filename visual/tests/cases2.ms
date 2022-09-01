@@ -11,6 +11,7 @@ function Bit#(8) f(Bool a, Bool b, Bool c, Bool d);
     case (True)
         a: x = 1;
         b: x = 2;
+        False: x = 3;
         c: x = 4;
         d: x = 8;
         default: y = 1;

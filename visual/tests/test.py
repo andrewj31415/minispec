@@ -153,7 +153,7 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-describe("If and Case Statements")
+describe("If and Ternary Statements")
 
 @it('''Correctly synthesizes mux''')
 def _():
@@ -216,6 +216,69 @@ def _():
     output = synth.parseAndSynth(text, 'multiplexer1')
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+describe('''Case Statements''')
+
+@it('''Correctly handles constant-folded case statement''')
+def _():
+    text = pull('cases1')
+
+    fa0, fo0 = Node(), Node()
+    f0 = Function('addFib#(0,4)', [Wire(fa0, fo0)], [fa0], fo0)
+
+    fa1, fo1 = Node(), Node()
+    add = Function('+', [], [Node(), Node()])
+    one = Function('1')
+    f1 = Function('addFib#(1,4)', [add, one, Wire(fa1, add.inputs[0]), Wire(one.output, add.inputs[1]), Wire(add.output, fo1)], [fa1], fo1)
+
+    fa2, fo2 = Node(), Node()
+    add2 = Function('+', [], [Node(), Node()])
+    zero = Function('0')
+    f2 = Function('addFib#(2,4)', [f0, f1, Wire(fa2, f1.inputs[0]), Wire(f1.output, add2.inputs[0]), Wire(zero.output, f0.inputs[0]), Wire(f0.output, add2.inputs[1]), Wire(add2.output, fo2)], [fa2], fo2)
+
+    fa13, fo13 = Node(), Node()
+    add13 = Function('+', [], [Node(), Node()])
+    one13 = Function('1')
+    f13 = Function('addFib#(1,4)', [add13, one13, Wire(fa13, add13.inputs[0]), Wire(one13.output, add13.inputs[1]), Wire(add13.output, fo13)], [fa13], fo13)
+
+    fa3, fo3 = Node(), Node()
+    add3 = Function('+', [], [Node(), Node()])
+    zero3 = Function('0')
+    f3 = Function('addFib#(3,4)', [f2, f13, add3, zero3, Wire(fa3, f2.inputs[0]), Wire(f2.output, add3.inputs[0]), Wire(zero3.output, f13.inputs[0]), Wire(f13.output, add3.inputs[1]), Wire(add3.output, fo3)], [fa3], fo3)
+
+    output = synth.parseAndSynth(text, 'addFib#(0, 4)')
+    expected = f0
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+    output = synth.parseAndSynth(text, 'addFib#(1, 4)')
+    expected = f1
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+    output = synth.parseAndSynth(text, 'addFib#(2, 4)')
+    expected = f2
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
+    output = synth.parseAndSynth(text, 'addFib#(3, 4)')
+    expected = f3
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly handles partially constant-folded case statement''')
+def _():
+    text = pull('cases2')
+
+    fa, fb, fc, fd, fo = Node(), Node(), Node(), Node(), Node()
+    zero, one, two, four, zeroy, oney = Function('0'), Function('1'), Function('2'), Function('4'), Function('0'), Function('1')
+    concat = Function('{}', [], [Node(), Node()])
+    ma, mb, mc, md, my = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
+
+    #TODO wires #TODO default logic
+    f = Function('f', [zero, one, two, four, zeroy, oney, ma, mb, mc, md, my, concat, Wire(concat.output, fo)], [fa, fb, fc, fd], fo)
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 describe('''Modules''')
 

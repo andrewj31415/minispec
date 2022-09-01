@@ -192,3 +192,8 @@ function Bit#(2) cased(Bit#(1) a, Bit#(1) b);
   endcase
   return x;
 endfunction
+
+
+function Bit#(1) unary(Bit#(1) a, Bit#(1) b);
+  return a ^~ b;
+endfunction

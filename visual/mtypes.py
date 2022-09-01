@@ -28,8 +28,7 @@ Names for methods in code:
 != is neq, in terms of eq
 & is bitand.
 ^ is bitxor.
-^~ is #TODO bitxnor?
-~^ is #TODO
+^~, ~^ is bitnotxor.
 | is bitor.
 && is booleanand.
 || is booleanor.
@@ -40,15 +39,15 @@ Names for methods in code:
 '!' is booleaninv.
 '~' is inv.
 '&' is redand.
-'~&' is #TODO
+'~&' is notredand.
 '|' is redor.
-'~|' is #TODO
-'^' is redxor
-'^~' is #TODO
-'~^' is #TODO
-'+' is unaryadd
-'-' is neg
+'~|' is notredor.
+'^' is redxor.
+'^~', '~^' is notredxor.
+'+' is unaryadd.
+'-' is neg.
 
+Note: only returns booleans if specifically marked for booleans. Reduction operators return Bit#(1)'s.
 '''
 
 class MType(type):
@@ -136,10 +135,26 @@ class MLiteral(metaclass=MType):
         first, second = MLiteral.coerceBoolean(first, second)
         return first.booleanand(second)
     '''unary operations'''
-    def neg(first):
-        return first.neg()
     def booleaninv(first):
         return first.booleaninv()
+    def inv(first):
+        return first.inv()
+    def redand(first):
+        return first.redand()
+    def notredand(first):
+        return first.redand().inv()
+    def redor(first):
+        return first.redor()
+    def notredor(first):
+        return first.redor().inv()
+    def redxor(first):
+        return first.redxor()
+    def notredxor(first):
+        return first.redxor().inv()
+    def unaryadd(first):
+        return first.unaryadd()
+    def neg(first):
+        return first.neg()
         
 
 #TODO we're not implementing parameterized typedefs for a while.
@@ -264,8 +279,21 @@ class Integer(MLiteral):
     def booleanor(self, other):
         raise Exception("Not implemented")
     '''unary operations'''
+    def booleaninv(self):
+        raise Exception("Not implemented")
+    def inv(self):
+        raise Exception("Not implemented")
+    def redand(self):
+        raise Exception("Not implemented")
+    def redor(self):
+        raise Exception("Not implemented")
+    def redxor(self):
+        raise Exception("Not implemented")
+    def unaryadd(self):
+        return self
     def neg(self):
         return IntegerLiteral(-self.value)
+
 IntegerLiteral = Integer  #useful alias
 
 def Bit(n: 'IntegerLiteral'):
@@ -336,6 +364,18 @@ def Bit(n: 'IntegerLiteral'):
         def booleanor(self, other):
             raise Exception("Not implemented")
         '''unary operations'''
+        def booleaninv(self):
+            raise Exception("Not implemented")
+        def inv(self):
+            raise Exception("Not implemented")
+        def redand(self):
+            raise Exception("Not implemented")
+        def redor(self):
+            raise Exception("Not implemented")
+        def redxor(self):
+            raise Exception("Not implemented")
+        def unaryadd(self):
+            raise Exception("Not implemented")
         def neg(self):
             return Bit(self.n)(-self.value)
     return Bit
@@ -396,6 +436,18 @@ class Bool(MLiteral):
     '''Unary operations'''
     def booleaninv(self):
         return BooleanLiteral(not self.value)
+    def inv(self):
+        raise Exception("Not implemented")
+    def redand(self):
+        raise Exception("Not implemented")
+    def redor(self):
+        raise Exception("Not implemented")
+    def redxor(self):
+        raise Exception("Not implemented")
+    def unaryadd(self):
+        raise Exception("Not implemented")
+    def neg(self):
+        raise Exception("Not implemented")
 BooleanLiteral = Bool  #useful alias
         
 def Vector(k: 'int', typeValue: 'MLiteral'):
@@ -407,11 +459,27 @@ def Vector(k: 'int', typeValue: 'MLiteral'):
             self.typeValue = typeValue
         def __str__(self):
             return "Vector#(" + str(self.k) + ", " + str(self.typeValue) + ")"
+        '''unary operations'''
+        def booleaninv(self):
+            raise Exception("Not implemented")
+        def inv(self):
+            raise Exception("Not implemented")
+        def redand(self):
+            raise Exception("Not implemented")
+        def redor(self):
+            raise Exception("Not implemented")
+        def redxor(self):
+            raise Exception("Not implemented")
+        def unaryadd(self):
+            raise Exception("Not implemented")
+        def neg(self):
+            raise Exception("Not implemented")
     return Vector
 
 class Maybe(MLiteral):
     '''value is Valid or Invalid'''
     #TODO figure out how to implement Valid
+    '''boolean operations'''
     def pow(self, other):
         raise Exception("Not implemented")
     def mul(self, other):
@@ -451,6 +519,21 @@ class Maybe(MLiteral):
     def booleanand(self, other):
         raise Exception("Not implemented")
     def booleanor(self, other):
+        raise Exception("Not implemented")
+    '''unary operations'''
+    def booleaninv(self):
+        raise Exception("Not implemented")
+    def inv(self):
+        raise Exception("Not implemented")
+    def redand(self):
+        raise Exception("Not implemented")
+    def redor(self):
+        raise Exception("Not implemented")
+    def redxor(self):
+        raise Exception("Not implemented")
+    def unaryadd(self):
+        raise Exception("Not implemented")
+    def neg(self):
         raise Exception("Not implemented")
 
 class DontCareLiteral(MLiteral):
@@ -497,6 +580,21 @@ class DontCareLiteral(MLiteral):
     def booleanand(self, other):
         return self
     def booleanor(self, other):
+        return self
+    '''unary operations'''
+    def booleaninv(self):
+        return self
+    def inv(self):
+        return self
+    def redand(self):
+        return self
+    def redor(self):
+        return self
+    def redxor(self):
+        return self
+    def unaryadd(self):
+        return self
+    def neg(self):
         return self
 
 if __name__ == '__main__':

@@ -268,7 +268,6 @@ class BuiltInScope(Scope):
             n = parameters[0]
             return Bit(n)
         if varName == 'Vector':
-            #TODO refactor this
             assert len(parameters) == 2, "vector takes exactly two parameters"
             k, typeValue = parameters
             return Vector(k, typeValue)
@@ -646,7 +645,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return ctx.typeDefValue
 
     def visitStructMember(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructMemberContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled in typeDefStruct, not visited")
 
     def visitVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
         typeValue = self.visit(ctx.typeName())
@@ -1058,27 +1057,27 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         op = ctx.op.text
         '''Combining literals'''
         if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
-            return { '**': MLiteral.pow,
-            '*': MLiteral.mul,
-            '/': MLiteral.div,
-            '%': MLiteral.mod,
-            '+': MLiteral.add,
-            '-': MLiteral.sub,
-            '<<': MLiteral.sleft,
-            '>>': MLiteral.sright,
-            '<': MLiteral.lt,
-            '<=': MLiteral.le,
-            '>': MLiteral.gt,
-            '>=': MLiteral.ge,
-            '==': MLiteral.eq,
-            '!=': MLiteral.neq,
-            '&': MLiteral.bitand,
-            '^': MLiteral.bitxor,
-            '^~': MLiteral.bitxnor,
-            '~^': MLiteral.bitxnor,
-            '|': MLiteral.bitor,
-            '&&': MLiteral.booleanand,
-            '||': MLiteral.booleanor }[op](left, right)
+            return {'**': MLiteral.pow,
+                    '*': MLiteral.mul,
+                    '/': MLiteral.div,
+                    '%': MLiteral.mod,
+                    '+': MLiteral.add,
+                    '-': MLiteral.sub,
+                    '<<': MLiteral.sleft,
+                    '>>': MLiteral.sright,
+                    '<': MLiteral.lt,
+                    '<=': MLiteral.le,
+                    '>': MLiteral.gt,
+                    '>=': MLiteral.ge,
+                    '==': MLiteral.eq,
+                    '!=': MLiteral.neq,
+                    '&': MLiteral.bitand,
+                    '^': MLiteral.bitxor,
+                    '^~': MLiteral.bitxnor,
+                    '~^': MLiteral.bitxnor,
+                    '|': MLiteral.bitor,
+                    '&&': MLiteral.booleanand,
+                    '||': MLiteral.booleanor}[op](left, right)
         # convert literals to hardware
         if isMLiteral(left):
             left = left.getHardware(self.globalsHandler)
@@ -1113,7 +1112,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         op = ctx.op.text
         if isMLiteral(value):
             #TODO fill out dict
-            return {'-': MLiteral.neg}[op](value)
+            return {'!': MLiteral.booleaninv,
+                    '~': MLiteral.inv,
+                    '&': MLiteral.redand,
+                    '~&': MLiteral.notredand,
+                    '|': MLiteral.redor,
+                    '~|': MLiteral.notredor,
+                    '^': MLiteral.redxor,
+                    '^~': MLiteral.notredxor,
+                    '~^': MLiteral.notredxor,
+                    '+': MLiteral.unaryadd,
+                    '-': MLiteral.neg}[op](value)
         assert value.__class__ == Node, "value should be hardware"
         unopComponenet = Function(op, [], [Node("v")])
         wireIn = Wire(value, unopComponenet.inputs[0])
