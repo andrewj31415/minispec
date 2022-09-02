@@ -1327,6 +1327,51 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Each variety of statement is handled separately. '''
         return self.visitChildren(ctx)
 
+    def runIfStmt(self, condition: 'Node', ifStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext', elseStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext|None'):
+        ''' Creates hardware corresponding to the if statement
+        if (condition)
+          ifStmt
+        else
+          elseStmt
+        If elseStmt is None, does not run the elseStmt.
+        Use in visitIfStmt and visitCaseStmt. '''
+        # we run both branches in separate scopes, then combine
+        ifScope = Scope(self.globalsHandler, "ifScope", [self.collectedScopes.currentScope])
+        elseScope = Scope(self.globalsHandler, "elseScope", [self.collectedScopes.currentScope])
+        self.collectedScopes.allScopes.append(ifScope)
+        self.collectedScopes.allScopes.append(elseScope)
+        originalScope = self.collectedScopes.currentScope
+
+        self.collectedScopes.currentScope = ifScope
+        self.visit(ifStmt)
+        if elseStmt:
+            self.collectedScopes.currentScope = elseScope
+            self.visit(elseStmt)
+        
+        self.copyBackIfStmt(originalScope, condition, ifScope, elseScope)
+
+    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', ifScope: 'Scope', elseScope: 'Scope'):
+        ''' Given if/else scopes, the original scope, and a condition node, copies the variables set in the 
+        if and else scopes back into the original scope with muxes controlled by the condition node. '''
+        self.collectedScopes.currentScope = originalScope
+        varsToBind = set()
+        for var in ifScope.temporaryValues:
+            varsToBind.add(var)
+        for var in elseScope.temporaryValues:
+            varsToBind.add(var)
+        for var in varsToBind:
+            value1 = ifScope.get(self, var)   # if var doesn't appear in one of these scopes, the lookup will find its original value
+            value2 = elseScope.get(self, var)
+            # since the control signal is hardware, we convert the values to hardware as well (if needed)
+            if isMLiteral(value1):
+                value1 = value1.getHardware(self.globalsHandler)
+            if isMLiteral(value2):
+                value2 = value2.getHardware(self.globalsHandler)
+            muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
+            for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
+                self.globalsHandler.currentComponent.addChild(component)
+            originalScope.set(muxComponent.output, var)
+
     def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
         condition = self.visit(ctx.expression())
         if isMLiteral(condition):
@@ -1337,37 +1382,55 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if ctx.stmt(1):
                     self.visit(ctx.stmt(1))
         else:
-            # we run both branches in separate scopes, then combine
-            ifScope = Scope(self.globalsHandler, "ifScope", [self.collectedScopes.currentScope])
-            elseScope = Scope(self.globalsHandler, "elseScope", [self.collectedScopes.currentScope])
-            self.collectedScopes.allScopes.append(ifScope)
-            self.collectedScopes.allScopes.append(elseScope)
-            originalScope = self.collectedScopes.currentScope
+            self.runIfStmt(condition, ctx.stmt(0), ctx.stmt(1))
 
-            self.collectedScopes.currentScope = ifScope
-            self.visit(ctx.stmt(0))
-            if ctx.stmt(1):
-                self.collectedScopes.currentScope = elseScope
-                self.visit(ctx.stmt(1))
-            
-            self.collectedScopes.currentScope = originalScope
-            varsToBind = set()
-            for var in ifScope.temporaryValues:
-                varsToBind.add(var)
-            for var in elseScope.temporaryValues:
-                varsToBind.add(var)
-            for var in varsToBind:
-                value1 = ifScope.get(self, var)   # if var doesn't appear in one of these scopes, the lookup will find its original value
-                value2 = elseScope.get(self, var)
-                # since the control signal is hardware, we convert the values to hardware as well (if needed)
-                if isMLiteral(value1):
-                    value1 = value1.getHardware(self.globalsHandler)
-                if isMLiteral(value2):
-                    value2 = value2.getHardware(self.globalsHandler)
-                muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
-                for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
-                    self.globalsHandler.currentComponent.addChild(component)
-                originalScope.set(muxComponent.output, var)
+    def doCaseStmtStep(self, expr: 'Node|MLiteral', expri: 'list', index: 'int', defaultItem: 'None|build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext'):
+        ifScope = Scope(self.globalsHandler, "ifScope", [self.collectedScopes.currentScope])
+        elseScope = Scope(self.globalsHandler, "elseScope", [self.collectedScopes.currentScope])
+        self.collectedScopes.allScopes.append(ifScope)
+        self.collectedScopes.allScopes.append(elseScope)
+        originalScope = self.collectedScopes.currentScope
+
+        exprOriginal = expr # save the original expr in case we need to convert expr to hardware
+
+        exprToMatch = expri[index][0]
+        ifStmt = expri[index][1]
+
+        # set up the if/else condition.
+        # we create an equality tester to compare the expr and the exprToMatch and pass in the output node.
+        # if they are booleans and one is a literal, we feed the non-boolean in directly (or inverted) to avoid boolean laundering.
+        # if both are literals, we evaluate directly.
+        if isMLiteral(expr) and isMLiteral(exprToMatch):  
+            #TODO short-circuit literals early
+            raise Exception("Not implemented")
+        elif isMLiteral(expr) and not isMLiteral(exprToMatch) and expr.__class__ == Bool:
+            raise Exception("Not implemented")
+        elif not isMLiteral(expr) and isMLiteral(exprToMatch) and exprToMatch.__class__ == Bool:
+            raise Exception("Not implemented")
+        else:  # neither are boolean literals
+            if isMLiteral(expr):
+                expr = expr.getHardware(self.globalsHandler)
+            if isMLiteral(exprToMatch):
+                exprToMatch = exprToMatch.getHardware(self.globalsHandler)
+            eqComp = Function('==', [], [Node(), Node()])
+            wire1 = Wire(expr, eqComp.output)
+            wire2 = Wire(exprToMatch, eqComp.output)
+            for component in [eqComp, wire1, wire2]:
+                self.globalsHandler.currentComponent.addChild(component)
+            condition = eqComp.output
+
+        self.collectedScopes.currentScope = ifScope
+        self.visit(ifStmt)
+
+        self.collectedScopes.currentScope = elseScope
+        if index + 1 < len(expri):
+            self.doCaseStmtStep(exprOriginal, expri, index+1, defaultItem)
+        elif defaultItem:
+            self.visit(defaultItem.stmt())
+
+        self.copyBackIfStmt(originalScope, condition, ifScope, elseScope)
+
+        self.collectedScopes.currentScope = originalScope
 
     def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):
         ''' The case statement:
@@ -1392,34 +1455,46 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         and use multi-input muxes.
         '''
         expr = self.visit(ctx.expression())
-        print('expr', expr)
         allExprLiteral = isMLiteral(expr)
-        allExpriLiteral = False
-        expri = []  # list of tuples (exprCtx, stmtCtx) in order that they should be considered, excluding the default case
+        allExpriLiteral = True
+        expri = []  # list of pairs [self.visit(exprCtx), stmtCtx] in order that they should be considered, excluding the default case and skipping repeat literals.
+        expriLiterals = [] # list of literals found when visiting each expri
         for caseStmtItem in ctx.caseStmtItem():
             for expression in caseStmtItem.expression():
                 currentExpr = self.visit(expression)
-                if not isMLiteral(currentExpr):
+                if isMLiteral(currentExpr):
+                    for otherLiteral in expriLiterals:
+                        if currentExpr.__class__ == otherLiteral.__class__  and currentExpr.eq(otherLiteral):
+                            # we have a duplicate literal which will never be reached, so we discard it
+                            continue
+                    expriLiterals.append(currentExpr)
+                else:
                     allExprLiteral = False
                     allExpriLiteral = False
-                expri.append((currentExpr, caseStmtItem.stmt()))
-        print(expri)
+                expri.append([currentExpr, caseStmtItem.stmt()])
         if allExprLiteral:  # we can fold the case statement and select only the relevant branch
             for comp, stmt in expri:
                 if expr.eq(comp):
                     self.visit(stmt)
                     return
+            # nothing matched, so we do the default statement if there is one, otherwise do nothing.
             if ctx.caseStmtDefaultItem():
                 self.visit(ctx.caseStmtDefaultItem().stmt())
             return
-        raise Exception("Not implemented")
-        
+        if allExpriLiteral:  
+            # since we have already removed duplicate literals, exactly (technically at most, but "do nothing" may
+            # be considered to be a statement if not all statements are covered) one expri statement will run.
+            # we run each one in a separate scope and collect the results afterward using multi-width muxes.
+            raise Exception("Not implemented")
+            return
+        # run the case statement as a sequence of if statements.
+        self.doCaseStmtStep(expr, expri, 0, ctx.caseStmtDefaultItem())
 
     def visitCaseStmtItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtItemContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled in visitCaseStmt--not visited.")
 
     def visitCaseStmtDefaultItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled in visitCaseStmt--not visited.")
 
     def visitForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
         iterVarName = ctx.initVar.getText()

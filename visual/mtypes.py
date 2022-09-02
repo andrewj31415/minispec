@@ -1,5 +1,6 @@
 
 import hardware
+import math # for math.inf in .numLiterals()
 
 # A minispec type is a python classes; instances thereof represent literal values.
 
@@ -75,6 +76,11 @@ class MLiteral(metaclass=MType):
         constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
         globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output
+    def numLiterals(self) -> 'int|float':
+        ''' Returns the number of possible distinct literals of this type (or math.inf), where
+        distinct is defined by minispec's "==" operator.
+        Used in case statements to determine when all cases are covered. '''
+        raise Exception("Not Implemented")
     def coerceArithmetic(first, second):
         if first.__class__ == IntegerLiteral and second.__class__ == BooleanLiteral:
             first = second.fromIntegerLiteral(first)
@@ -179,6 +185,12 @@ def Enum(name: 'str', values: 'set[str]'):
             ''' Create an enum literal '''
             assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
             self.value = value
+        def numLiterals(self) -> 'int|float':
+            return len(values)
+        def eq(self, other):
+            if self.__class__ != other.__class__:
+                return False
+            return self.value == other.value
         def __str__(self):
             return self.value
     return Enum
@@ -195,6 +207,9 @@ def Struct(name: 'str', fields: 'dict[str:MType]'):
                 pass #TODO modify this to allow implicit conversion Integer -> Bit#(n).
                 #assert fieldBinds[field].__class__.untypedef() == fields[field].untypedef(), f"Received type {fieldBinds[field].__class__} but expected type {fields[field]}"
             self.fieldBinds = fieldBinds.copy()
+        def numLiterals(self) -> 'int|float':
+            fieldTypeList = [ fields[field] for field in fields ]
+            return math.prod([ fieldType.numLiteral() for fieldType in fieldTypeList ])
         def __str__(self):
             return name + "{" + ",".join([str(field) + ":" + str(self.fieldBinds[field]) for field in self.fieldBinds]) + "}"
         def eq(self, other):
@@ -223,6 +238,8 @@ class Integer(MLiteral):
         ''' Create an integer literal '''
         assert value.__class__ == int
         self.value = value
+    def numLiterals(self) -> 'int|float':
+        return math.inf
     def __repr__(self):
         return "IntegerLiteral(" + str(self.value) + ")"
     def __str__(self):
@@ -310,6 +327,8 @@ def Bit(n: 'IntegerLiteral'):
             self.n = n
             assert value.__class__ == int
             self.value = value % (2**n.value)
+        def numLiterals(self) -> 'int|float':
+            return 2**n
         def __repr__(self):
             return "BitLiteral(" + str(self.n) + "," + str(self.value) + ")"
         def __str__(self):
@@ -385,6 +404,8 @@ class Bool(MLiteral):
     _name = "Bool"
     def __init__(self, value: 'bool'):
         self.value = value
+    def numLiterals(self) -> 'int|float':
+        return 2
     def __repr__(self):
         return "BooleanLiteral(" + str(self.value) + ")"
     def __str__(self):
@@ -459,6 +480,8 @@ def Vector(k: 'int', typeValue: 'MLiteral'):
         def __init__(self, k: 'int', typeValue: 'MLiteral'):
             self.k = k
             self.typeValue = typeValue
+        def numLiterals(self) -> 'int|float':
+            return typeValue.numLiterals() ** k
         def __str__(self):
             return "Vector#(" + str(self.k) + ", " + str(self.typeValue) + ")"
         '''unary operations'''
