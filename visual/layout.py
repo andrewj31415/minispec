@@ -9,12 +9,12 @@ import synth
 
 import pathlib
 
-minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("struct.ms")
+minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("cases3.ms")
 minispecCode = minispecCodeFile.read_text()
 
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(3)')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'EightBitCounter')
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'combine#(1,1,1,2)')
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'f#(4)')
 
 # from hardware import *
 # a, b, o = Node(), Node(), Node()

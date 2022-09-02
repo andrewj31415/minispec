@@ -1348,27 +1348,25 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.collectedScopes.currentScope = elseScope
             self.visit(elseStmt)
         
-        self.copyBackIfStmt(originalScope, condition, ifScope, elseScope)
+        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope])
 
-    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', ifScope: 'Scope', elseScope: 'Scope'):
+    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]'):
         ''' Given if/else scopes, the original scope, and a condition node, copies the variables set in the 
         if and else scopes back into the original scope with muxes controlled by the condition node. '''
         self.collectedScopes.currentScope = originalScope
         varsToBind = set()
-        for var in ifScope.temporaryValues:
-            varsToBind.add(var)
-        for var in elseScope.temporaryValues:
-            varsToBind.add(var)
+        for scope in childScopes:
+            for var in scope.temporaryValues:
+                varsToBind.add(var)
         for var in varsToBind:
-            value1 = ifScope.get(self, var)   # if var doesn't appear in one of these scopes, the lookup will find its original value
-            value2 = elseScope.get(self, var)
+            values = [ scope.get(self, var) for scope in childScopes ]  # if var doesn't appear in one of these scopes, the lookup will find its original value
             # since the control signal is hardware, we convert the values to hardware as well (if needed)
-            if isMLiteral(value1):
-                value1 = value1.getHardware(self.globalsHandler)
-            if isMLiteral(value2):
-                value2 = value2.getHardware(self.globalsHandler)
-            muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
-            for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
+            for i in range(len(values)):
+                if isMLiteral(values[i]):
+                    values[i] = values[i].getHardware(self.globalsHandler)
+            muxComponent = Mux([ Node('v'+str(i)) for i in range(len(values)) ], Node('c'))
+            wires = [ Wire(values[i], muxComponent.inputs[i]) for i in range(len(values)) ]
+            for component in [muxComponent, Wire(condition, muxComponent.control)] + wires:
                 self.globalsHandler.currentComponent.addChild(component)
             originalScope.set(muxComponent.output, var)
 
@@ -1428,7 +1426,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         elif defaultItem:
             self.visit(defaultItem.stmt())
 
-        self.copyBackIfStmt(originalScope, condition, ifScope, elseScope)
+        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope])
 
         self.collectedScopes.currentScope = originalScope
 
@@ -1485,7 +1483,27 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # since we have already removed duplicate literals, exactly (technically at most, but "do nothing" may
             # be considered to be a statement if not all statements are covered) one expri statement will run.
             # we run each one in a separate scope and collect the results afterward using multi-width muxes.
-            raise Exception("Not implemented")
+            if isMLiteral(expr):
+                expr = expr.getHardware(self.globalsHandler)
+            hasDefault = ctx.caseStmtDefaultItem() != None
+            scopes = []
+            for i in range(len(expri) + (1 if hasDefault else 0)):
+                childScope = Scope(self.globalsHandler, "childScope"+str(i), [self.collectedScopes.currentScope])
+                self.collectedScopes.allScopes.append(childScope)
+                scopes.append(childScope)
+            originalScope = self.collectedScopes.currentScope
+
+            for i in range(len(expri)):
+                scope = scopes[i]
+                exprToMatch, exprStmt = expri[i]
+                self.collectedScopes.currentScope = scope
+                self.visit(exprStmt)
+            if hasDefault:  # run the default scope in the last scope
+                scope = scopes[-1]
+                self.collectedScopes.currentScope = scope
+                self.visit(ctx.caseStmtDefaultItem().stmt())
+            
+            self.copyBackIfStmt(originalScope, expr, scopes)
             return
         # run the case statement as a sequence of if statements.
         self.doCaseStmtStep(expr, expri, 0, ctx.caseStmtDefaultItem())
