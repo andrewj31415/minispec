@@ -378,6 +378,29 @@ def _():
     # expected = counter
     # assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Handles input with default value''')
+def _():
+    text = pull('moduleDefault')
+    
+    storage = Register('Reg#(Bit#(4))')
+    mux = Mux([Node(), Node()])
+    add = Function('+', [], [Node(), Node()])
+    enable = Node()
+    getStorage = Node()
+    one = Function('1', [], [])
+    Inner = Module('Inner', [storage, mux, add, one, Wire(enable, mux.control), Wire(storage.value, getStorage), Wire(add.output, mux.inputs[0]), Wire(storage.value, mux.inputs[1]), Wire(mux.output, storage.input), Wire(storage.value, add.inputs[0]), Wire(one.output, add.inputs[1])], {'enable': enable}, {'getStorage': getStorage})
+    
+    muxO = Mux([Node(), Node()])
+    true = Function('True')
+    false = Function('False')
+    enableO = Node()
+    getStorageO = Node()
+    Outer = Module('Outer', [Inner, Wire(true.output, muxO.inputs[0]), Wire(false.output, muxO.inputs[1]), Wire(enableO, muxO.control), Wire(muxO.output, Inner.inputs['enable']), Wire(Inner.methods['getStorage'], getStorageO)], {'enable': enableO}, {'getStorage': getStorageO})
+
+    output = synth.parseAndSynth(text, 'Outer')
+    print(output.__repr__())
+    expected = Outer
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 describe('''Bit Manipulation''')
 
