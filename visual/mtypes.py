@@ -441,7 +441,7 @@ class Bool(MLiteral):
     def ge(self, other):
         raise Exception("Not implemented")
     def eq(self, other):
-        raise Exception("Not implemented")
+        return self == other
     def neq(self, other):
         raise Exception("Not implemented")
     def bitand(self, other):

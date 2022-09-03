@@ -14,11 +14,20 @@ def pull(name):
     return text
 
 # Setup to run the tests in order
-tests = []  # Array[(testName: str, testFunc: ()=>{}) | categoryName: str]
+tests = []  # Array[(testName: str, testFunc: ()=>{}, skipped: Bool) | categoryName: str]
 def it(name: 'str'):
     def logger(func):
-        tests.append((name, func))
+        tests.append((name, func, False))
     return logger
+
+def skip(name: 'str'):
+    def skipLogger(func):
+        tests.append((name, func, True))
+    return skipLogger
+
+it.skip = skip
+
+
 def describe(categoryName: 'str'):
     tests.append(categoryName)
 
@@ -276,7 +285,7 @@ def _():
     expected = f3
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-@it('''Correctly handles partially constant-folded case statement''')
+@it.skip('''Correctly handles partially constant-folded case statement''')
 def _():
     text = pull('cases2')
 
@@ -285,6 +294,8 @@ def _():
     concat = Function('{}', [], [Node(), Node()])
     ma, mb, mc, md = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
     may, mby, mcy, mdy = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
+
+    #TODO finish writing spec
 
     f = Function('f', [zero, one, two, four, zeroy, oney, ma, mb, mc, md, may, mby, mcy, mdy, concat, Wire(concat.output, fo)], [fa, fb, fc, fd], fo)
 
@@ -507,6 +518,7 @@ import traceback
 categoryName = ""
 numTestsFailed = 0
 numTestsPassed = 0
+numTestsSkipped = 0
 failedTests = []  # Array[(category: 'str', name: 'str', error: 'str')]
 testingTimeStart = time.time()
 for i in range(len(tests)):
@@ -514,8 +526,12 @@ for i in range(len(tests)):
         categoryName = tests[i]
         print()
         print("  " + categoryName)
-    else:  # we have a testName/test pair
-        testName, it = tests[i]
+    else:  # we have a testName/test/skipped trio
+        testName, it, skipped = tests[i]
+        if skipped:
+            print("    -", testName)
+            numTestsSkipped += 1
+            continue
         try:
             _t = time.time()
             it()
@@ -558,6 +574,8 @@ print()
 print("  " + str(numTestsPassed), "passing", "(" + str(int(msElapsedTotal)) + "ms)")
 if numTestsFailed > 0:
     print("  " + str(numTestsFailed), "failing")
+if numTestsSkipped > 0:
+    print("  " + str(numTestsSkipped), "pending")
 print()
 
 #report details of failing tests (if any)
