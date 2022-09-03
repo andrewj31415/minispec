@@ -175,7 +175,12 @@ class Scope:
         ''' dictionary of registers, only used in a module, str is the variable name that points
         to the register in the module scope  so that:
             self.registers[someRegisterName] = self.get(self, someRegisterName) '''
-        self.registers: 'dict[str, Register]' = {} 
+        self.registers: 'dict[str, Register]' = {}
+        self.nonregisterSubmodules = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
+        ''' dictionary of inputs with defaults, just like registers except returns the default value ctx '''
+        self.inputsWithDefault: 'dict[str, "build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
+        # values to assign to each input. To assign True to input.enable, we set .submoduleInputValues[(input, enable)] = True.
+        self.submoduleInputValues: 'dict[tuple[Module|Register, str], Node|MLiteral]' = {}
     def __str__(self):
         if len(self.permanentValues) == 0 and len(self.temporaryValues) == 0:
             return "Scope " + self.name
@@ -741,6 +746,30 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for ruleDef in ruleDefs:
             self.visit(ruleDef)
 
+        # now that we have synthesized the rules, we need to collect all submodule inputs set across the rules and wire them in.
+        # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
+        # TODO
+        ''' Handling inputs.
+        Each submodule in moduleScope.nonregisterSubmodules has a dictionary .inputs mapping the name of the
+        input to the node corresponding to the input.
+        Each such submodule also has a map #TODO mapping the name of an input with a default value to the
+        corresponding expressionCtx object.
+        For each rule, we must begin by assigning any default submodule inputs under the correct name (eg "inner.enble").
+        We must evaluate the default expressions at this time (to catch any parameters) and we must record the results for later comparison.
+        During each rule, some of these module inputs may be reassigned to new Nodes or MLiterals.
+        After each rule, any input assignments which differ from the original evaluated default value must be recorded as the input to assign.
+        After all rules have been evaluated, we must:
+          1. For each input assignment that differs from the original evaluated default value, wire the new assignment to the input node.
+          2. For each input with no new assignment, assign the default value (if any).
+          3. For any remaining input, throw an error--all inputs must receive values.
+        This will need some adjustment to account for shared modules, whose inputs may be assigned in different rules across different modules,
+        but this should not be much more difficult since the only issue is not making any default assignments until all modules which may assign
+        inputs have made their assignments.
+        '''
+        for submoduleName in self.collectedScopes.currentScope.nonregisterSubmodules:
+            moduleComponent = self.collectedScopes.currentScope.nonregisterSubmodules[submoduleName]
+            
+
         moduleScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values        
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
@@ -770,15 +799,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         submoduleName = ctx.name.getText()
         self.collectedScopes.currentScope.set(moduleComponent, submoduleName)
 
-        if moduleComponent.isRegister():  # if we have a register, we log it in the corresponding module.
+        if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
             self.collectedScopes.currentScope.registers[submoduleName] = moduleComponent
+        else:
+            self.collectedScopes.currentScope.nonregisterSubmodules[submoduleName] = moduleComponent
 
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
         Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').) '''
-        if ctx.defaultVal:
-            raise Exception("Not implemented")
         inputName = ctx.name.getText()
+        if ctx.defaultVal:
+            self.collectedScopes.currentScope.inputsWithDefault[inputName] = ctx.defaultVal
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
         self.collectedScopes.currentScope.set(inputNode, inputName)
@@ -847,6 +878,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for registerName in self.collectedScopes.currentScope.registers:
             register = self.collectedScopes.currentScope.registers[registerName]
             ruleScope.set(register.value, registerName)
+        for inputName in self.collectedScopes.currentScope.inputsWithDefault:  # bind any default inputs
+            defaultCtx = self.collectedScopes.currentScope.inputsWithDefault[inputName]
+            value = self.visit(defaultCtx)
+            ruleScope.set(value, inputName)
+            print('binding', inputName, value)
         previousScope = self.collectedScopes.currentScope
         self.collectedScopes.currentScope = ruleScope # enter the rule scope
         for stmt in ctx.stmt():
@@ -942,12 +978,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # first, detect if we are setting a module input (vectors of modules are not yet implemented)
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
             if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-                settingOverall = self.collectedScopes.currentScope.get(self, lvalue.lvalue().getText())
+                moduleName = lvalue.lvalue().getText()  #assuming we have a module
+                settingOverall = self.collectedScopes.currentScope.get(self, moduleName)
                 if settingOverall.__class__ == Module:  # we are, in fact, setting a module input
                     inputName = lvalue.lowerCaseIdentifier().getText()
                     inputNode = settingOverall.inputs[inputName]
                     inputWire = Wire(value, inputNode)
                     self.globalsHandler.currentComponent.addChild(inputWire)
+                    print('setting a module input', moduleName, inputName)
                     return
         text, nodes, varName = self.visit(lvalue)
         insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
@@ -1336,6 +1374,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         If elseStmt is None, does not run the elseStmt.
         Use in visitIfStmt and visitCaseStmt. '''
         # we run both branches in separate scopes, then combine
+        print('doing if', ifStmt.getText(), elseStmt)
+
         ifScope = Scope(self.globalsHandler, "ifScope", [self.collectedScopes.currentScope])
         elseScope = Scope(self.globalsHandler, "elseScope", [self.collectedScopes.currentScope])
         self.collectedScopes.allScopes.append(ifScope)
@@ -1358,6 +1398,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for scope in childScopes:
             for var in scope.temporaryValues:
                 varsToBind.add(var)
+        print('copying back', varsToBind)
         for var in varsToBind:
             values = [ scope.get(self, var) for scope in childScopes ]  # if var doesn't appear in one of these scopes, the lookup will find its original value
             # since the control signal is hardware, we convert the values to hardware as well (if needed)
@@ -1400,9 +1441,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             #TODO test short-circuiting literals early
             # two cases: expr and exprToMatch agree, in which case the case statement ends here and there is no branching, 
             # or expr and exprToMatch do not agree, which should not happen since we have already removed nonmatching literals when constructing expri.
-            print('got')
-            print(expr)
-            print(exprToMatch)
             assert expr.eq(exprToMatch)
             self.visit(ifStmt)  # run this in the original scope since there is no branching, then end the case statement.
             return

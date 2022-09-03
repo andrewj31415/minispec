@@ -395,11 +395,11 @@ def _():
     false = Function('False')
     enableO = Node()
     getStorageO = Node()
-    Outer = Module('Outer', [Inner, Wire(true.output, muxO.inputs[0]), Wire(false.output, muxO.inputs[1]), Wire(enableO, muxO.control), Wire(muxO.output, Inner.inputs['enable']), Wire(Inner.methods['getStorage'], getStorageO)], {'enable': enableO}, {'getStorage': getStorageO})
+    Outer = Module('Outer', [Inner, true, false, muxO, Wire(true.output, muxO.inputs[0]), Wire(false.output, muxO.inputs[1]), Wire(enableO, muxO.control), Wire(muxO.output, Inner.inputs['enable']), Wire(Inner.methods['getStorage'], getStorageO)], {'enable': enableO}, {'getStorage': getStorageO})
 
     output = synth.parseAndSynth(text, 'Outer')
-    print(output.__repr__())
     expected = Outer
+    compare(output, expected)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 describe('''Bit Manipulation''')
