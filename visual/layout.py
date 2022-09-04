@@ -9,36 +9,37 @@ import synth
 
 import pathlib
 
-minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("counters.ms")
+minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("caseExpr1.ms")
 minispecCode = minispecCodeFile.read_text()
 
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
+# synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Outer')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'f')
 
-# from hardware import *
-# a, b, o = Node(), Node(), Node()
-# inp1, ind = Function('.data', [], [Node()]), Function('.index', [], [Node()])
-# inp2, inp3 = Function('.data', [], [Node()]), Function('.data', [], [Node()])
-# inpset = Function('.data', [], [Node(), Node()])
-# r = Function('|', [], [Node(), Node()])
-# pack = Function('Packet{}', [], [Node(), Node()])
-# synthesizedComponent = Function('combine#(1,1,1,2)', [inp1, ind, inp2, inp3, inpset, r, pack, Wire(a, inp1.inputs[0]), Wire(b, ind.inputs[0]), Wire(inp1.output, pack.inputs[0]), Wire(ind.output, pack.inputs[1]), Wire(pack.output, inpset.inputs[0]), Wire(pack.output, inp2.inputs[0]), Wire(b, inp3.inputs[0]), Wire(inp2.output, r.inputs[0]), Wire(inp3.output, r.inputs[1]), Wire(r.output, inpset.inputs[1]), Wire(inpset.output, o)], [a, b], o)
+from hardware import *
+fa, fb, fc, fd, fe, fo = Node(), Node(), Node(), Node(), Node(), Node()
 
-# upper1, lower1, upper2, lower2 = [ synth.parseAndSynth(minispecCode, 'Counter#(0)') for i in range(4)]
+concat = Function('{}', [], [Node(), Node(), Node(), Node()])
+zeroA, oneA, twoA, threeA = Function('0'), Function('1'), Function('2'), Function('3')
+muxA = Mux([Node(), Node(), Node(), Node()])
+xWires = [Wire(zeroA.output, muxA.inputs[0]), Wire(twoA.output, muxA.inputs[1]), Wire(threeA.output, muxA.inputs[2]), Wire(oneA.output, muxA.inputs[3]), Wire(fa, muxA.control), Wire(muxA.output, concat.inputs[0])]
 
-# enable1, getCount1 = Node(), Node()
-# and1, eq1, concat1, one1 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
-# lower3 = Module('Counter#(1)', [and1, eq1, concat1, one1, upper1, lower1, Wire(enable1, lower1.inputs['enable']), Wire(lower1.methods['getCount'], eq1.inputs[0]), Wire(one1.output, eq1.inputs[1]), Wire(eq1.output, and1.inputs[1]), Wire(enable1, and1.inputs[0]), Wire(and1.output, upper1.inputs['enable']), Wire(upper1.methods['getCount'], concat1.inputs[0]), Wire(lower1.methods['getCount'], concat1.inputs[1]), Wire(concat1.output, getCount1)], {'enable': enable1}, {'getCount': getCount1})
+zeroY, oneY, twoY = Function('0'), Function('1'), Function('2')
+nb, nc = Function('~', [], [Node(), Node()]), Function('~', [], [Node(), Node()])
+myb, myc = Mux([Node(), Node()]), Mux([Node(), Node()])
+yWires = [Wire(fb, nb.inputs[0]), Wire(fc, nc.inputs[0]), Wire(nb.output, myb.control), Wire(nc.output, myc.control), Wire(myb.output, concat.inputs[1]), Wire(zeroY.output, myb.inputs[0]), Wire(myc.output, myb.inputs[1]), Wire(oneY.output, myc.inputs[0]), Wire(twoY.output, myc.inputs[1])]
 
-# enable2, getCount2 = Node(), Node()
-# and2, eq2, concat2, one2 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
-# upper3 = Module('Counter#(1)', [and2, eq2, concat2, one2, upper2, lower2, Wire(enable2, lower2.inputs['enable']), Wire(lower2.methods['getCount'], eq2.inputs[0]), Wire(one2.output, eq2.inputs[1]), Wire(eq2.output, and2.inputs[1]), Wire(enable2, and2.inputs[0]), Wire(and2.output, upper2.inputs['enable']), Wire(upper2.methods['getCount'], concat2.inputs[0]), Wire(lower2.methods['getCount'], concat2.inputs[1]), Wire(concat2.output, getCount2)], {'enable': enable2}, {'getCount': getCount2})
+zeroZ, oneZ, twoZ = Function('0'), Function('1'), Function('2')
+eqb, eqc = Function('==', [], [Node(), Node()]), Function('==', [], [Node(), Node()])
+mzb, mzc = Mux([Node(), Node()]), Mux([Node(), Node()])
+zWires = [Wire(fd, eqb.inputs[0]), Wire(fb, eqb.inputs[1]), Wire(eqb.output, mzb.control), Wire(fd, eqc.inputs[0]), Wire(fc, eqc.inputs[1]), Wire(eqc.output, mzc.control), Wire(mzb.output, concat.inputs[2]), Wire(zeroZ.output, mzb.inputs[0]), Wire(mzc.output, mzb.inputs[1]), Wire(oneZ.output, mzc.inputs[0]), Wire(twoZ.output, mzc.inputs[1])]
 
-# enable3, getCount3 = Node(), Node()
-# and3, eq3, concat3, three = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('3')
-# counter2 = Module('Counter#(2)', [and3, eq3, concat3, three, upper3, lower3, Wire(enable3, lower3.inputs['enable']), Wire(lower3.methods['getCount'], eq3.inputs[0]), Wire(three.output, eq3.inputs[1]), Wire(eq3.output, and3.inputs[1]), Wire(enable3, and3.inputs[0]), Wire(and3.output, upper3.inputs['enable']), Wire(upper3.methods['getCount'], concat3.inputs[0]), Wire(lower3.methods['getCount'], concat3.inputs[1]), Wire(concat3.output, getCount3)], {'enable': enable3}, {'getCount': getCount3})
-# synthesizedComponent = counter2
+ne = Function('~', [], [Node(), Node()])
+wWires = [Wire(fe, ne.inputs[0]), Wire(ne.output, concat.inputs[3])]
+
+f = Function('f', [concat, zeroA, oneA, twoA, threeA, muxA, zeroY, oneY, twoY, nb, nc, myb, myc, zeroZ, oneZ, twoZ, eqb, eqc, mzb, mzc, ne] + xWires + yWires + zWires + wWires + [Wire(concat.output, fo)], [fa, fb, fc, fd, fe], fo)
+
+synthesizedComponent = f
 
 # input/output files for elk
 pythonToJSFile = pathlib.Path(__file__).with_name("elk").joinpath("elkInput.txt")

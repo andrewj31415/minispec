@@ -22,10 +22,9 @@ newline = '\n' #used to format f-strings such as "Hi{newline}there" since backsl
 '''
 Implementation Agenda:
 
-    - Structs
     - Module methods with arguments
     - Modules with arguments
-    - Case statements
+    - Case expressions
     - Shared modules
     - Other files (imports)
     - BSV imports
@@ -41,6 +40,8 @@ Implemented:
     - For loops
     - Modules
     - Indexing/Slicing
+    - Structs
+    - Case statements
 
 Notes for parametrics:
     paramFormals are used when defining functions/modules/types, and may be Integer n or
@@ -506,8 +507,8 @@ visitSimpleLvalue: a tuple ( str, tuple[Node], str ), see method for details
 visitSliceLvalue: a tuple ( str, tuple[Node], str ), see method for details
 visitOperatorExpr: Node or MLiteral corresponding to the value of the expression
 visitCondExpr: Node or MLiteral corresponding to the value of the expression
-visitCaseExpr: 
-visitCaseExprItem: 
+visitCaseExpr: Node or MLiteral corresponding to the value of the expression
+visitCaseExprItem: Error, handled in caseExpr
 visitBinopExpr: Node or MLiteral corresponding to the value of the expression
 visitUnopExpr: Node or MLiteral corresponding to the value of the expression
 visitVarExpr: Returns the result upon looking up the variable name and associated parameters.
@@ -1142,10 +1143,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         #TODO go back through ?/if statements and make sure hardware/literal cases are handled properly.
 
     def visitCaseExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprContext):
+        # Similar to caseStmt, only simpler, with one variable assignment instead of arbitrary statements to execute
+        ''' We evaluate the  '''
         raise Exception("Not implemented")
 
     def visitCaseExprItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprItemContext):
-        raise Exception("Not implemented")
+        raise Exception("Handled in caseExpr, should not be visited")
 
     def visitBinopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BinopExprContext):
         if ctx.unopExpr():  # our binary expression is actually a unopExpr.
