@@ -371,12 +371,38 @@ def _():
 def _():
     text = pull('counters')
 
-    output = synth.parseAndSynth(text, 'Counter#(2)')
-    #print(output.__repr__())
+    upper1, lower1 = [ synth.parseAndSynth(text, 'Counter#(0)') for i in range(2)]
 
-    raise Exception("Finish writing test")
-    # expected = counter
-    # assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    enable1, getCount1 = Node(), Node()
+    and1, eq1, concat1, one1 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
+    counter1 = Module('Counter#(1)', [and1, eq1, concat1, one1, upper1, lower1, Wire(enable1, lower1.inputs['enable']), Wire(lower1.methods['getCount'], eq1.inputs[0]), Wire(one1.output, eq1.inputs[1]), Wire(eq1.output, and1.inputs[1]), Wire(enable1, and1.inputs[0]), Wire(and1.output, upper1.inputs['enable']), Wire(upper1.methods['getCount'], concat1.inputs[0]), Wire(lower1.methods['getCount'], concat1.inputs[1]), Wire(concat1.output, getCount1)], {'enable': enable1}, {'getCount': getCount1})
+
+    output = synth.parseAndSynth(text, 'Counter#(1)')
+    expected = counter1
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly handles larger recursive parametric counter''')
+def _():
+    text = pull('counters')
+
+    upper1, lower1, upper2, lower2 = [ synth.parseAndSynth(text, 'Counter#(0)') for i in range(4)]
+
+    enable1, getCount1 = Node(), Node()
+    and1, eq1, concat1, one1 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
+    lower3 = Module('Counter#(1)', [and1, eq1, concat1, one1, upper1, lower1, Wire(enable1, lower1.inputs['enable']), Wire(lower1.methods['getCount'], eq1.inputs[0]), Wire(one1.output, eq1.inputs[1]), Wire(eq1.output, and1.inputs[1]), Wire(enable1, and1.inputs[0]), Wire(and1.output, upper1.inputs['enable']), Wire(upper1.methods['getCount'], concat1.inputs[0]), Wire(lower1.methods['getCount'], concat1.inputs[1]), Wire(concat1.output, getCount1)], {'enable': enable1}, {'getCount': getCount1})
+
+    enable2, getCount2 = Node(), Node()
+    and2, eq2, concat2, one2 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
+    upper3 = Module('Counter#(1)', [and2, eq2, concat2, one2, upper2, lower2, Wire(enable2, lower2.inputs['enable']), Wire(lower2.methods['getCount'], eq2.inputs[0]), Wire(one2.output, eq2.inputs[1]), Wire(eq2.output, and2.inputs[1]), Wire(enable2, and2.inputs[0]), Wire(and2.output, upper2.inputs['enable']), Wire(upper2.methods['getCount'], concat2.inputs[0]), Wire(lower2.methods['getCount'], concat2.inputs[1]), Wire(concat2.output, getCount2)], {'enable': enable2}, {'getCount': getCount2})
+
+    enable3, getCount3 = Node(), Node()
+    and3, eq3, concat3, three = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('3')
+    counter2 = Module('Counter#(2)', [and3, eq3, concat3, three, upper3, lower3, Wire(enable3, lower3.inputs['enable']), Wire(lower3.methods['getCount'], eq3.inputs[0]), Wire(three.output, eq3.inputs[1]), Wire(eq3.output, and3.inputs[1]), Wire(enable3, and3.inputs[0]), Wire(and3.output, upper3.inputs['enable']), Wire(upper3.methods['getCount'], concat3.inputs[0]), Wire(lower3.methods['getCount'], concat3.inputs[1]), Wire(concat3.output, getCount3)], {'enable': enable3}, {'getCount': getCount3})
+
+    output = synth.parseAndSynth(text, 'Counter#(2)')
+    expected = counter2
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 @it('''Handles input with default value''')
 def _():
@@ -399,7 +425,6 @@ def _():
 
     output = synth.parseAndSynth(text, 'Outer')
     expected = Outer
-    compare(output, expected)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 describe('''Bit Manipulation''')
