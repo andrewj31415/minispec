@@ -179,6 +179,7 @@ class Scope:
         self.nonregisterSubmodules = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
         ''' dictionary of inputs with defaults, just like registers except returns the default value ctx '''
         self.inputsWithDefault: 'dict[str, "build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
+        self.currentInputsWithDefault: 'dict[str, "build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {} #temporary version used by submodules with default inputs
         # values to assign to each input. To assign True to input.enable, we set .submoduleInputValues[(input, enable)] = True.
         self.submoduleInputValues: 'dict[tuple[Module|Register, str], Node|MLiteral]' = {}
     def __str__(self):
@@ -689,6 +690,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         moduleName = ctx.moduleId().name.getText()
+        print("="*50 + "Synthesizing", moduleName)
         if ctx.argFormals():
             raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
@@ -737,42 +739,93 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # synthesize inputs, submodules, methods, and rules, in that order
 
         for inputDef in inputDefs:
+            oldCurrentInputs = self.collectedScopes.currentScope.currentInputsWithDefault
+            self.collectedScopes.currentScope.currentInputsWithDefault = {}
             self.visit(inputDef)
+            for inputName in self.collectedScopes.currentScope.currentInputsWithDefault:
+                defaultValCtxOrNone = self.collectedScopes.currentScope.currentInputsWithDefault[inputName]
+                # copy any inputs into the parent scope, so that any parent module knows about the inputs
+                previousScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
+            print('got an inputDef', inputDef.getText())
+            self.collectedScopes.currentScope.currentInputsWithDefault = oldCurrentInputs
         for submoduleDecl in submoduleDecls:
             self.visit(submoduleDecl)
+            # save submodule inputs with default values
+            submoduleName = submoduleDecl.name.getText()
+            for inputName in self.collectedScopes.currentScope.currentInputsWithDefault:
+                print('picked up submodule input', inputName)
+                defaultExprCtx = self.collectedScopes.currentScope.currentInputsWithDefault[inputName]
+                self.collectedScopes.currentScope.inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
+            self.collectedScopes.currentScope.currentInputsWithDefault = {}
         for methodDef in methodDefs:
             if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
                 self.visit(methodDef)
+        # evaluate default inputs
+        for submoduleAndInputName in self.collectedScopes.currentScope.inputsWithDefault:
+            defaultCtxOrNone = self.collectedScopes.currentScope.inputsWithDefault[submoduleAndInputName]
+            if defaultCtxOrNone:
+                self.collectedScopes.currentScope.submoduleInputValues[submoduleAndInputName] = self.visit(defaultCtxOrNone)
+            else:
+                self.collectedScopes.currentScope.submoduleInputValues[submoduleAndInputName] = None
+
         for ruleDef in ruleDefs:
             self.visit(ruleDef)
 
         # now that we have synthesized the rules, we need to collect all submodule inputs set across the rules and wire them in.
         # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
-        # TODO
+        # TODO handle inputs
         ''' Handling inputs.
-        Each submodule in moduleScope.nonregisterSubmodules has a dictionary .inputs mapping the name of the
-        input to the node corresponding to the input.
-        Each such submodule also has a map #TODO mapping the name of an input with a default value to the
-        corresponding expressionCtx object.
-        For each rule, we must begin by assigning any default submodule inputs under the correct name (eg "inner.enble").
-        We must evaluate the default expressions at this time (to catch any parameters) and we must record the results for later comparison.
-        During each rule, some of these module inputs may be reassigned to new Nodes or MLiterals.
-        After each rule, any input assignments which differ from the original evaluated default value must be recorded as the input to assign.
-        After all rules have been evaluated, we must:
-          1. For each input assignment that differs from the original evaluated default value, wire the new assignment to the input node.
-          2. For each input with no new assignment, assign the default value (if any).
-          3. For any remaining input, throw an error--all inputs must receive values.
-        This will need some adjustment to account for shared modules, whose inputs may be assigned in different rules across different modules,
+        - moduleScope.nonregisterSubmodules is a dictionary mapping the variable name of a submodule to the
+          corresponding component.
+        - Each submodule component in moduleScope.nonregisterSubmodules has a dictionary .inputs mapping the name of the
+          input to the node corresponding to the input.
+        - When each submodule is synthesized, it logs any default values in the dictionary moduleScope.currentInputsWithDefault,
+          which maps moduleScope.currentInputsWithDefault[input: str] = defaultExpressionCtx.
+        - Specifically, when an input has a default value, it logs the default value into
+          submodule.currentInputsWithDefault, and after the input is visited, this value is copied into moduleScope.currentInputsWithDefault
+        - Note that since currentInputsWithDefault is stored in the module scope, we have to save its previous value to avoid it being overwritten by recursive parametrics.
+        - After each submodule is synthesized, moduleScope.currentInputsWithDefault is copied into moduleScope.inuptsWithDefault,
+          which maps moduleScope.inuptsWithDefault[submoduleName.input] = defaultExpressionCtx.
+        - The reason for separating currentInputsWithDefault and inputsWithDefault is that when a submodule is being synthesized, it
+          does not know what its assigned variable name will be in the original module, and we need to log default input expressions
+          under the correct submodule.
+        - Before evaluating any rules, we evaluate each default value and log them in moduleScope.submoduleInputValues.
+        - For each rule, we must begin by assigning all submodule inputs from moduleScope.submoduleInputValues under the 
+          correct name (eg "inner.enble").
+        - During each rule, some of these module inputs may be reassigned to new Nodes or MLiterals.
+        - At the end of each rule, any input assignments are recorded in moduleScope.submoduleInputValues as the input
+          to assign. Since bsc guarantees each input is assigned at most once, this will not override anything (note
+          that we are overwriting the originally calculated default values).
+        - After all rules have been evaluated, we must for each submodule input in moduleScope.submoduleInputValues, create and
+          connect the relevant hardware to the relevant submodule input.
+        This strategy will need some adjustment to account for shared modules, whose inputs may be assigned in different rules across different modules,
         but this should not be much more difficult since the only issue is not making any default assignments until all modules which may assign
-        inputs have made their assignments.
+        inputs have made their assignments (so, default assignments are made in the module in which the shared module is declared).
+        
+        #TODO: we need to put all submodule inputs in moduleScope.submoduleInputValues.
+        # Those that have default values map to that value, while those that do not have default values map to None.
+        # All of the None values must be overridden so that every input is assigned.
+        # The default/None split can be done for all of currentInputsWithDefault, inputsWithDefault, and submoduleInputValues.
         '''
-        for submoduleName in self.collectedScopes.currentScope.nonregisterSubmodules:
-            moduleComponent = self.collectedScopes.currentScope.nonregisterSubmodules[submoduleName]
+        print('collected input values', self.collectedScopes.currentScope.submoduleInputValues)
+        for submoduleAndInputName in self.collectedScopes.currentScope.submoduleInputValues:
+            value = self.collectedScopes.currentScope.submoduleInputValues[submoduleAndInputName]
+            assert value != None, "All submodule inputs must be assigned"
+            if isMLiteral(value):
+                value = value.getHardware(self.globalsHandler)
+            assert isNode(value), "value must be hardware in order to wire in to input node"
+            submoduleName, inputName = submoduleAndInputName.split('.')
+            print(submoduleName, inputName)
+            submoduleComponent: 'Module' = self.collectedScopes.currentScope.nonregisterSubmodules[submoduleName]
+            inputNode = submoduleComponent.inputs[inputName]
+            wireIn = Wire(value, inputNode)
+            self.globalsHandler.currentComponent.addChild(wireIn)
             
-
         moduleScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values        
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
+
+        print("="*50 + "Synthesized", moduleComponent.name)
 
         return moduleComponent
 
@@ -808,8 +861,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
         Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').) '''
         inputName = ctx.name.getText()
-        if ctx.defaultVal:
-            self.collectedScopes.currentScope.inputsWithDefault[inputName] = ctx.defaultVal
+        print('reached input', inputName)
+        print('putting it into scope', self.collectedScopes.currentScope.name)
+        self.collectedScopes.currentScope.currentInputsWithDefault[inputName] = ctx.defaultVal
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
         self.collectedScopes.currentScope.set(inputNode, inputName)
@@ -878,11 +932,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for registerName in self.collectedScopes.currentScope.registers:
             register = self.collectedScopes.currentScope.registers[registerName]
             ruleScope.set(register.value, registerName)
-        for inputName in self.collectedScopes.currentScope.inputsWithDefault:  # bind any default inputs
-            defaultCtx = self.collectedScopes.currentScope.inputsWithDefault[inputName]
-            value = self.visit(defaultCtx)
+        print('some default inputs', self.collectedScopes.currentScope.name, self.collectedScopes.currentScope.inputsWithDefault)
+        for inputName in self.collectedScopes.currentScope.submoduleInputValues:  # bind any default inputs
+            value = self.collectedScopes.currentScope.submoduleInputValues[inputName]
+            # if value != None:  # don't need this since none values should never by referenced
             ruleScope.set(value, inputName)
-            print('binding', inputName, value)
+            print('binding', inputName, value, "in", ruleScope.name)
         previousScope = self.collectedScopes.currentScope
         self.collectedScopes.currentScope = ruleScope # enter the rule scope
         for stmt in ctx.stmt():
@@ -896,6 +951,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value = value.getHardware(self.globalsHandler)
             setWire = Wire(value, register.input)
             self.globalsHandler.currentComponent.addChild(setWire)
+        #find any input assignments
+        for inputName in self.collectedScopes.currentScope.submoduleInputValues:
+            newValue = ruleScope.get(self, inputName)
+            self.collectedScopes.currentScope.submoduleInputValues[inputName] = newValue
 
     def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''Synthesizes the corresponding function and returns the entire function hardware.
@@ -982,9 +1041,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 settingOverall = self.collectedScopes.currentScope.get(self, moduleName)
                 if settingOverall.__class__ == Module:  # we are, in fact, setting a module input
                     inputName = lvalue.lowerCaseIdentifier().getText()
-                    inputNode = settingOverall.inputs[inputName]
-                    inputWire = Wire(value, inputNode)
-                    self.globalsHandler.currentComponent.addChild(inputWire)
+                    # inputNode = settingOverall.inputs[inputName]
+                    # inputWire = Wire(value, inputNode)
+                    # self.globalsHandler.currentComponent.addChild(inputWire)
+                    self.collectedScopes.currentScope.set(value, moduleName + "." + inputName)
                     print('setting a module input', moduleName, inputName)
                     return
         text, nodes, varName = self.visit(lvalue)
@@ -1399,6 +1459,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for var in scope.temporaryValues:
                 varsToBind.add(var)
         print('copying back', varsToBind)
+        for scope in childScopes:
+            print(scope)
         for var in varsToBind:
             values = [ scope.get(self, var) for scope in childScopes ]  # if var doesn't appear in one of these scopes, the lookup will find its original value
             # since the control signal is hardware, we convert the values to hardware as well (if needed)
@@ -1631,6 +1693,9 @@ endfunction
     topLevelParseTree = getParseTree(topLevel)
     ctxOfNote = topLevelParseTree.packageStmt(0).functionDef().stmt(0).exprPrimary().expression().binopExpr().unopExpr().exprPrimary()
     outputDef = synthesizer.visit(ctxOfNote)  # follow the call to the function and get back the functionDef/moduleDef.
+
+    print("="*50 + "Synthesizing", outputDef.getText())
+
     output = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
 
     # for scope in collectedScopes.allScopes:

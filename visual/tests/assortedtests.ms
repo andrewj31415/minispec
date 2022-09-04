@@ -197,3 +197,12 @@ endfunction
 function Bit#(1) unary(Bit#(1) a, Bit#(1) b);
   return a ^~ b;
 endfunction
+
+
+function Bit#(1) f#(Integer m,1)(Bit#(2) a);
+  return a[0];
+endfunction
+
+function Bit#(1) f#(1,Integer n)(Bit#(2) a);
+  return &a;
+endfunction
