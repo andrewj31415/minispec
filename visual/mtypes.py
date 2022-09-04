@@ -119,7 +119,7 @@ class MLiteral(metaclass=MType):
     def gt(first, second):
         raise Exception("Not implemented")
     def ge(first, second):
-        raise Exception("Not implemented")
+        return Bool(MLiteral.lt(second, first) or MLiteral.eq(first, second))
     def eq(first, second):
         return first.eq(second)
     def neq(first, second):
@@ -397,7 +397,14 @@ def Bit(n: 'IntegerLiteral'):
             raise Exception("Not implemented")
         def neg(self):
             return Bit(self.n)(-self.value)
+        ''' other operations '''
+        def slice(self, msb, lsb=None):
+            if lsb:
+                raise Exception("Not implemented")
+            else:
+                return BitLiteral(IntegerLiteral(1))((self.value//(2**msb.value)) % 2)
     return Bit
+BitLiteral = Bit #useful synonym
 
 class Bool(MLiteral):
     '''The boolean type'''

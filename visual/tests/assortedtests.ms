@@ -1,208 +1,338 @@
-
-function Bit#(1) and1(Bit#(1) a, Bit#(1) b);
-    return a & b;
-endfunction
-
-function Bit#(1) or1(Bit#(1) a, Bit#(1) b);
-    return a | b;
-endfunction
-
-function Bit#(1) xor1( Bit#(1) a, Bit#(1) b );
-    return a ^ b;
-endfunction
-
-function Bit#(1) not1(Bit#(1) a);
-    return ~ a;
-endfunction
-
-function Bit#(1) multiplexer1(Bit#(1) sel, Bit#(1) a, Bit#(1) b);
-    return (sel==0)? a: b;
-endfunction
+// Don't change signature of existing functions. You may write additional helper functions if you want.
 
 
-// bit_scan_reverse
-// TODO: how many of each kind of gates did you use?
-// # and1 = 1
-// # or1 = 2
-// # xor1 = 0
-// # not1 = 1
-// # multiplexer1 = 0
-
-function Bit#(2) bit_scan_reverse(Bit#(4) a);
-    Bit#(2) ret = 0;
-    // your code here
-    ret[1] = or1(a[3],  a[2]); //if the first nonzero bit occurs past 2
-    ret[0] = or1(a[3], and1(a[1], not1(a[2])));
+function Bit#(32) barrelRightInteger#(Integer n)(Bit#(32) in, Bit#(1) sft_in);
+    Bit #(32) ret = in;
+    for (Integer i = 0; i < 32-n; i = i+1)   //compute the shift
+        ret[i] = in[i+n];
+    for (Integer i = 32-n; i < 32; i = i+1)  //fill in the upper bits
+        ret[i] = sft_in;
     return ret;
 endfunction
 
-
-// is_power_of_2
-// TODO: how many of each kind of gates did you use?
-// # and1 = 4
-// # or1 = 1
-// # xor1 = 2
-// # not1 = 4
-// # multiplexer1 = 0
-
-function Bit#(1) is_power_of_2(Bit#(4) a);
-    Bit#(1) ret = 0; // not a not b xor c,d  or not c not d xor a,b
-    ret = or1( and1(and1( not1(a[0]),not1(a[1])), xor1(a[2],a[3])), and1(and1( not1(a[2]),not1(a[3])), xor1(a[0],a[1])) );
+// Description: 32-bit right barrel shifter
+// Arguments: in (value to be shifted); sftSz (shift size); sft_in (the bit shifted in)
+// Return: {sft_in's, in[31:sftSz]}
+function Bit#(32) barrelRShift(Bit#(32) in, Bit#(5) sftSz, Bit#(1) sft_in);
+    Bit #(32) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    ret = in;
+    for (Integer i = 0; i<5; i = i+1)   //select the appropriate power-of-two-shifts to perform
+        ret = case (sftSz[i])
+            0: ret;
+            1: barrelRightInteger#(2**i)(ret, sft_in);
+        endcase;
     return ret;
 endfunction
 
-
-// log_of_power_of_2
-// TODO: how many of each kind of gates did you use?
-// # and1 = 7
-// # or1 = 3
-// # xor1 = 2
-// # not1 = 5
-// # multiplexer1 = 0
-
-function Bit#(2) log_of_power_of_2(Bit#(4) a);
-    Bit#(2) ret = 0;
-    // your code here
-    Bit#(2) sweep = bit_scan_reverse(a);
-    Bit#(1) switch = is_power_of_2(a);
-    ret[0] = and1(switch, sweep[0]);
-    ret[1] = and1(switch, sweep[1]);
-    return ret;
-endfunction
-
-
-function Bit#(1) equal(Bit#(8) a, Bit#(8) b);
-    Bit#(1) ret = 0;
-    // your code here
-    Bit#(1) uu = not1(or1(xor1(a[0],b[0]), xor1(a[1], b[1])));
-    Bit#(1) ul = not1(or1(xor1(a[2],b[2]), xor1(a[3], b[3])));
-    Bit#(1) lu = not1(or1(xor1(a[4],b[4]), xor1(a[5], b[5])));
-    Bit#(1) ll = not1(or1(xor1(a[6],b[6]), xor1(a[7], b[7])));
-    ret = and1( and1(uu, ul), and1(lu, ll) );
-    return ret;
-endfunction
-
-
-function Bit#(4) vector_equal(Bit#(32) a, Bit#(32) b);
-    Bit#(4) ret = 0;
-    // your code here
-    ret[3] = equal(a[31:24],b[31:24]);
-    ret[2] = equal(a[23:16],b[23:16]);
-    ret[1] = equal(a[15:8],b[15:8]);
-    ret[0] = equal(a[7:0],b[7:0]);
-    return ret;
-endfunction
-
-
-function Bit#(7) seven_segment_decoder(Bit#(4) input_binary_number);
-    Bit#(7) ret = case(input_binary_number)   //write each case separately--minispec does the rest.
-      4'b0000 : 7'b1111110;
-      4'b0001 : 7'b0110000; 
-      4'b0010 : 7'b1101101;
-      4'b0011 : 7'b1111001;
-      4'b0100 : 7'b0110011;
-      4'b0101 : 7'b1011011;
-      4'b0110 : 7'b1011111;
-      4'b0111 : 7'b1110000;
-      4'b1000 : 7'b1111111;
-      4'b1001 : 7'b1111011;
-      default : 7'b1001111; // value for "E"
+// Description: 32-bit arithmetic/logic right shifter
+// Arguments: in (value to be shifted); sftSz (shift size); arith (1 = arithmetic, 0 = logic)
+// Return: in >> sftSz
+function Bit#(32) sr32(Bit#(32) in, Bit#(5) sftSz, Bit#(1) arith);
+    Bit #(32) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    Bit#(1) toShiftIn = case (arith)  //if we are doing an arithmetic shift, we duplicate the leading bit
+        0: 0;
+        1: in[31];
     endcase;
+    ret = barrelRShift(in, sftSz, toShiftIn);
     return ret;
 endfunction
 
-function Bit#(1) adds(Bit#(1) a, Bit#(1) b, Bit#(1) cin);
-  Bit#(1) s = xor1(a, xor1(b,cin));
-  return s;
-endfunction
 
-function Bit#(1) addc(Bit#(1) a, Bit#(1) b, Bit#(1) cin);
-  Bit#(1) cout = or1( or1( and1(a,b), and1(b,cin) ), and1(cin,a) );
-  return cout;
-endfunction
-
-function Bit#(3) population_count(Bit#(4) in);
-    Bit#(3) ret = 0;
-    ret[2] = and1( and1(in[0],in[1]), and1(in[2],in[3]) );
-    //put in[0]+in[1] into ret
-    ret[1] = addc(in[0], in[1], 0);
-    ret[0] = adds(in[0], in[1], 0);
-    //put ret+in[2] into ret
-    ret[1] = adds(ret[1], 0, addc(ret[0], in[2], 0));
-    ret[0] = adds(ret[0], in[2], 0);
-    //put ret+in[3] into ret
-    ret[1] = adds(ret[1], 0, addc(ret[0], in[3], 0));
-    ret[0] = adds(ret[0], in[3], 0);
+// Description: 32-bit logic left shifter
+// Arguments: in (values to be shifted); sftSz (shift size)
+// Return: a << b
+function Bit#(32) sll32(Bit#(32) in, Bit#(5) sftSz);
+    Bit #(32) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    ret = reverseBits(in);
+    ret = sr32(ret, sftSz, 0);
+    ret = reverseBits(ret);
     return ret;
 endfunction
 
-function Bit#(1) geq(Bit#(1) a, Bit#(1) b);
-    return or1(a, not1(b));
+
+// Description: 32-bit FULL shifter
+// Arguments: in (value to be shifted); sftSz (shift size);
+// ShiftTypes:
+// LogicalRightShift
+// ArithmeticRightShift
+// LeftShift
+//
+// Return: in >> sftSz when right shift; in << sftSz otherwise
+typedef enum {LogicalRightShift, ArithmeticRightShift, LeftShift} ShiftType;
+
+function Bit#(32) sft32(Bit#(32) in, Bit#(5) sftSz, ShiftType shiftType);
+    Bit#(32) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    ret = in;
+    Bit#(1) arith = case(shiftType)  //decide if we need to do an arithmetic shift or not
+        LogicalRightShift: 0;
+        ArithmeticRightShift: 1;
+        LeftShift: 0;
+    endcase;
+    case(shiftType)
+        LeftShift: ret = reverseBits(ret);
+    endcase
+    ret = sr32(ret, sftSz, arith);  //we reverse the bits before and after if we are doing a left shift
+    case(shiftType)
+        LeftShift: ret = reverseBits(ret);
+    endcase
+    return ret;
 endfunction
-function Bit#(1) eq(Bit#(1) a, Bit#(1) b);
-    return not1(xor1(a,b));
+
+
+
+// Description: one-bit less-than comparator
+// Arguments: a, b (1-bit values), eq, lt (eq and lt from previous comparator)
+// Return: {eq_i, lt_i}
+function Bit#(2) cmp(Bit#(1) a, Bit#(1) b, Bit#(1) eq, Bit#(1) lt);
+    Bit#(2) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    //set the outputs to 0 and switch them to 1 as needed
+    Bit#(1) outeq = 0;
+    Bit#(1) outlt = 0;
+    case ({a, b, eq})  //only true if eq is true and a,b match
+        3'b001: outeq = 1;
+        3'b111: outeq = 1;
+    endcase
+    outlt = lt;
+    case ({a, b, eq})  //true if lt holds or if eq holds and a<b
+        3'b011: outlt = 1;
+    endcase
+    ret = {outeq, outlt};
+    return ret;
 endfunction
-function Bit#(1) gt(Bit#(1) a, Bit#(1) b);
-    return and1(a, not1(b));
-endfunction
-function Bit#(1) is_geq(Bit#(4) a, Bit#(4) b);
+
+// Description: unsigned 32-bit less-than comparator
+// Arguments: a, b unsigned 32-bit values
+// Return: 1 if a < b
+function Bit#(1) ltu32(Bit#(32) a, Bit#(32) b);
     Bit#(1) ret = 0;
-    // your code here
-    ret = gt(a[3],b[3]);
-    ret = or1(ret, and1( eq(a[3],b[3]), gt(a[2],b[2]) ));
-    ret = or1(ret, and1(and1( eq(a[3],b[3]), eq(a[2],b[2])), gt(a[1],b[1]) ));
-    ret = or1(ret, and1(and1(and1( eq(a[3],b[3]), eq(a[2],b[2])), eq(a[1],b[1])), geq(a[0],b[0]) ));
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    Bit #(2) eqlt = 2'b01;
+    for (Integer i = 31; i >= 0; i = i-1)  //exactly as described in the lab instructions
+        eqlt = reverseBits(cmp(a[i],b[i], eqlt[0], eqlt[1]));
+    ret = eqlt[1];  //pick out if a<b
     return ret;
 endfunction
 
-// Demo code below here. Do not modify
-function Bit#(1) parity4(Bit#(4) n);
-    return xor1(xor1(xor1(n[0], n[1]), n[2]), n[3]);
+// Description: Signed/Unsigned 32-bit less-than comparator
+// Arguments: a b (32-bit values); isSigned (signed comparator when 1, unsigned otherwise)
+// Return: 1 if a < b
+function Bit#(1) lt32(Bit#(32) a, Bit#(32) b, Bit#(1) isSigned);
+    Bit#(1) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    ret = ltu32(a, b);
+    case ({a[31], b[31], isSigned})
+        3'b101: ret = 1;  //if b is positive and a is negative, return true
+        3'b011: ret = 0;  //if the other way around, false
+    endcase
+    return ret;
 endfunction
 
-function Bit#(1) doubleInverter(Bit#(1) n);
-  return ~(~n);
+// Description: one-bit full adder
+// Arguments: a, b, carry in
+// Return: {carry out, sum}
+function Bit#(2) fullAdder(Bit#(1) a, Bit#(1) b, Bit#(1) carryIn);
+    Bit#(2) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    ret[0] = a^b^carryIn;
+    ret[1] = a&b | b&carryIn | carryIn&a;
+    return ret;
 endfunction
 
-/*function Bit#(1) doubleInverter(Bit#(1) n);
-  return n;
-endfunction*/
+// Description: n-bit ripple-carry adder with a carry-in
+// Arguments: a, b, carryIn
+// Return: sum of a, b, and carryIn
+function Bit#(n) rca#(Integer n)(Bit#(n) a, Bit#(n) b, Bit#(1) carryIn);
+    Bit#(n) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    for (Integer i = 0; i < n; i=i+1)  //apply chained adders exactly as usual
+        begin
+            Bit#(2) vals = fullAdder(a[i], b[i], carryIn);
+            ret[i] = vals[0];
+            carryIn = vals[1];
+        end
+    return ret;
+endfunction
 
-function Bit#(1) combine(Bit#(1) a, Bit#(1) b, Bit#(1) c);
-  Bit#(1) cout = and1( or1(b, a), xor1(c, b) );
-  return cout;
+// Description: n-bit ripple-carry adder/subractor
+// Arguments: a, b (n-bit operands); isSub (1 => subtract, 0 => add)
+// Return: isSub == 0 ? a + b : a - b
+function Bit#(n) addSub#(Integer n)(Bit#(n) a, Bit#(n) b, Bit#(1) isSub);
+    Bit#(n) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    Bit#(1) carry = 1;
+    case (isSub)
+        1: b = ~b; //flip bits of b
+    endcase
+    
+    ret = rca#(n)(a, b, isSub); //putting in isSub for the initial carry makes sure we add 1 to b if we are subtracting
+    return ret;
 endfunction
 
 
-function Bit#(1) casing(Bit#(1) a, Bit#(1) b);
-  return case (a)
-    0: ~b;
-    0: b;
-    1: b;
+// Alu Functions:
+// Add: 32-bit Addition         (a + b)
+// Sub: 32-bit Subtraction      (a - b)
+// And: 32-bit Bitwise And      (a & b)
+// Or: 32-bit Bitwise Or        (a | b)
+// Xor: 32-bit Bitwise Xor      (a ^ b)
+// Slt: Set less than           (a <u b ? 1 : 0)
+// Sltu: Set less than unsigned (a <s b ? 1:0)
+// Sll: Left logic shfit        (a << b)
+// Srl: Right logic shift       (a >>u b)
+// Sra: Right arithmetic shift  (a >>s b)
+typedef enum {Add, Sub, And, Or, Xor, Slt, Sltu, Sll, Srl, Sra} AluFunc;
+
+// Description: Arithmetic Logic Unit (ALU)
+// Arguments: a, operand a; b, operand b; func, ALU operation
+// Return: output of ALU
+function Bit#(32) alu(Bit#(32) a, Bit#(32) b, AluFunc func);
+    Bit #(32) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    Bit#(1) addType = 0;  //type of add to perform, default (0) is addition
+    Bit#(1) compType = 0;  //type of compare, default (0) is unsigned
+    ShiftType shiftType = LeftShift;  //type of shift
+    case (func)
+        Sub: addType = 1;
+        Slt: compType = 1;
+        Srl: shiftType = LogicalRightShift;
+        Sra: shiftType = ArithmeticRightShift;
+    endcase
+    Bit #(32) sum = addSub#(32)(a, b, addType);
+    Bit #(32) comp = zeroExtend(lt32(a, b, compType));
+    Bit #(32) shift = sft32(a, b[4:0], shiftType);
+    case(func)
+        Add: ret = sum;
+        Sub: ret = sum;
+        And: ret = a&b;
+        Or: ret = a|b;
+        Xor: ret = a^b;
+        Slt: ret = comp;
+        Sltu: ret = comp;
+        Sll: ret = shift;
+        Srl: ret = shift;
+        Sra: ret = shift;
+    endcase
+    return ret;
+endfunction
+
+
+// Description: Alternative shifter implementation (Discussion Question)
+function Bit#(32) sft32_alt(Bit#(32) in, Bit#(5) sftSz, ShiftType shiftType);
+    return (shiftType == LeftShift) ? sft32(in, sftSz, LeftShift) : ((shiftType == ArithmeticRightShift)? sft32(in, sftSz, ArithmeticRightShift) : sft32(in, sftSz, LogicalRightShift));
+endfunction
+
+
+
+//chain adders together
+function Bit#(n+1) chain#(Integer n)(Bit#(n) a, Bit#(n) b, Bit#(1) carryIn);
+    Bit#(n) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+    for (Integer i = 0; i < n; i=i+1)  //apply chained adders exactly as usual
+        begin
+            Bit#(2) vals = fullAdder(a[i], b[i], carryIn);
+            ret[i] = vals[0];
+            carryIn = vals[1];
+        end
+    return {carryIn, ret};
+endfunction
+
+typedef enum {G, P, K} Func;  //generate, propogate, kill
+
+//returns h=fg, that is, h(x)=f(g(x))
+function Func comp(Func f, Func g);
+  Func h = case(f)
+    K: K;
+    G: G;
+    P: g;
   endcase;
+  return h;
 endfunction
 
-function Bit#(2) cased(Bit#(1) a, Bit#(1) b);
-  Bit#(2) x = 0;
-  case (a)
-    0: x = {b, b};
-    0: x = {~b, ~b};
-    0: x = {b, b};
-    1: x = {b, b};
-  endcase
-  return x;
+//evaluate a function on an input
+function Bit#(1) eval(Func f, Bit#(1) val);
+  Bit#(1) out = case(f)
+    K: 0;
+    G: 1;
+    P: val;
+  endcase;
+  return out;
+endfunction
+
+// Description: N-bit fast adder with a carry-in (Design Exercise)
+// Arguments: a, b, carryIn
+// Return: sum of a, b, and carryIn
+function Bit#(n) fastAdd#(Integer n)(Bit#(n) a, Bit#(n) b, Bit#(1) carryIn);
+    Bit#(n) ret = 0;
+    //////////////////
+    // YOUR CODE HERE
+    /////////////////
+
+Vector#(n, Func) fff;
+for (Integer i=0; i<n; i=i+1)
+  fff[i] = case ({a[i], b[i]})
+    2'b00: K;
+    2'b01: P;
+    2'b10: P;
+    2'b11: G;
+  endcase;
+
+for (Integer i = 0; 2**i<n; i=i+1)
+  begin
+  for (Integer j = n-1; j >= 0; j=j-1)
+  begin
+    if (2**i <= j)  fff[j] = comp(fff[j], fff[j-2**i]);
+  end
+  end
+
+
+Bit#(n) c = zeroExtend(carryIn);
+
+for(Integer i = 0; i+1<n; i=i+1)
+  c[i+1] = eval(fff[i], carryIn);
+
+   ret=a^b^c;
+
+    return ret;
 endfunction
 
 
-function Bit#(1) unary(Bit#(1) a, Bit#(1) b);
-  return a ^~ b;
+
+
+
+function Bit#(1) f(Bit#(1) a);
+    return ~a;
 endfunction
 
-
-function Bit#(1) f#(Integer m,1)(Bit#(2) a);
-  return a[0];
-endfunction
-
-function Bit#(1) f#(1,Integer n)(Bit#(2) a);
-  return &a;
+function Bit#(1) g(Bit#(1) a);
+    let x = f(f(f(a)));
+    return x;
 endfunction

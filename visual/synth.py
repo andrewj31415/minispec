@@ -1,5 +1,4 @@
 import inspect
-from urllib.parse import parse_qsl
 
 import antlr4
 import build.MinispecPythonParser
@@ -22,12 +21,13 @@ newline = '\n' #used to format f-strings such as "Hi{newline}there" since backsl
 '''
 Implementation Agenda:
 
+    - parameterized typedefs
     - Module methods with arguments
     - Modules with arguments
-    - Case expressions
     - Shared modules
     - Other files (imports)
     - BSV imports
+    - Vectors of submodules
 
 Implemented:
 
@@ -42,6 +42,7 @@ Implemented:
     - Indexing/Slicing
     - Structs
     - Case statements
+    - Case expressions
 
 Notes for parametrics:
     paramFormals are used when defining functions/modules/types, and may be Integer n or
@@ -262,6 +263,11 @@ class Scope:
     '''Note: we probably need a helper function to detect when given parameters match
     a list[int|str] description.'''
 
+class MissingVariableException(Exception):
+    ''' Thrown by the builtin scope when a variable is not found.
+    Can be caught if a variable might be a bluespec builtin. '''
+    pass
+
 class BuiltInScope(Scope):
     '''The minispec built-ins. Behaves slightly differently from other scopes.'''
     def __init__(self, globalsHandler: 'GlobalsHandler', name: 'str', parents: 'list[Scope]'):
@@ -294,7 +300,7 @@ class BuiltInScope(Scope):
         if varName == 'False':
             assert len(parameters) == 0, "A boolean literal has no parameters"
             return Bool(False)
-        raise Exception(f"Couldn't find variable {varName} with parameters {parameters}")
+        raise MissingVariableException(f"Couldn't find variable {varName} with parameters {parameters}")
 
 #type annotation for context objects.
 ctxType = ' | '.join([ctxType for ctxType in dir(build.MinispecPythonParser.MinispecPythonParser) if ctxType[-7:] == "Context"][:-3])
@@ -1443,13 +1449,22 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
         Returns the result of slicing (the output of the slicing function). '''
         toSliceFrom = self.visit(ctx.array)
-        assert isNode(toSliceFrom), "Expected a node"
+        msb = self.visit(ctx.msb) #most significant bit
+        if ctx.lsb:
+            lsb = self.visit(ctx.lsb) #least significant bit
+        if isMLiteral(toSliceFrom) and isMLiteral(msb) and ( (not (ctx.lsb)) or (ctx.lsb and isMLiteral(lsb)) ):  # perform the slice directly
+            if ctx.lsb:
+                return toSliceFrom.slice(msb, lsb)
+            else:
+                return toSliceFrom.slice(msb)
+        if isMLiteral(toSliceFrom):
+            toSliceFrom = toSliceFrom.getHardware(self.globalsHandler)
+        assert isNode(toSliceFrom), f"Expected a node, got {toSliceFrom} of class {toSliceFrom.__class__}"
         text = "["
         inNode = Node()
         inputs = [inNode]
         inWire = Wire(toSliceFrom, inNode)
         inWires = [inWire]
-        msb = self.visit(ctx.msb) #most significant bit
         if isMLiteral(msb):
             text += str(msb)
         else:
@@ -1461,7 +1476,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             inWires.append(inWire1)
         if ctx.lsb:
             text += ':'
-            lsb = self.visit(ctx.lsb) #least significant bit
             if isMLiteral(lsb):
                 text += str(lsb)
             else:
@@ -1493,9 +1507,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #   to be evaluated and must evaluate to an integer).
                 assert value.__class__ == IntegerLiteral, f"Parameters must be an integer, not {value} which is {value.__class__}"
                 params.append(value)
-        functionDef = self.collectedScopes.currentScope.get(self, functionToCall, params)
-        self.globalsHandler.lastParameterLookup = params
-        funcComponent = self.visit(functionDef)  #synthesize the function internals
+        try:
+            functionDef = self.collectedScopes.currentScope.get(self, functionToCall, params)
+            self.globalsHandler.lastParameterLookup = params
+            funcComponent = self.visit(functionDef)  #synthesize the function internals
+        except MissingVariableException as e:
+            # we have a bluespec built-in function
+            functionName = functionToCall
+            if len(params) > 0:  #attach parameters to the function name if present
+                functionName += "#(" + ",".join(str(i) for i in params) + ")"
+            funcComponent = Function(functionName, [], [Node() for i in range(len(ctx.expression()))])
         # hook up the funcComponent to the arguments passed in.
         for i in range(len(ctx.expression())):
             expr = ctx.expression()[i]
@@ -1542,7 +1563,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # if isMLiteral(value):  # convert value to hardware before assigning to register
         #     value = value.getHardware(self.globalsHandler)  # I don't think we need to convert to hardware yet.
         if ctx.lhs.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-            raise Exception("Not implemented")
+            raise Exception("Not implemented") # this is for vectors of registers
         regName = ctx.lhs.getText()
         self.collectedScopes.currentScope.set(value, regName)
 
