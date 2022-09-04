@@ -742,32 +742,32 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # synthesize inputs, submodules, methods, and rules, in that order
 
         for inputDef in inputDefs:
-            oldCurrentInputs = self.collectedScopes.currentScope.currentInputsWithDefault
-            self.collectedScopes.currentScope.currentInputsWithDefault = {}
+            oldCurrentInputs = moduleScope.currentInputsWithDefault
+            moduleScope.currentInputsWithDefault = {}
             self.visit(inputDef)
-            for inputName in self.collectedScopes.currentScope.currentInputsWithDefault:
-                defaultValCtxOrNone = self.collectedScopes.currentScope.currentInputsWithDefault[inputName]
+            for inputName in moduleScope.currentInputsWithDefault:
+                defaultValCtxOrNone = moduleScope.currentInputsWithDefault[inputName]
                 # copy any inputs into the parent scope, so that any parent module knows about the inputs
                 previousScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
-            self.collectedScopes.currentScope.currentInputsWithDefault = oldCurrentInputs
+            moduleScope.currentInputsWithDefault = oldCurrentInputs
         for submoduleDecl in submoduleDecls:
             self.visit(submoduleDecl)
             # save submodule inputs with default values
             submoduleName = submoduleDecl.name.getText()
-            for inputName in self.collectedScopes.currentScope.currentInputsWithDefault:
-                defaultExprCtx = self.collectedScopes.currentScope.currentInputsWithDefault[inputName]
-                self.collectedScopes.currentScope.inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
-            self.collectedScopes.currentScope.currentInputsWithDefault = {}
+            for inputName in moduleScope.currentInputsWithDefault:
+                defaultExprCtx = moduleScope.currentInputsWithDefault[inputName]
+                moduleScope.inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
+            moduleScope.currentInputsWithDefault = {}
         for methodDef in methodDefs:
             if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
                 self.visit(methodDef)
         # evaluate default inputs
-        for submoduleAndInputName in self.collectedScopes.currentScope.inputsWithDefault:
-            defaultCtxOrNone = self.collectedScopes.currentScope.inputsWithDefault[submoduleAndInputName]
+        for submoduleAndInputName in moduleScope.inputsWithDefault:
+            defaultCtxOrNone = moduleScope.inputsWithDefault[submoduleAndInputName]
             if defaultCtxOrNone:
-                self.collectedScopes.currentScope.submoduleInputValues[submoduleAndInputName] = self.visit(defaultCtxOrNone)
+                moduleScope.submoduleInputValues[submoduleAndInputName] = self.visit(defaultCtxOrNone)
             else:
-                self.collectedScopes.currentScope.submoduleInputValues[submoduleAndInputName] = None
+                moduleScope.submoduleInputValues[submoduleAndInputName] = None
 
         for ruleDef in ruleDefs:
             self.visit(ruleDef)
@@ -808,19 +808,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # All of the None values must be overridden so that every input is assigned.
         # The default/None split can be done for all of currentInputsWithDefault, inputsWithDefault, and submoduleInputValues.
         '''
-        for submoduleAndInputName in self.collectedScopes.currentScope.submoduleInputValues:
-            value = self.collectedScopes.currentScope.submoduleInputValues[submoduleAndInputName]
+        for submoduleAndInputName in moduleScope.submoduleInputValues:
+            value = moduleScope.submoduleInputValues[submoduleAndInputName]
             assert value != None, "All submodule inputs must be assigned"
             if isMLiteral(value):
                 value = value.getHardware(self.globalsHandler)
             assert isNode(value), "value must be hardware in order to wire in to input node"
             submoduleName, inputName = submoduleAndInputName.split('.')
-            submoduleComponent: 'Module' = self.collectedScopes.currentScope.nonregisterSubmodules[submoduleName]
+            submoduleComponent: 'Module' = moduleScope.nonregisterSubmodules[submoduleName]
             inputNode = submoduleComponent.inputs[inputName]
             wireIn = Wire(value, inputNode)
             self.globalsHandler.currentComponent.addChild(wireIn)
             
-        moduleScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values        
+        moduleScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
 
@@ -842,17 +842,27 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleDef <-> functionDef
             submoduleDecl <-> callExpr
          '''
+        originalModuleScope = self.collectedScopes.currentScope
         moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
 
+        previousNonregisters = originalModuleScope.nonregisterSubmodules
+        previousRegisters = originalModuleScope.registers
+        originalModuleScope.nonregisterSubmodules = {}
+        originalModuleScope.registers = {}
+
         moduleComponent = self.visit(moduleDef)  #synthesize the module
+
+        originalModuleScope.nonregisterSubmodules = previousNonregisters
+        originalModuleScope.registers = previousRegisters
+
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
-        self.collectedScopes.currentScope.set(moduleComponent, submoduleName)
+        originalModuleScope.set(moduleComponent, submoduleName)
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
-            self.collectedScopes.currentScope.registers[submoduleName] = moduleComponent
+            originalModuleScope.registers[submoduleName] = moduleComponent
         else:
-            self.collectedScopes.currentScope.nonregisterSubmodules[submoduleName] = moduleComponent
+            originalModuleScope.nonregisterSubmodules[submoduleName] = moduleComponent
 
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
