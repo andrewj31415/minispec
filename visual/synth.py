@@ -1144,8 +1144,120 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitCaseExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprContext):
         # Similar to caseStmt, only simpler, with one variable assignment instead of arbitrary statements to execute
-        ''' We evaluate the  '''
-        raise Exception("Not implemented")
+        ''' We evaluate the case statement into one or more muxes, with the following optimizations:
+        1. If the expression to the case statement is an MLiteral (or evaluates to one, say as a parameter), and if
+          the expressions for all of the selection expressions are MLiterals, we evaluate and return only the correct
+          branch of the case statement.
+        2. If all of the selection expressions are MLiterals but the case expression is not, we synthesize to a
+          wide mux with one input for each possible output.
+        3. If one or more of the selection expressions is not an MLiteral, we synthesize to a sequence of muxes
+          controlled by components of the form (case expression hardware == selection expression hardware). If
+          exactly one of the expressions is a boolean literal, we skip the "==" component. If both expressions
+          are literals, we determine if that branch is always or never taken (depending on whether or not the
+          literals are equal) and optimize away the corresponding mux. If the case expression is a literal and
+          is wire in to several muxes, we instantiate it into hardware several times, one for each mux.
+        '''
+        #TODO in caseExpr and caseStmt, if a default is included but all possible inputs are already present (as literals), skip the default input.
+        expr = self.visit(ctx.expression())
+        expri: 'tuple[MLiteral|Node, MLiteral|Node]' = [] # pairs (comparisonStmt, valueToOutput)
+        hasDefault = False
+        for caseExprItem in ctx.caseExprItem():
+            if not caseExprItem.exprPrimary():  # no selection expression, so we have a default expression.
+                hasDefault = True
+                defaultValue = self.visit(caseExprItem.expression())
+                break
+            correspondingOutput = self.visit(caseExprItem.expression())
+            for comparisonStmt in caseExprItem.exprPrimary():
+                expri.append((self.visit(comparisonStmt), correspondingOutput))
+        if isMLiteral(expr) and all([isMLiteral(pair[0]) for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))): # case 1
+            for pair in expri:
+                if pair[0].eq(expr):
+                    return pair[1]
+            assert hasDefault, "all branches must be covered"
+            return defaultValue
+        if all([isMLiteral(pair[0]) for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))): # case 2
+            assert not isMLiteral(expr), "We assume expr is not a literal here, so we do not have to eliminate any extra values."
+            possibleOutputs = [] # including the default output, if present
+            expriIndex = 0
+            for i in range(len(ctx.caseExprItem()) + (-1 if hasDefault else 0)):
+                caseExprItem = ctx.caseExprItem(i)
+                possibleOutputs.append(expri[expriIndex][1])
+                expriIndex += len(caseExprItem.exprPrimary())
+            if hasDefault:
+                possibleOutputs.append(defaultValue)
+            mux = Mux([Node() for i in range(len(possibleOutputs))])
+            for i in range(len(possibleOutputs)):  # convert all possible outputs to hardware
+                possibleOutput = possibleOutputs[i]
+                if isMLiteral(possibleOutput):
+                    possibleOutputs[i] = possibleOutput.getHardware(self.globalsHandler)
+            wires = [Wire(expr, mux.control)] + [ Wire(possibleOutputs[i], mux.inputs[i]) for i in range(len(possibleOutputs)) ]
+            for component in [mux] + wires:
+                self.globalsHandler.currentComponent.addChild(component)
+            return mux.output
+        # case 3
+        muxes = []
+        newExpri = [] #prune some literals if possible
+        for pair in expri:
+            if isMLiteral(expr) and isMLiteral(pair[0]):
+                if expr.eq(pair[0]):
+                    hasDefault = True # since this expri will always work, we discard any default value
+                    defaultValue = pair[1]
+                    break
+                else:
+                    continue
+            else:
+                newExpri.append(pair)
+        if not hasDefault:  # transform to guarantee a default value. this is valid since every case expression must always return something.
+            hasDefault = True
+            defaultValue = newExpri[-1][1]
+            newExpri = newExpri[:-1]
+        expri = newExpri
+
+        # at this point, each entry of expri will run and there is a default value.
+        muxes = [Mux([Node(), Node()]) for i in range(len(expri))]
+        nextWires = [ Wire(muxes[i+1].output, muxes[i].inputs[1]) for i in range(len(expri)-1) ]
+
+        valueWires = []
+        for i in range(len(expri)):  # create hardware for values
+            value = expri[i][1]
+            if isMLiteral(value):
+                value = value.getHardware(self.globalsHandler)
+            valueWires.append(Wire(value, muxes[i].inputs[0]))
+        if isMLiteral(defaultValue):
+            defaultValue = defaultValue.getHardware(self.globalsHandler)
+        valueWires.append(Wire(defaultValue, muxes[-1].inputs[1]))
+        
+        controlWires = []
+        controlComponents = []
+        for i in range(len(expri)):  # create hardware for controls
+            controlValue = expri[i][0]
+            muxControl = muxes[i].control
+            assert not (isMLiteral(controlValue) and isMLiteral(expr)), "This case should have been evaluated earlier"
+            if isMLiteral(expr) and expr.__class__ == Bool:
+                if expr:
+                    controlWires.append(Wire(controlValue, muxControl))
+                else:
+                    n = Function('~', [], [Node()])
+                    controlComponents.append(n)
+                    controlWires.append(Wire(controlValue, n.inputs[0]))
+                    controlWires.append(Wire(n.output, muxControl))
+            elif isMLiteral(controlValue) and controlValue.__class__ == Bool:
+                if controlValue:
+                    controlWires.append(Wire(expr, muxControl))
+                else:
+                    n = Function('~', [], [Node()])
+                    controlComponents.append(n)
+                    controlWires.append(Wire(expr, n.inputs[0]))
+                    controlWires.append(Wire(n.output, muxControl))
+            else:
+                eq = Function('==', [], [Node(), Node()])
+                controlComponents.append(eq)
+                controlWires.append(Wire(expr, eq.inputs[0]))
+                controlWires.append(Wire(controlValue, eq.inputs[1]))
+                controlWires.append(Wire(eq.output, muxControl))
+        for component in muxes + nextWires + valueWires + controlWires + controlComponents:
+                self.globalsHandler.currentComponent.addChild(component)
+        return muxes[0].output if len(muxes) > 0 else defaultValue
 
     def visitCaseExprItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprItemContext):
         raise Exception("Handled in caseExpr, should not be visited")
@@ -1275,8 +1387,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # identifiers) or for comments.
 
     def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
-        '''We have an integer literal, so we parse it and return it.'''
-        return IntegerLiteral(int(ctx.getText()))
+        '''We have an integer literal, so we parse it and return it.
+        Note that integer literals may be either integers or bit values. '''
+        text = ctx.getText()
+        if 'b' in text: #binary
+            width, binValue = text.split("'b")
+            assert len(width) > 0 and len(binValue) > 0, f"something went wrong with parsing {text} into width {width} and value {binValue}"
+            return Bit(IntegerLiteral(int(width)))(int("0b"+binValue, 0))
+        if 'h' in text: #hex value
+            raise Exception("Not implemented")
+        if 'd' in text: #not sure, decimal?
+            raise Exception("Not implemented")
+        # else we have an integer
+        return IntegerLiteral(int(text))
 
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
         '''This is the return expression in a function. We need to put the correct wire
