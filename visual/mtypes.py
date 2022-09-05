@@ -4,11 +4,43 @@ import math # for math.inf in .numLiterals()
 
 # A minispec type is a python classes; instances thereof represent literal values.
 
-'''We will eventually want a class whose instances represent minispec literals, including:
-integers, booleans, bit values, etc.
-This class (and subclasses) will describe how to operate/coerce on these values.
+''' Documentation for minispec types.
 
-#TODO reexamine literal arithmetic for time conversions
+MType: metaclass.
+    - Handles coversion to string of minispec types: a minispec type class may have a class
+      variable _name, which is returned by __str__ on a type class. __repr__ is not overridden.
+    - Every minispec type maintains a class variable _constructor, which is either None or the
+      factory function which produced the type. This is used to determine equality of type classes.
+    - Also handles equality of minispec types: a parameterized minispec type class must have a
+      class method sameType, which is called by __eq__ on a type class. This is used so that
+      parameterized type classes returned by factory functions may be considered equal.
+      Minispec types without a factory function are considered __eq__ if and only if they are identical.
+
+MLiteral: base class. Has metaclass MType. All minispec types inherit from MLiteral.
+
+MLiteralOperations: A class used to handle type checking/coercions before performing literal operations.
+    Calls to literal operations outside of mtypes.py should go to MLiteralOperations. Also redirects some
+    operations in terms of others--for instance, != is defined in terms of ==.
+
+Any: used for types which are not known, such as return types of bluespec builtins.
+
+Parameterized types are created by factory functions. Equality of parameterized types is
+handled by their sameType(self, other) method, which is called by the MType metaclass.
+Parameterized types must override the _constructor class variable to point to their
+factory function.
+
+Typedef synonyms. Every minispec class maintains an "untypedef" class method which returns
+    the original version of the class. So, given the minispec code
+        typedef Word Bit#(32)
+    then Word.untypedef() will return the Bit#(32) type class.
+
+'''
+
+
+'''
+#TODO reexamine literal arithmetic for type conversions
+
+A list of minispec operations and the names used in code:
 
 Binary operators:
 '**','*', '/', '%', '+', '-', '<<', '>>', '<', '<=', '>', '>=', '==', '!=', '&', '^', '^~', '~^', '|', '&&', '||'
@@ -35,7 +67,7 @@ Names for methods in code:
 || is booleanor.
 
 Unary operators:
-'!' | '~' | '&' | '~&' | '|' | '~|' | '^' | '^~' | '~^' | '+' | '-'
+'!', '~', '&', '~&', '|', '~|', '^', '^~', '~^', '+', '-'
 Names for methods in code:
 '!' is booleaninv.
 '~' is inv.
@@ -48,7 +80,7 @@ Names for methods in code:
 '+' is unaryadd.
 '-' is neg.
 
-Note: only returns booleans if specifically marked for booleans. Reduction operators return Bit#(1)'s.
+Note: only boolean unary operations return booleans. Reduction operators return Bit#(1)'s.
 '''
 
 class MType(type):
@@ -62,8 +94,21 @@ class MType(type):
         except:
             return super.__str__(self)
 
+    def __eq__(self, other):
+        ''' Handles equality of minispec types. Returns true if self and other are the same minispec type. '''
+        if other.__class__ != MType:
+            return False
+        self = self.untypedef()
+        other = other.untypedef()
+        if self._constructor == None or other._constructor == None: #these are not created in a factory, so they are the same if and only if they are identical
+            return super.__eq__(self, other)
+        if self._constructor != other._constructor:  # look at the factory function
+            return False
+        return self.sameType(other) # remove typedef synonyms before comparing
+
 class MLiteral(metaclass=MType):
     ''' A minispec type '''
+    _constructor = None
     def __init__(self):
         raise Exception("Not implemented")
     @classmethod
@@ -71,6 +116,10 @@ class MLiteral(metaclass=MType):
         ''' Return the original untypedef-ed type.
         If we run typedef Bit#(32) Word, then Word.untypedef() will give back Bit#(32). '''
         return cls
+    @classmethod
+    def sameType(self, other):
+        ''' Returns true if self and other are the same minispec type. Assumes self and other were created in the same type factory. '''
+        raise Exception("Not implemented, not created in a type factory.")
     def getHardware(self, globalsHandler):
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
         constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
@@ -81,6 +130,62 @@ class MLiteral(metaclass=MType):
         distinct is defined by minispec's "==" operator.
         Used in case statements to determine when all cases are covered. '''
         raise Exception("Not Implemented")
+    '''binary operations. self is assumed to be the first operand (in subtraction, divsion, etc.)
+    le, gt, ge are in terms of lt and eq. neq is in terms of eq.'''
+    def pow(self, other):
+        raise Exception("Not Implemented")
+    def mul(self, other):
+        raise Exception("Not Implemented")
+    def div(self, other):
+        raise Exception("Not implemented")
+    def mod(self, other):
+        raise Exception("Not implemented")
+    def add(self, other):
+        raise Exception("Not Implemented")
+    def sub(self, other):
+        raise Exception("Not Implemented")
+    def sleft(self, other):
+        raise Exception("Not implemented")
+    def sright(self, other):
+        raise Exception("Not implemented")
+    def lt(self, other):
+        raise Exception("Not Implemented")
+    def eq(self, other):
+        raise Exception("Not Implemented")
+    def bitand(self, other):
+        raise Exception("Not implemented")
+    def bitxor(self, other):
+        raise Exception("Not implemented")
+    def bitxnor(self, other):
+        raise Exception("Not implemented")
+    def bitor(self, other):
+        raise Exception("Not implemented")
+    def booleanand(self, other):
+        raise Exception("Not implemented")
+    def booleanand(self, other):
+        raise Exception("Not Implemented")
+    def booleanor(self, other):
+        raise Exception("Not Implemented")
+    '''unary operations. notredand is in terms of redand and inv.
+    notredor is in terms of redor and inv. notredxor is in terms of redxor and inv.'''
+    def booleaninv(self):
+        raise Exception("Not Implemented")
+    def inv(self):
+        raise Exception("Not Implemented")
+    def redand(self):
+        raise Exception("Not Implemented")
+    def redor(self):
+        raise Exception("Not Implemented")
+    def redxor(self):
+        raise Exception("Not Implemented")
+    def unaryadd(self):
+        raise Exception("Not Implemented")
+    def neg(self):
+        raise Exception("Not Implemented")
+
+class MLiteralOperations:
+    '''class for calling operations on literals. handles typechecking and coercions.
+    also redirects some operations to others, eg >= in terms of > and ==.'''
     def coerceArithmetic(first, second):
         if first.__class__ == IntegerLiteral and second.__class__ == BooleanLiteral:
             first = second.fromIntegerLiteral(first)
@@ -95,35 +200,35 @@ class MLiteral(metaclass=MType):
         assert first.__class__ == IntegerLiteral and second.__class__ == IntegerLiteral, "pow can only be done with integer literals"
         return first.pow(second)
     def mul(first, second):
-        first, second = MLiteral.coerceArithmetic(first, second)
+        first, second = MLiteralOperations.coerceArithmetic(first, second)
         return first.mul(second)
     def div(first, second):
         raise Exception("Not implemented")
     def mod(first, second):
         raise Exception("Not implemented")
     def add(first, second):
-        first, second = MLiteral.coerceArithmetic(first, second)
+        first, second = MLiteralOperations.coerceArithmetic(first, second)
         return first.add(second)
     def sub(first, second):
-        first, second = MLiteral.coerceArithmetic(first, second)
+        first, second = MLiteralOperations.coerceArithmetic(first, second)
         return first.sub(second)
     def sleft(first, second):
         raise Exception("Not implemented")
     def sright(first, second):
         raise Exception("Not implemented")
     def lt(first, second):
-        first, second = MLiteral.coerceArithmetic(first, second)
+        first, second = MLiteralOperations.coerceArithmetic(first, second)
         return first.lt(second)
     def le(first, second):
-        raise Exception("Not implemented")
+        return Bool(MLiteralOperations.lt(first, second) or MLiteralOperations.eq(first, second))
     def gt(first, second):
-        raise Exception("Not implemented")
+        return MLiteralOperations.lt(second, first)
     def ge(first, second):
-        return Bool(MLiteral.lt(second, first) or MLiteral.eq(first, second))
+        return Bool(MLiteralOperations.lt(second, first) or MLiteralOperations.eq(first, second))
     def eq(first, second):
         return first.eq(second)
     def neq(first, second):
-        raise Exception("Not implemented")
+        return MLiteralOperations.booleaninv(MLiteralOperations.eq(first, second))
     def bitand(first, second):
         raise Exception("Not implemented")
     def bitxor(first, second):
@@ -133,12 +238,10 @@ class MLiteral(metaclass=MType):
     def bitor(first, second):
         raise Exception("Not implemented")
     def booleanand(first, second):
-        raise Exception("Not implemented")
-    def booleanand(first, second):
-        first, second = MLiteral.coerceBoolean(first, second)
+        first, second = MLiteralOperations.coerceBoolean(first, second)
         return first.booleanand(second)
     def booleanor(first, second):
-        first, second = MLiteral.coerceBoolean(first, second)
+        first, second = MLiteralOperations.coerceBoolean(first, second)
         return first.booleanand(second)
     '''unary operations'''
     def booleaninv(first):
@@ -161,7 +264,7 @@ class MLiteral(metaclass=MType):
         return first.unaryadd()
     def neg(first):
         return first.neg()
-        
+
 
 #TODO we're not implementing parameterized typedefs for a while.
 
@@ -170,37 +273,48 @@ def Synonym(mtype: 'MType', newName: 'str'):
     Used for typedef synonyms. '''
     class TypeDef(mtype):
         _name = newName
+        _constructor = Synonym
         @classmethod
         def untypedef(cls):
             return mtype.untypedef()
+        @classmethod
+        def sameType(self, other):
+            raise Exception("Typedef synonyms should be extracted before calling this method.")
     return TypeDef
 
 def Enum(name: 'str', values: 'set[str]'):
     ''' Returns a class which represents an enum type. '''
-    class Enum(MLiteral):
+    class EnumType(MLiteral):
         ''' value is the tag of the enum instance to create. Must be one of the types in the enum.
         The only operations which are defined for enum literals are eq/neq #TODO check this '''
         _name = name
+        _constructor = Enum
+        _values = values
         def __init__(self, value: 'str'):
             ''' Create an enum literal '''
             assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
             self.value = value
         def numLiterals(self) -> 'int|float':
             return len(values)
+        @classmethod
+        def sameType(self, other):
+            return self._values == other._values
         def eq(self, other):
             if self.__class__ != other.__class__:
                 return False
             return self.value == other.value
         def __str__(self):
             return self.value
-    return Enum
+    return EnumType
 
 def Struct(name: 'str', fields: 'dict[str:MType]'):
     ''' Returns a class which represents a struct type.
     fields is a dict[str:MType] mapping a field name to the type the field should have. '''
-    class Struct(MLiteral):
+    class StructType(MLiteral):
         ''' The only operations which are defined for struct literals are eq/neq #TODO check this '''
         _name = name
+        _constructor = Struct
+        _fields = fields
         def __init__(self, fieldBinds: 'dict[str:MLiteral]'):
             assert set(fieldBinds) == set(fields), f"Must specify fields {set(fields)} but instead specified fields {set(fieldBinds)}"
             for field in fieldBinds:
@@ -210,6 +324,14 @@ def Struct(name: 'str', fields: 'dict[str:MType]'):
         def numLiterals(self) -> 'int|float':
             fieldTypeList = [ fields[field] for field in fields ]
             return math.prod([ fieldType.numLiteral() for fieldType in fieldTypeList ])
+        @classmethod
+        def sameType(self, other):
+            if set(self._fields) != set(other._fields):
+                return False
+            for field in self._fields:
+                if self._fields[field] != other._fields[field]:
+                    return False
+            return True
         def __str__(self):
             return name + "{" + ",".join([str(field) + ":" + str(self.fieldBinds[field]) for field in self.fieldBinds]) + "}"
         def eq(self, other):
@@ -223,7 +345,7 @@ def Struct(name: 'str', fields: 'dict[str:MType]'):
             return Bool(True)
         def neq(self, other):
             return self.eq(other).booleaninv()
-    return Struct
+    return StructType
 
 class Any(MLiteral):
     '''An unknown type'''
@@ -316,9 +438,11 @@ IntegerLiteral = Integer  #useful alias
 def Bit(n: 'IntegerLiteral'):
     ''' Returns a type corresponding to a bitstring Bit#(n) of length n. '''
     assert n.__class__ == IntegerLiteral, f"Bit takes integer literals, not {n} which is {n.__class__}"
-    class Bit(MLiteral):
+    class BitLiteral(MLiteral):
         ''' self.n: 'int' is the number of bits. self.value: 'int' is an integer 0 <= value < 2**n. '''
         _name = f"Bit#({n})"
+        _constructor = Bit
+        _n = n
         def __init__(self, value: 'int'):
             ''' Create a Bit#(n) literal.
             value is an integer which will be assigned (mod 2**n) to self.value.
@@ -329,6 +453,9 @@ def Bit(n: 'IntegerLiteral'):
             self.value = value % (2**n.value)
         def numLiterals(self) -> 'int|float':
             return 2**n.value
+        @classmethod
+        def sameType(self, other):
+            return self._n == other._n
         def __repr__(self):
             return "BitLiteral(" + str(self.n) + "," + str(self.value) + ")"
         def __str__(self):
@@ -340,7 +467,7 @@ def Bit(n: 'IntegerLiteral'):
             return str(self.n) + "'b" + output
         def fromIntegerLiteral(self, i: 'IntegerLiteral'):
             assert -(2**(self.n-1)) <= i.toInt() < 2**self.n, "Bluespec requires Bit#(n) literals to be in range -2**(n-1),...,2**n-1."
-            return Bit(self.n)(i.toInt())
+            return BitLiteral(self.n)(i.toInt())
         '''binary operations'''
         def pow(self, other):
             raise Exception("Not implemented")
@@ -351,7 +478,7 @@ def Bit(n: 'IntegerLiteral'):
         def mod(self, other):
             raise Exception("Not implemented")
         def add(self, other):
-            return Bit(max(self.n, other.n))(self.value + other.value)
+            return BitLiteral(max(self.n, other.n))(self.value + other.value)
         def sub(self, other):
             raise Exception("Not implemented")
         def sleft(self, other):
@@ -396,14 +523,14 @@ def Bit(n: 'IntegerLiteral'):
         def unaryadd(self):
             raise Exception("Not implemented")
         def neg(self):
-            return Bit(self.n)(-self.value)
+            return BitLiteral(self.n)(-self.value)
         ''' other operations '''
         def slice(self, msb, lsb=None):
             if lsb:
                 raise Exception("Not implemented")
             else:
                 return BitLiteral(IntegerLiteral(1))((self.value//(2**msb.value)) % 2)
-    return Bit
+    return BitLiteral
 BitLiteral = Bit #useful synonym
 
 class Bool(MLiteral):
@@ -481,14 +608,20 @@ class Bool(MLiteral):
 BooleanLiteral = Bool  #useful alias
         
 def Vector(k: 'int', typeValue: 'MLiteral'):
-    class Vector(MLiteral):
+    class VectorType(MLiteral):
         '''The Vector(k, tt) type'''
         _name = f"Vector#({k}{typeValue})"
+        _constructor = Vector
+        _k = k
+        _typeValue = typeValue
         def __init__(self, k: 'int', typeValue: 'MLiteral'):
             self.k = k
             self.typeValue = typeValue
         def numLiterals(self) -> 'int|float':
             return typeValue.numLiterals() ** k
+        @classmethod
+        def sameType(self, other):
+            return self._k == other._k and self._typeValue == other._typeValue
         def __str__(self):
             return "Vector#(" + str(self.k) + ", " + str(self.typeValue) + ")"
         '''unary operations'''
@@ -506,70 +639,40 @@ def Vector(k: 'int', typeValue: 'MLiteral'):
             raise Exception("Not implemented")
         def neg(self):
             raise Exception("Not implemented")
-    return Vector
+    return VectorType
 
-class Maybe(MLiteral):
-    '''value is Valid or Invalid'''
-    #TODO figure out how to implement Valid
-    '''boolean operations'''
-    def pow(self, other):
-        raise Exception("Not implemented")
-    def mul(self, other):
-        raise Exception("Not implemented")
-    def div(self, other):
-        raise Exception("Not implemented")
-    def mod(self, other):
-        raise Exception("Not implemented")
-    def add(self, other):
-        raise Exception("Not implemented")
-    def sub(self, other):
-        raise Exception("Not implemented")
-    def sleft(self, other):
-        raise Exception("Not implemented")
-    def sright(self, other):
-        raise Exception("Not implemented")
-    def lt(self, other):
-        raise Exception("Not implemented")
-    def le(self, other):
-        raise Exception("Not implemented")
-    def gt(self, other):
-        raise Exception("Not implemented")
-    def ge(self, other):
-        raise Exception("Not implemented")
-    def eq(self, other):
-        raise Exception("Not implemented")
-    def neq(self, other):
-        raise Exception("Not implemented")
-    def bitand(self, other):
-        raise Exception("Not implemented")
-    def bitxor(self, other):
-        raise Exception("Not implemented")
-    def bitxnor(self, other):
-        raise Exception("Not implemented")
-    def bitor(self, other):
-        raise Exception("Not implemented")
-    def booleanand(self, other):
-        raise Exception("Not implemented")
-    def booleanor(self, other):
-        raise Exception("Not implemented")
-    '''unary operations'''
-    def booleaninv(self):
-        raise Exception("Not implemented")
-    def inv(self):
-        raise Exception("Not implemented")
-    def redand(self):
-        raise Exception("Not implemented")
-    def redor(self):
-        raise Exception("Not implemented")
-    def redxor(self):
-        raise Exception("Not implemented")
-    def unaryadd(self):
-        raise Exception("Not implemented")
-    def neg(self):
-        raise Exception("Not implemented")
+def Maybe(mtype: 'MType'):
+    class MaybeType(MLiteral):
+        '''value is Valid or Invalid'''
+        _name = "Maybe#(" + str(mtype) + ")"
+        _constructor = Maybe
+        _mtype = mtype
+        def __init__(self, value: 'mtype' = None):
+            if value == None:
+                self.isValid = False
+            else:
+                self.isValid = True
+                assert value.__class__ == mtype, "Type of value does not match type of maybe"
+                self.value = value
+        @classmethod
+        def sameType(self, other):
+            return self._mtype == other._mtype
+        def __str__(self):
+            if not self.isValid:
+                return "Invalid"
+            return "Valid(" + str(self.value) + ")"
+        def eq(self, other):
+            if self.__class__ != other.__class__:
+                return False
+            if (not self.isValid) and (not other.isValid): # both invalid
+                return True
+            return self.value == other.value
+
+    return MaybeType
 
 class DontCareLiteral(MLiteral):
     '''only one kind, "?" '''
+    _name = '?'
     def __init__(self):
         pass
     # Returns itself for all binary operations
@@ -630,10 +733,22 @@ class DontCareLiteral(MLiteral):
         return self
 
 if __name__ == '__main__':
-    #Create a synonym of Bit#(32). For testing purposes.
-    Word = Synonym(Bit(Integer(32)), 'Word')
-    print(Word)
-    print(Word.__class__)
-    print(Word.untypedef())
-    a = Word(31)
-    print(a)
+    # #Create a synonym of Bit#(32). For testing purposes.
+    # Word = Synonym(Bit(Integer(32)), 'Word')
+    # print(Word)
+    # print(Word.__class__)
+    # print(Word.untypedef())
+    # a = Word(31)
+    # print(a)
+
+    #Create Maybe type. For testing purposes.
+    m = Maybe(Bit(IntegerLiteral(2)))
+    print(m)
+
+    b = Bit(IntegerLiteral(2))
+    c = Bit(IntegerLiteral(2))
+    print(b == c) #True
+    d = Bit(IntegerLiteral(3))
+    print(b == d) #False
+    e = Bool
+    print(e == b) #False
