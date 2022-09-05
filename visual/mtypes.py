@@ -328,7 +328,7 @@ def Bit(n: 'IntegerLiteral'):
             assert value.__class__ == int
             self.value = value % (2**n.value)
         def numLiterals(self) -> 'int|float':
-            return 2**n
+            return 2**n.value
         def __repr__(self):
             return "BitLiteral(" + str(self.n) + "," + str(self.value) + ")"
         def __str__(self):

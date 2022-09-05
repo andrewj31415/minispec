@@ -316,6 +316,30 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Handles case statements with default present or not''')
+def _():
+    text = pull('cases4')
+
+    fa, fflip, fo = Node(), Node(), Node()
+    mux = Mux([Node(), Node()])
+    n = Function('~', [], [Node()])
+    f = Function('f', [mux, n, Wire(fflip, mux.control), Wire(mux.output, fo), Wire(fa, n.inputs[0]), Wire(n.output, mux.inputs[0]), Wire(fa, mux.inputs[1])], [fa, fflip], fo)
+    g = Function('g', [mux, n, Wire(fflip, mux.control), Wire(mux.output, fo), Wire(fa, n.inputs[0]), Wire(n.output, mux.inputs[0]), Wire(fa, mux.inputs[1])], [fa, fflip], fo)
+    h = Function('h', [mux, n, Wire(fflip, mux.control), Wire(mux.output, fo), Wire(fa, n.inputs[0]), Wire(n.output, mux.inputs[0]), Wire(fa, mux.inputs[1])], [fa, fflip], fo)
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+    output = synth.parseAndSynth(text, 'g')
+    expected = g
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    
+    output = synth.parseAndSynth(text, 'h')
+    expected = h
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
 describe('''Case Expressions''')
 
 @it('''Correctly handles some case expressions''')

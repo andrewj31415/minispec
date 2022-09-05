@@ -1,5 +1,7 @@
 import inspect
 
+import math
+
 import antlr4
 import build.MinispecPythonParser
 import build.MinispecPythonLexer
@@ -1746,14 +1748,27 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.visit(ctx.caseStmtDefaultItem().stmt())
             return
         if allExpriLiteral:  
-            # since we have already removed duplicate literals, exactly (technically at most, but "do nothing" may
-            # be considered to be a statement if not all statements are covered) one expri statement will run.
-            # we run each one in a separate scope and collect the results afterward using multi-width muxes.
+            # - since we have already removed duplicate literals, exactly (technically at most, but "do nothing" may
+            # - be considered to be a statement if not all statements are covered) one expri statement will run.
+            # - we run each one in a separate scope and collect the results afterward using multi-width muxes.
+            # - we need to determine if there is an implicit default "do nothing"--specifically, if there is no
+            #   default statement given and not all possible literals are covered, we need to have an extra default
+            #   scope that corresponds to no expri statement running.
             if isMLiteral(expr):
                 expr = expr.getHardware(self.globalsHandler)
             hasDefault = ctx.caseStmtDefaultItem() != None
+            numLiteralsNeeded = min([literal[0].numLiterals() for literal in expri])
+            numLiteralsPresent = len(expri)
+            # it is possible for a default statement to be present and needed, present and not needed, not present and needed, or not present and not needed.
+            # hasDefault is true if a default statement is present.
+            # coversAllCases is true if the cases in expri cover all of the cases, and false if a default statement is needed.
+            if numLiteralsPresent == numLiteralsNeeded:
+                coversAllCases = True
+            else:
+                assert numLiteralsPresent < numLiteralsNeeded, "Something has gone wrong with counting literals"
+                coversAllCases = False
             scopes = []
-            for i in range(len(expri) + (1 if hasDefault else 0)):
+            for i in range(len(expri) + (0 if coversAllCases else 1)):
                 childScope = Scope(self.globalsHandler, "childScope"+str(i), [self.collectedScopes.currentScope])
                 self.collectedScopes.allScopes.append(childScope)
                 scopes.append(childScope)
@@ -1764,7 +1779,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 exprToMatch, exprStmt = expri[i]
                 self.collectedScopes.currentScope = scope
                 self.visit(exprStmt)
-            if hasDefault:  # run the default scope in the last scope
+            if hasDefault and numLiteralsPresent < numLiteralsNeeded:  # run the default scope in the last scope
                 scope = scopes[-1]
                 self.collectedScopes.currentScope = scope
                 self.visit(ctx.caseStmtDefaultItem().stmt())

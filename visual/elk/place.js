@@ -13,6 +13,8 @@ inputJSON = fs.readFileSync("./elk/elkInput.txt", (err) => {
 
 inputJSON = JSON.parse(inputJSON); // convert the buffer object into JSON
 
+fs.writeFileSync("./elk/elkOutput.txt", ""); // clear the output in case an error occurs when layouting
+
 elk.layout(inputJSON) // layout the graph
     .then((output) => {
         outputJSON = JSON.stringify(output); // convert elk's json output into a string
