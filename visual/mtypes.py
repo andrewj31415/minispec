@@ -84,7 +84,7 @@ Note: only boolean unary operations return booleans. Reduction operators return 
 '''
 
 class MType(type):
-    ''' The type of a minispec type '''
+    ''' The type of a minispec type. Instances are minispec types. '''
     def __str__(self):
         ''' This method is invoked by str(Integer), etc. Used for nice printing of type classes.
         Returns self._name if _name is defined as a class variable, otherwise returns what
@@ -107,7 +107,7 @@ class MType(type):
         return self.sameType(other) # remove typedef synonyms before comparing
 
 class MLiteral(metaclass=MType):
-    ''' A minispec type '''
+    ''' A minispec type. Instances are minispec literals. '''
     _constructor = None
     def __init__(self):
         raise Exception("Not implemented")
@@ -642,8 +642,9 @@ def Vector(k: 'int', typeValue: 'MLiteral'):
     return VectorType
 
 def Maybe(mtype: 'MType'):
+    ''' mtype is the type of the Maybe minispec type '''
     class MaybeType(MLiteral):
-        '''value is Valid or Invalid'''
+        '''value is the value if valid, None if invalid'''
         _name = "Maybe#(" + str(mtype) + ")"
         _constructor = Maybe
         _mtype = mtype
@@ -652,11 +653,13 @@ def Maybe(mtype: 'MType'):
                 self.isValid = False
             else:
                 self.isValid = True
-                assert value.__class__ == mtype, "Type of value does not match type of maybe"
+                #assert value.__class__ == mtype, "Type of value does not match type of maybe" #TODO incorporate any types
                 self.value = value
         @classmethod
         def sameType(self, other):
             return self._mtype == other._mtype
+        def Invalid(self):
+            return MaybeType()
         def __str__(self):
             if not self.isValid:
                 return "Invalid"
@@ -672,9 +675,10 @@ def Maybe(mtype: 'MType'):
 
 class DontCareLiteral(MLiteral):
     '''only one kind, "?" '''
-    _name = '?'
     def __init__(self):
         pass
+    def __str__(self):
+        return '?'
     # Returns itself for all binary operations
     def pow(self, other):
         return self

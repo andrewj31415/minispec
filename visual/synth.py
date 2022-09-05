@@ -225,6 +225,7 @@ class Scope:
         Returns a tuple (ctx/Node, paramMappings) where paramMappings is a dictionary
         str -> int that shows how the stored parameters were mapped to match parameters to
         the stored parameters.'''
+        assert varName.__class__ == str, f"varName must be a string, not {varName} which is {varName.__class__}"
         if parameters == None:
             parameters = []
         visitor.globalsHandler.lastParameterLookup = parameters
@@ -270,6 +271,18 @@ class MissingVariableException(Exception):
     Can be caught if a variable might be a bluespec builtin. '''
     pass
 
+class BluespecBuiltinFunction(Exception):
+    ''' Thrown when a bluespec builtin function is found.
+    self.functionComponent is the hardware corresponding to the function.
+    self.evaluate is a function that takes input literals to whatever the corresponding function would output.
+        so Valid is a builtin function that can be foled if a literal is fed in '''
+    def __init__(self, functionComponent, evaluate):
+        ''' self.functionComponent is the hardware corresponding to the function.
+        self.evaluate is a function that takes input literals to whatever the corresponding function would output.
+        so Valid is a builtin function that can be foled if a literal is fed in '''
+        self.functionComponent = functionComponent
+        self.evalute = evaluate
+
 class BuiltInScope(Scope):
     '''The minispec built-ins. Behaves slightly differently from other scopes.'''
     def __init__(self, globalsHandler: 'GlobalsHandler', name: 'str', parents: 'list[Scope]'):
@@ -302,7 +315,28 @@ class BuiltInScope(Scope):
         if varName == 'False':
             assert len(parameters) == 0, "A boolean literal has no parameters"
             return Bool(False)
-        raise MissingVariableException(f"Couldn't find variable {varName} with parameters {parameters}")
+        if varName == 'Invalid':
+            assert len(parameters) == 0, "An invalid literal has no parameters"
+            return Maybe(Any).Invalid
+        if varName == 'Valid':
+            assert len(parameters) == 0, "An valid literal has no parameters"
+            functionComp = Function('Valid', [], [Node()])
+            def valid(mliteral: 'MLiteral'):
+                return Maybe(mliteral.__class__)(mliteral)
+            raise BluespecBuiltinFunction(functionComp, valid)
+        if varName == 'fromMaybe':
+            assert len(parameters) == 0, "fromMaybe has no parameters"
+            functionComp = Function('fromMaybe', [], [Node(), Node()])
+            def fromMaybe(default: 'MLiteral', mliteral: 'MLiteral'):
+                if mliteral.isValid:
+                    return mliteral.value
+                return default
+            raise BluespecBuiltinFunction(functionComp, fromMaybe)
+        if varName == 'Maybe':
+            assert len(parameters) == 1, "A maybe type has exactly one parameter"
+            mtype = parameters[0]
+            return Maybe(mtype)
+        raise MissingVariableException(f"Couldn't find variable {varName} with parameters {parameters}.")
 
 #type annotation for context objects.
 ctxType = ' | '.join([ctxType for ctxType in dir(build.MinispecPythonParser.MinispecPythonParser) if ctxType[-7:] == "Context"][:-3])
@@ -1500,6 +1534,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
         # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
         functionToCall = ctx.fcn.var.getText()
+        functionArgs = []
+        allLiterals = True # true if all function args are literals, false otherwise. used for evaluating built-ins.
+        for i in range(len(ctx.expression())):
+            expr = ctx.expression(i)
+            exprValue = self.visit(expr) # visit the expression and get the corresponding node
+            functionArgs.append(exprValue)
+            if not isMLiteral(exprValue):
+                allLiterals = False
         params: 'list[int]' = []
         if ctx.fcn.params():
             for param in ctx.fcn.params().param():
@@ -1514,17 +1556,23 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.lastParameterLookup = params
             funcComponent = self.visit(functionDef)  #synthesize the function internals
         except MissingVariableException as e:
-            # we have a bluespec built-in function
+            # we have an unknown bluespec built-in function
             functionName = functionToCall
             if len(params) > 0:  #attach parameters to the function name if present
                 functionName += "#(" + ",".join(str(i) for i in params) + ")"
             funcComponent = Function(functionName, [], [Node() for i in range(len(ctx.expression()))])
+        except BluespecBuiltinFunction as e:
+            functionComponent, evaluate = e.functionComponent, e.evalute
+            if allLiterals:
+                return evaluate(*functionArgs)
+            funcComponent = functionComponent
         # hook up the funcComponent to the arguments passed in.
-        for i in range(len(ctx.expression())):
-            expr = ctx.expression()[i]
-            exprNode = self.visit(expr) # visit the expression and get the corresponding node
-            if isMLiteral(exprNode):
-                exprNode = exprNode.getHardware(self.globalsHandler)
+        for i in range(len(functionArgs)):
+            exprValue = functionArgs[i]
+            if isMLiteral(exprValue):
+                exprNode = exprValue.getHardware(self.globalsHandler)
+            else:
+                exprNode = exprValue
             funcInputNode = funcComponent.inputs[i]
             wireIn = Wire(exprNode, funcInputNode)
             self.globalsHandler.currentComponent.addChild(wireIn)

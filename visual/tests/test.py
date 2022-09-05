@@ -627,6 +627,25 @@ def _():
     expected = Function('combine#(1,1,1,2)', [inp1, ind, inp2, inp3, inpset, r, pack, Wire(a, inp1.inputs[0]), Wire(b, ind.inputs[0]), Wire(inp1.output, pack.inputs[0]), Wire(ind.output, pack.inputs[1]), Wire(pack.output, inpset.inputs[0]), Wire(pack.output, inp2.inputs[0]), Wire(b, inp3.inputs[0]), Wire(inp2.output, r.inputs[0]), Wire(inp3.output, r.inputs[1]), Wire(r.output, inpset.inputs[1]), Wire(inpset.output, o)], [a, b], o)
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+describe('''Maybe Types''')
+
+@it('''Handles maybe input to module''')
+def _():
+    text = pull('maybe')
+
+    reg = Register('Reg#(Bit#(8))')
+    setCount, getCount = Node(), Node()
+    fm = Function('fromMaybe', [], [Node(), Node()]);
+    u, one = Function('?'), Function('1')
+    mux = Mux([Node(), Node()])
+    add = Function('+', [], [Node(), Node()])
+    isv = Function('isValid', [], [Node()])
+    m = Module('SettableCounter', [reg, fm, u, one, mux, add, isv, Wire(setCount, isv.inputs[0]), Wire(isv.output, mux.control), Wire(setCount, fm.inputs[1]), Wire(u.output, fm.inputs[0]), Wire(fm.output, mux.inputs[0]), Wire(reg.value, add.inputs[0]), Wire(one.output, add.inputs[1]), Wire(add.output, mux.inputs[1]), Wire(mux.output, reg.input), Wire(reg.value, getCount)], {'setCount': setCount}, {'getCount': getCount})
+
+    output = synth.parseAndSynth(text, 'SettableCounter')
+    expected = m
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+  
 
 
 #run all the tests
