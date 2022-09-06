@@ -14,7 +14,9 @@ minispecCode = minispecCodeFile.read_text()
 
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Outer')
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'alu')
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'BitonicSorter8')
+
+print('done synthesizing!')
 
 # from hardware import *
 # synthesizedComponent = f

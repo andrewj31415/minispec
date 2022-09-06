@@ -111,6 +111,15 @@ class Node:
     def isNode(self):
         return True
 
+def isMLiteral(value):
+    '''Returns whether or not value is an MLiteral'''
+    return issubclass(value.__class__, MLiteral)
+def isNode(value):
+    '''Returns whether or not value is a Node'''
+    return value.__class__ == Node
+def isNodeOrMLiteral(value):
+    '''Returns whether or not value is a literal or a node.'''
+    return isMLiteral(value) or isNode(value)
 
 class Component:
     '''
@@ -699,8 +708,8 @@ class Wire(Component):
     __slots__ = "_src", "_dst"
     def __init__(self, src: 'Node', dst: 'Node'):
         Component.__init__(self)
-        assert src.isNode(), "Must be a node"
-        assert dst.isNode(), "Must be a node"
+        assert isNode(src), f"Must be a node, not {src} which is {src.__class__}"
+        assert isNode(dst), f"Must be a node, not {dst} which is {dst.__class__}"
         #assert src is not dst, "wire must have distinct ends"  #TODO uncomment this line
         self._src = src
         self._dst = dst

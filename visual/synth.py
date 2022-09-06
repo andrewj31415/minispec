@@ -217,14 +217,11 @@ class Scope:
             elif visitor.visit(storedParams[i]) != intValues[i]:
                 return None
         return d
-    def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node':
+    def get(self, visitor, varName: 'str', parameters: 'list[int]' = None) -> 'ctxType|Node|None':
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
         probably a ctx object (functionDef) or a node object (variable value).
-        Returns an object.
-        Returns a tuple (ctx/Node, paramMappings) where paramMappings is a dictionary
-        str -> int that shows how the stored parameters were mapped to match parameters to
-        the stored parameters.'''
+        Returns None for an uninitialized variable.'''
         assert varName.__class__ == str, f"varName must be a string, not {varName} which is {varName.__class__}"
         if parameters == None:
             parameters = []
@@ -306,7 +303,7 @@ class BuiltInScope(Scope):
             return Vector(k, typeValue)
         if varName == 'Bool':
             return Bool
-        if varName == 'Reg':
+        if varName == 'Reg' or varName == 'RegU':
             assert len(parameters) == 1, "A register takes exactly one parameter"
             return BuiltinRegisterCtx(parameters[0])
         if varName == 'True':
@@ -317,7 +314,7 @@ class BuiltInScope(Scope):
             return Bool(False)
         if varName == 'Invalid':
             assert len(parameters) == 0, "An invalid literal has no parameters"
-            return Maybe(Any).Invalid
+            return Invalid(Any)
         if varName == 'Valid':
             assert len(parameters) == 0, "An valid literal has no parameters"
             functionComp = Function('Valid', [], [Node()])
@@ -579,16 +576,6 @@ visitForStmt: No returns, mutates existing hardware
 
 '''
 
-def isMLiteral(value):
-    '''Returns whether or not value is an MLiteral'''
-    return issubclass(value.__class__, MLiteral)
-def isNode(value):
-    '''Returns whether or not value is a Node'''
-    return value.__class__ == Node
-def isNodeOrMLiteral(value):
-    '''Returns whether or not value is a literal or a node.'''
-    return isMLiteral(value) or isNode(value)
-
 class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     '''Each method returns a component (module/function/etc.)
     nodes of type exprPrimary return the node corresponding to their value.
@@ -713,19 +700,25 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             varName = varInit.var.getText()
             if (varInit.rhs):
                 value = self.visit(varInit.rhs)
-                if value.__class__ == Node:
-                    value.setMType(typeValue)
-                self.collectedScopes.currentScope.set(value, varName)
+            else:
+                value = None
+            if value.__class__ == Node:
+                value.setMType(typeValue)
+            print('setting a value', value, 'into varName', varName)
+            print('in scope')
+            print(self.collectedScopes.currentScope)
+            self.collectedScopes.currentScope.set(value, varName)
 
     def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
         '''A let binding declares a variable or a concatenation of variables and optionally assigns
         them to the given expression node ("rhs").'''
         if not ctx.rhs:
-            return  #if there is no assignment, we can skip this line
-        rhsNode = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
+            rhsValue = None
+        else:
+            rhsValue = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
         if len(ctx.lowerCaseIdentifier()) == 1:
             varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-            self.collectedScopes.currentScope.set(rhsNode, varName)
+            self.collectedScopes.currentScope.set(rhsValue, varName)
         else:
             raise Exception("Not Implemented")
         
@@ -1128,6 +1121,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
         valueFound = self.collectedScopes.currentScope.get(self, ctx.getText())
+        if valueFound == None:
+            # value has not yet been initialized
+            return ("", tuple(), ctx.getText())
         if isMLiteral(valueFound):
             valueFound = valueFound.getHardware(self.globalsHandler)
         return ("", (valueFound,), ctx.getText())
@@ -1648,6 +1644,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]'):
         ''' Given if/else scopes, the original scope, and a condition node, copies the variables set in the 
         if and else scopes back into the original scope with muxes controlled by the condition node. '''
+        print('copying back with scopes')
+        print(originalScope)
+        for scope in childScopes:
+            print(scope)
         self.collectedScopes.currentScope = originalScope
         varsToBind = set()
         for scope in childScopes:
@@ -1666,6 +1666,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             originalScope.set(muxComponent.output, var)
 
     def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
+        print('trying if')
+        print(ctx.getText())
         condition = self.visit(ctx.expression())
         if isMLiteral(condition):
             # we select the appropriate branch

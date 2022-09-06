@@ -655,11 +655,6 @@ def Maybe(mtype: 'MType'):
                 self.isValid = True
                 #assert value.__class__ == mtype, "Type of value does not match type of maybe" #TODO incorporate any types
                 self.value = value
-        @classmethod
-        def sameType(self, other):
-            return self._mtype == other._mtype
-        def Invalid(self):
-            return MaybeType()
         def __str__(self):
             if not self.isValid:
                 return "Invalid"
@@ -672,6 +667,9 @@ def Maybe(mtype: 'MType'):
             return self.value == other.value
 
     return MaybeType
+
+def Invalid(mtype: 'MType'):
+    return Maybe(mtype)()
 
 class DontCareLiteral(MLiteral):
     '''only one kind, "?" '''
