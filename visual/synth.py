@@ -428,13 +428,11 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         self.globalsHandler.currentScope.setPermanent(ctx, functionName, params)
         functionScope = Scope(self.globalsHandler, functionName, [self.globalsHandler.currentScope])
         ctx.scope = functionScope
-        self.globalsHandler.currentScope = functionScope
-        self.globalsHandler.allScopes.append(functionScope)
+        self.globalsHandler.enterScope(functionScope)
 
     def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''We have defined a function, so we step back into the parent scope.'''
-        assert len(self.globalsHandler.currentScope.parents) == 1, "function can only have parent scope"
-        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
+        self.globalsHandler.exitScope()
 
     def enterModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We are defining a module. We need to give this module a corresponding scope.'''
@@ -455,39 +453,33 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         self.globalsHandler.currentScope.setPermanent(ctx, moduleName, params)
         moduleScope = Scope(self.globalsHandler, moduleName, [self.globalsHandler.currentScope])
         ctx.scope = moduleScope
-        self.globalsHandler.currentScope = moduleScope
-        self.globalsHandler.allScopes.append(moduleScope)
+        self.globalsHandler.enterScope(moduleScope)
 
     def exitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We have defined a module, so we step back into the parent scope.'''
-        assert len(self.globalsHandler.currentScope.parents) == 1, "module can only have parent scope"
-        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
+        self.globalsHandler.exitScope()
 
     def enterRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
         '''Rules get a scope'''
         ruleName = ctx.name.getText()
         ruleScope = Scope(self.globalsHandler, ruleName, [self.globalsHandler.currentScope])
         ctx.scope = ruleScope
-        self.globalsHandler.currentScope = ruleScope
-        self.globalsHandler.allScopes.append(ruleScope)
+        self.globalsHandler.enterScope(ruleScope)
 
     def exitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
         '''We have defined a rule, so we step back into the parent scope.'''
-        assert len(self.globalsHandler.currentScope.parents) == 1, "rule can only have parent scope"
-        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
+        self.globalsHandler.exitScope()
 
     def enterMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
         '''Methods get a scope'''
         methodName = ctx.name.getText()
         methodScope = Scope(self.globalsHandler, methodName, [self.globalsHandler.currentScope])
         ctx.scope = methodScope
-        self.globalsHandler.currentScope = methodScope
-        self.globalsHandler.allScopes.append(methodScope)
+        self.globalsHandler.enterScope(methodScope)
 
     def exitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
         '''We have defined a method, so we step back into the parent scope.'''
-        assert len(self.globalsHandler.currentScope.parents) == 1, "method can only have parent scope"
-        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
+        self.globalsHandler.exitScope()
 
     def enterVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
         '''We have found a named constant. Log it for later evaluation (since it may depend on other named constants, etc.)'''
