@@ -704,9 +704,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value = None
             if value.__class__ == Node:
                 value.setMType(typeValue)
-            print('setting a value', value, 'into varName', varName)
-            print('in scope')
-            print(self.collectedScopes.currentScope)
             self.collectedScopes.currentScope.set(value, varName)
 
     def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
@@ -741,6 +738,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # log the current scope
         previousScope = self.collectedScopes.currentScope
         self.collectedScopes.currentScope = moduleScope
+
+        originalModuleScope = self.collectedScopes.currentScope
+        previousNonregisters = originalModuleScope.nonregisterSubmodules # save information in case the submodule is recursive
+        previousRegisters = originalModuleScope.registers
+        originalModuleScope.nonregisterSubmodules = {}
+        originalModuleScope.registers = {}
 
         previousTemporaryValues = moduleScope.temporaryValues  # in case any submodules are recursive and change the current temporary values
         moduleScope.clearTemporaryValues() # clear the temporary values
@@ -857,6 +860,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.collectedScopes.currentScope = previousScope
 
+        originalModuleScope.nonregisterSubmodules = previousNonregisters # restore information
+        originalModuleScope.registers = previousRegisters
+
         return moduleComponent
 
     def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
@@ -875,18 +881,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleDef <-> functionDef
             submoduleDecl <-> callExpr
          '''
-        originalModuleScope = self.collectedScopes.currentScope
         moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
 
-        previousNonregisters = originalModuleScope.nonregisterSubmodules # save information in case the submodule is recursive
-        previousRegisters = originalModuleScope.registers
-        originalModuleScope.nonregisterSubmodules = {}
-        originalModuleScope.registers = {}
+        originalModuleScope = self.collectedScopes.currentScope
 
         moduleComponent = self.visit(moduleDef)  #synthesize the module
-
-        originalModuleScope.nonregisterSubmodules = previousNonregisters # restore information
-        originalModuleScope.registers = previousRegisters
 
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
@@ -1644,10 +1643,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]'):
         ''' Given if/else scopes, the original scope, and a condition node, copies the variables set in the 
         if and else scopes back into the original scope with muxes controlled by the condition node. '''
-        print('copying back with scopes')
-        print(originalScope)
-        for scope in childScopes:
-            print(scope)
         self.collectedScopes.currentScope = originalScope
         varsToBind = set()
         for scope in childScopes:
@@ -1666,8 +1661,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             originalScope.set(muxComponent.output, var)
 
     def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
-        print('trying if')
-        print(ctx.getText())
         condition = self.visit(ctx.expression())
         if isMLiteral(condition):
             # we select the appropriate branch
