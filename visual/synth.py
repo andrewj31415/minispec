@@ -156,6 +156,26 @@ Note:
 
 '''
 
+class TemporaryScope:
+    ''' Stores temporary state used in synthesis. '''
+    def __init__(self):
+        self.temporaryValues = {}
+        
+        ''' dictionary of registers, only used in a module, str is the variable name that points
+        to the register in the module scope  so that:
+            self.registers[someRegisterName] = self.get(self, someRegisterName) '''
+        self.registers: 'dict[str, Register]' = {}
+        self.nonregisterSubmodules: 'dict[str, Module]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
+        ''' dictionary of inputs, returns the default value ctx if there is one, or None otherwise.
+        input string has the form "inner.enable" for input enable of submodule inner. '''
+        self.inputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
+        # temporary version of inputsWithDefault used inside submodules. only stores the name of the input ("enable",
+        # not "inner.enable") since the submodule does not have access to this information.
+        self.currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
+        # values to assign to each input. To assign True to inner.enable, we set .submoduleInputValues["inner.enable"] = True.
+        # all None values must be replaced by the rules, so that all inputs are assigned values.
+        self.submoduleInputValues: 'dict[tuple[Module|Register, str], Node|MLiteral|None]' = {}
+
 class Scope:
     '''
     name: for convenience only.
@@ -175,24 +195,9 @@ class Scope:
         self.parents = parents.copy()
         self.name = name
         self.permanentValues = {}
-        self.temporaryValues = {}
-        
-        ''' dictionary of registers, only used in a module, str is the variable name that points
-        to the register in the module scope  so that:
-            self.registers[someRegisterName] = self.get(self, someRegisterName) '''
-        self.registers: 'dict[str, Register]' = {}
-        self.nonregisterSubmodules: 'dict[str, Module]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
-        ''' dictionary of inputs, returns the default value ctx if there is one, or None otherwise.
-        input string has the form "inner.enable" for input enable of submodule inner. '''
-        self.inputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
-        # temporary version of inputsWithDefault used inside submodules. only stores the name of the input ("enable",
-        # not "inner.enable") since the submodule does not have access to this information.
-        self.currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
-        # values to assign to each input. To assign True to inner.enable, we set .submoduleInputValues["inner.enable"] = True.
-        # all None values must be replaced by the rules, so that all inputs are assigned values.
-        self.submoduleInputValues: 'dict[tuple[Module|Register, str], Node|MLiteral|None]' = {}
+        self.temporaryScope = TemporaryScope()
     def __str__(self):
-        if len(self.permanentValues) == 0 and len(self.temporaryValues) == 0:
+        if len(self.permanentValues) == 0 and len(self.temporaryScope.temporaryValues) == 0:
             return "Scope " + self.name
         output = "Scope " + self.name + " with parents " + ", ".join([parent.name for parent in self.parents]) + " with permanent values"
         for varName in self.permanentValues:
@@ -200,16 +205,12 @@ class Scope:
             for ex in self.permanentValues[varName]:
                 output += "\n    " + "params: " + str(ex[0]) + " and value: " + str(ex[1].__class__)
         output += "\nand temporary values"
-        for varName in self.temporaryValues:
-            output += "\n  " + varName + ": " + str(self.temporaryValues[varName])
+        for varName in self.temporaryScope.temporaryValues:
+            output += "\n  " + varName + ": " + str(self.temporaryScope.temporaryValues[varName])
         return output
     def clearTemporaryValues(self):
         '''clears temporary values used in synthesis. should be called after synthesizing a function/module.'''
-        self.temporaryValues = {}
-    def enterChildScope(self, scope):
-        pass
-    def exitChildScope(self, scope):
-        pass
+        self.temporaryScope.temporaryValues = {}
     def matchParams(visitor, intValues: 'list[int]', storedParams: 'list[ctxType|str]'):
         '''returns a dictionary mapping str -> int if intValues can fit storedParams.
         returns None otherwise.'''
@@ -231,8 +232,8 @@ class Scope:
         if parameters == None:
             parameters = []
         visitor.globalsHandler.lastParameterLookup = parameters
-        if varName in self.temporaryValues:
-            return self.temporaryValues[varName]
+        if varName in self.temporaryScope.temporaryValues:
+            return self.temporaryScope.temporaryValues[varName]
         if varName in self.permanentValues:
             for storedParams, ctx in self.permanentValues[varName][::-1]: #iterate backwards through the stored values, looking for the most recent match.
                 d = Scope.matchParams(visitor, parameters, storedParams)
@@ -251,7 +252,7 @@ class Scope:
         Currently ignores parameters.'''
         if parameters == None:
             parameters = []
-        self.temporaryValues[varName] = value
+        self.temporaryScope.temporaryValues[varName] = value
     def setPermanent(self, value, varName: 'str', parameters: 'list[ctxType|str]' = None):
         '''Sets the given name/parameters to the given value in permanent storage.
         Overrules but does not overwrite previous values with the same name.
@@ -291,8 +292,8 @@ class BuiltInScope(Scope):
         self.globalsHandler = globalsHandler
         self.parents = parents.copy()
         self.name = name
-        self.permanentValues = {}
-        self.temporaryValues = {}
+        # self.permanentValues = {}
+        # self.temporaryValues = {}
     def get(self, visitor, varName: 'str', parameters: 'list[int|MType]' = None) -> 'ctxType|Node':
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
@@ -374,6 +375,14 @@ class GlobalsHandler:
     def isGlobalsHandler(self):
         ''' Used by assert statements '''
         return True
+    def enterScope(self, scope: 'Scope'):
+        ''' Saves previous scope and any corresponding temporary state.
+        Sets up given scope with empty temporary state and enters it. '''
+        pass
+    def exitScope(self, scope: 'Scope'):
+        ''' Restores previous scope and any corresponding temporary state.
+        Discards current scope and any corresponding temporary state. '''
+        pass
 
 
 class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
@@ -733,12 +742,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentScope = moduleScope
 
         originalModuleScope = self.globalsHandler.currentScope
-        previousNonregisters = originalModuleScope.nonregisterSubmodules # save information in case the submodule is recursive
-        previousRegisters = originalModuleScope.registers
-        originalModuleScope.nonregisterSubmodules = {}
-        originalModuleScope.registers = {}
+        previousNonregisters = originalModuleScope.temporaryScope.nonregisterSubmodules # save information in case the submodule is recursive
+        previousRegisters = originalModuleScope.temporaryScope.registers
+        originalModuleScope.temporaryScope.nonregisterSubmodules = {}
+        originalModuleScope.temporaryScope.registers = {}
 
-        previousTemporaryValues = moduleScope.temporaryValues  # in case any submodules are recursive and change the current temporary values
+        previousTemporaryValues = moduleScope.temporaryScope.temporaryValues  # in case any submodules are recursive and change the current temporary values
         moduleScope.clearTemporaryValues() # clear the temporary values
         
         #bind any parameters in the module scope
@@ -778,32 +787,32 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # synthesize inputs, submodules, methods, and rules, in that order
 
         for inputDef in inputDefs:
-            oldCurrentInputs = moduleScope.currentInputsWithDefault
-            moduleScope.currentInputsWithDefault = {}
+            oldCurrentInputs = moduleScope.temporaryScope.currentInputsWithDefault
+            moduleScope.temporaryScope.currentInputsWithDefault = {}
             self.visit(inputDef)
-            for inputName in moduleScope.currentInputsWithDefault:
-                defaultValCtxOrNone = moduleScope.currentInputsWithDefault[inputName]
+            for inputName in moduleScope.temporaryScope.currentInputsWithDefault:
+                defaultValCtxOrNone = moduleScope.temporaryScope.currentInputsWithDefault[inputName]
                 # copy any inputs into the parent scope, so that any parent module knows about the inputs
-                previousScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
-            moduleScope.currentInputsWithDefault = oldCurrentInputs
+                previousScope.temporaryScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
+            moduleScope.temporaryScope.currentInputsWithDefault = oldCurrentInputs
         for submoduleDecl in submoduleDecls:
             self.visit(submoduleDecl)
             # save submodule inputs with default values
             submoduleName = submoduleDecl.name.getText()
-            for inputName in moduleScope.currentInputsWithDefault:
-                defaultExprCtx = moduleScope.currentInputsWithDefault[inputName]
-                moduleScope.inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
-            moduleScope.currentInputsWithDefault = {}
+            for inputName in moduleScope.temporaryScope.currentInputsWithDefault:
+                defaultExprCtx = moduleScope.temporaryScope.currentInputsWithDefault[inputName]
+                moduleScope.temporaryScope.inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
+            moduleScope.temporaryScope.currentInputsWithDefault = {}
         for methodDef in methodDefs:
             if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
                 self.visit(methodDef)
         # evaluate default inputs
-        for submoduleAndInputName in moduleScope.inputsWithDefault:
-            defaultCtxOrNone = moduleScope.inputsWithDefault[submoduleAndInputName]
+        for submoduleAndInputName in moduleScope.temporaryScope.inputsWithDefault:
+            defaultCtxOrNone = moduleScope.temporaryScope.inputsWithDefault[submoduleAndInputName]
             if defaultCtxOrNone:
-                moduleScope.submoduleInputValues[submoduleAndInputName] = self.visit(defaultCtxOrNone)
+                moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName] = self.visit(defaultCtxOrNone)
             else:
-                moduleScope.submoduleInputValues[submoduleAndInputName] = None
+                moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName] = None
 
         for ruleDef in ruleDefs:
             self.visit(ruleDef)
@@ -837,24 +846,24 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         but this should not be much more difficult since the only issue is not making any default assignments until all modules which may assign
         inputs have made their assignments (so, default assignments are made in the module in which the shared module is declared).
         '''
-        for submoduleAndInputName in moduleScope.submoduleInputValues:
-            value = moduleScope.submoduleInputValues[submoduleAndInputName]
+        for submoduleAndInputName in moduleScope.temporaryScope.submoduleInputValues:
+            value = moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName]
             assert value != None, "All submodule inputs must be assigned"
             if isMLiteral(value):
                 value = value.getHardware(self.globalsHandler)
             assert isNode(value), "value must be hardware in order to wire in to input node"
             submoduleName, inputName = submoduleAndInputName.split('.')
-            submoduleComponent: 'Module' = moduleScope.nonregisterSubmodules[submoduleName]
+            submoduleComponent: 'Module' = moduleScope.temporaryScope.nonregisterSubmodules[submoduleName]
             inputNode = submoduleComponent.inputs[inputName]
             wireIn = Wire(value, inputNode)
             self.globalsHandler.currentComponent.addChild(wireIn)
             
-        moduleScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values
+        moduleScope.temporaryScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.currentScope = previousScope
 
-        originalModuleScope.nonregisterSubmodules = previousNonregisters # restore information
-        originalModuleScope.registers = previousRegisters
+        originalModuleScope.temporaryScope.nonregisterSubmodules = previousNonregisters # restore information
+        originalModuleScope.temporaryScope.registers = previousRegisters
 
         return moduleComponent
 
@@ -885,15 +894,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         originalModuleScope.set(moduleComponent, submoduleName)
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
-            originalModuleScope.registers[submoduleName] = moduleComponent
+            originalModuleScope.temporaryScope.registers[submoduleName] = moduleComponent
         else:
-            originalModuleScope.nonregisterSubmodules[submoduleName] = moduleComponent
+            originalModuleScope.temporaryScope.nonregisterSubmodules[submoduleName] = moduleComponent
 
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
         Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').) '''
         inputName = ctx.name.getText()
-        self.globalsHandler.currentScope.currentInputsWithDefault[inputName] = ctx.defaultVal
+        self.globalsHandler.currentScope.temporaryScope.currentInputsWithDefault[inputName] = ctx.defaultVal
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
         self.globalsHandler.currentScope.set(inputNode, inputName)
@@ -943,8 +952,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
                 methodScope = ctx.scope
                 methodScope.clearTemporaryValues() # clear the temporary values
-                for registerName in self.globalsHandler.currentScope.registers:  # bind the registers
-                    register = self.globalsHandler.currentScope.registers[registerName]
+                for registerName in self.globalsHandler.currentScope.temporaryScope.registers:  # bind the registers
+                    register = self.globalsHandler.currentScope.temporaryScope.registers[registerName]
                     methodScope.set(register.value, registerName)
                 previousScope = self.globalsHandler.currentScope
                 self.globalsHandler.currentScope = methodScope # enter the method scope
@@ -960,11 +969,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ruleScope: 'Scope' = ctx.scope
         moduleScope: 'Scope' = self.globalsHandler.currentScope
         ruleScope.clearTemporaryValues() # clear the temporary values
-        for registerName in moduleScope.registers:
-            register = moduleScope.registers[registerName]
+        for registerName in moduleScope.temporaryScope.registers:
+            register = moduleScope.temporaryScope.registers[registerName]
             ruleScope.set(register.value, registerName)
-        for inputName in moduleScope.submoduleInputValues:  # bind any default inputs
-            value = moduleScope.submoduleInputValues[inputName]
+        for inputName in moduleScope.temporaryScope.submoduleInputValues:  # bind any default inputs
+            value = moduleScope.temporaryScope.submoduleInputValues[inputName]
             # if value != None:  # don't need this since none values should never by referenced
             ruleScope.set(value, inputName)
         self.globalsHandler.currentScope = ruleScope # enter the rule scope
@@ -972,17 +981,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.visit(stmt)
         self.globalsHandler.currentScope = moduleScope
         # wire in the register writes
-        for registerName in moduleScope.registers:
-            register = moduleScope.registers[registerName]
+        for registerName in moduleScope.temporaryScope.registers:
+            register = moduleScope.temporaryScope.registers[registerName]
             value = ruleScope.get(self, registerName)
             if isMLiteral(value):  # convert value to hardware before assigning to register
                 value = value.getHardware(self.globalsHandler)
             setWire = Wire(value, register.input)
             self.globalsHandler.currentComponent.addChild(setWire)
         #find any input assignments
-        for inputName in moduleScope.submoduleInputValues:
+        for inputName in moduleScope.temporaryScope.submoduleInputValues:
             newValue = ruleScope.get(self, inputName)
-            moduleScope.submoduleInputValues[inputName] = newValue
+            moduleScope.temporaryScope.submoduleInputValues[inputName] = newValue
 
     def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''Synthesizes the corresponding function and returns the entire function hardware.
@@ -993,7 +1002,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if len(params) > 0:  #attach parameters to the function name if present
             functionName += "#(" + ",".join(str(i) for i in params) + ")"
         functionScope = ctx.scope
-        previousTemporaryValues = functionScope.temporaryValues  # in case this function is recursive parametric and changes the current temporary values
+        previousTemporaryValues = functionScope.temporaryScope.temporaryValues  # in case this function is recursive parametric and changes the current temporary values
         functionScope.clearTemporaryValues() # clear the temporary values
         # log the current scope
         previousScope = self.globalsHandler.currentScope
@@ -1020,7 +1029,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # synthesize the function internals
         for stmt in ctx.stmt():
             self.visit(stmt)
-        functionScope.temporaryValues = previousTemporaryValues  # in case this function is recursive and changed the current temporary values        
+        functionScope.temporaryScope.temporaryValues = previousTemporaryValues  # in case this function is recursive and changed the current temporary values        
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.currentScope = previousScope
         self.globalsHandler.outputNode = previousOutputNode
@@ -1639,7 +1648,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentScope = originalScope
         varsToBind = set()
         for scope in childScopes:
-            for var in scope.temporaryValues:
+            for var in scope.temporaryScope.temporaryValues:
                 varsToBind.add(var)
         for var in varsToBind:
             values = [ scope.get(self, var) for scope in childScopes ]  # if var doesn't appear in one of these scopes, the lookup will find its original value
