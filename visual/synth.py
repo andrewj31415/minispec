@@ -964,7 +964,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # registers keep their original value unless modified
         ruleScope: 'Scope' = ctx.scope
         moduleScope: 'Scope' = self.globalsHandler.currentScope
-        ruleScope.clearTemporaryValues() # clear the temporary values
+        self.globalsHandler.enterScope(ruleScope)
         for registerName in moduleScope.temporaryScope.registers:
             register = moduleScope.temporaryScope.registers[registerName]
             ruleScope.set(register.value, registerName)
@@ -972,10 +972,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             value = moduleScope.temporaryScope.submoduleInputValues[inputName]
             # if value != None:  # don't need this since none values should never by referenced
             ruleScope.set(value, inputName)
-        self.globalsHandler.currentScope = ruleScope # enter the rule scope
         for stmt in ctx.stmt():
             self.visit(stmt)
-        self.globalsHandler.currentScope = moduleScope
         # wire in the register writes
         for registerName in moduleScope.temporaryScope.registers:
             register = moduleScope.temporaryScope.registers[registerName]
@@ -988,6 +986,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for inputName in moduleScope.temporaryScope.submoduleInputValues:
             newValue = ruleScope.get(self, inputName)
             moduleScope.temporaryScope.submoduleInputValues[inputName] = newValue
+        self.globalsHandler.exitScope()
 
     def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''Synthesizes the corresponding function and returns the entire function hardware.
