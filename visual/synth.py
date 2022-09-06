@@ -377,7 +377,8 @@ class GlobalsHandler:
         a function call. Should be set whenever calling a function. Used to determine how to name
         the function in the corresponding component.'''
         self.outputNode = None  # the output node to which a return statement should go, used in functions and methods
-        
+        #TODO move outputNode to temporary scope
+
         self.allScopes: 'list[Scope]' = []
         self.currentScope: 'Scope' = None
 
@@ -882,12 +883,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
          '''
         moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
 
-        originalModuleScope = self.globalsHandler.currentScope
-
         moduleComponent = self.visit(moduleDef)  #synthesize the module
 
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
+        originalModuleScope = self.globalsHandler.currentScope
         originalModuleScope.set(moduleComponent, submoduleName)
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
@@ -952,11 +952,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 for registerName in self.globalsHandler.currentScope.temporaryScope.registers:  # bind the registers
                     register = self.globalsHandler.currentScope.temporaryScope.registers[registerName]
                     methodScope.set(register.value, registerName)
-                previousScope = self.globalsHandler.currentScope
-                self.globalsHandler.currentScope = methodScope # enter the method scope
+                self.globalsHandler.enterScope(methodScope)
                 for stmt in ctx.stmt():  # evaluate the method
                     self.visit(stmt)
-                self.globalsHandler.currentScope = previousScope
+                self.globalsHandler.exitScope()
                 self.globalsHandler.outputNode = None  # methods can't occur inside a function, so there is no need to remember any previous output node.
         else:
             raise Exception("Not implemented")
@@ -999,11 +998,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if len(params) > 0:  #attach parameters to the function name if present
             functionName += "#(" + ",".join(str(i) for i in params) + ")"
         functionScope = ctx.scope
-        previousTemporaryValues = functionScope.temporaryScope.temporaryValues  # in case this function is recursive parametric and changes the current temporary values
-        functionScope.clearTemporaryValues() # clear the temporary values
-        # log the current scope
-        previousScope = self.globalsHandler.currentScope
-        self.globalsHandler.currentScope = functionScope
+        self.globalsHandler.enterScope(functionScope)
+        
         #bind any parameters in the function scope
         bindings = self.globalsHandler.parameterBindings
         for var in bindings:  
@@ -1025,10 +1021,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = funcComponent
         # synthesize the function internals
         for stmt in ctx.stmt():
-            self.visit(stmt)
-        functionScope.temporaryScope.temporaryValues = previousTemporaryValues  # in case this function is recursive and changed the current temporary values        
-        self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
-        self.globalsHandler.currentScope = previousScope
+            self.visit(stmt)      
+         
+        self.globalsHandler.exitScope()
+        self.globalsHandler.currentComponent = previousComponent #reset the current component
         self.globalsHandler.outputNode = previousOutputNode
         return funcComponent
 
@@ -1627,8 +1623,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope])
         elseScope = Scope(self.globalsHandler, "elseScope", [self.globalsHandler.currentScope])
-        self.globalsHandler.allScopes.append(ifScope)
-        self.globalsHandler.allScopes.append(elseScope)
         originalScope = self.globalsHandler.currentScope
 
         self.globalsHandler.currentScope = ifScope
@@ -1674,8 +1668,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def doCaseStmtStep(self, expr: 'Node|MLiteral', expri: 'list', index: 'int', defaultItem: 'None|build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext') -> None:
         ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope])
         elseScope = Scope(self.globalsHandler, "elseScope", [self.globalsHandler.currentScope])
-        self.globalsHandler.allScopes.append(ifScope)
-        self.globalsHandler.allScopes.append(elseScope)
         originalScope = self.globalsHandler.currentScope
 
         exprToMatch = expri[index][0]
@@ -1812,18 +1804,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             scopes = []
             for i in range(len(expri) + (0 if coversAllCases else 1)):
                 childScope = Scope(self.globalsHandler, "childScope"+str(i), [self.globalsHandler.currentScope])
-                self.globalsHandler.allScopes.append(childScope)
                 scopes.append(childScope)
             originalScope = self.globalsHandler.currentScope
 
             for i in range(len(expri)):
                 scope = scopes[i]
                 exprToMatch, exprStmt = expri[i]
-                self.globalsHandler.currentScope = scope
+                self.globalsHandler.enterScope(scope)
                 self.visit(exprStmt)
             if hasDefault and numLiteralsPresent < numLiteralsNeeded:  # run the default scope in the last scope
                 scope = scopes[-1]
-                self.globalsHandler.currentScope = scope
+                self.globalsHandler.enterScope(scope)
                 self.visit(ctx.caseStmtDefaultItem().stmt())
             
             self.copyBackIfStmt(originalScope, expr, scopes)
