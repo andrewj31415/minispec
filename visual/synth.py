@@ -196,6 +196,14 @@ class Scope:
         self.name = name
         self.permanentValues = {}
         self.temporaryScope = TemporaryScope()
+        self.temporaryScopeStack = [] # stores old temporary scopes (but not the current self.temporaryScope)
+    def popTemporaryScope(self):
+        ''' Restores the previous temporary scope. Discards the current temporary scope. '''
+        self.temporaryScope = self.temporaryScopeStack.pop()
+    def pushTemporaryScope(self):
+        ''' Creates a new temporary scope and stores the previous temporary scope. '''
+        self.temporaryScopeStack.append(self.temporaryScope)
+        self.temporaryScope = TemporaryScope()
     def __str__(self):
         if len(self.permanentValues) == 0 and len(self.temporaryScope.temporaryValues) == 0:
             return "Scope " + self.name
@@ -372,17 +380,28 @@ class GlobalsHandler:
         
         self.allScopes: 'list[Scope]' = []
         self.currentScope: 'Scope' = None
+
+        self.scopeStack = []
     def isGlobalsHandler(self):
         ''' Used by assert statements '''
         return True
-    def enterScope(self, scope: 'Scope'):
-        ''' Saves previous scope and any corresponding temporary state.
+    def popScope(self):
+        self.currentScope = self.scopeStack.pop()
+    def pushScope(self, scope):
+        self.scopeStack.append(self.currentScope)
+        self.currentScope = scope
+    def enterScope(self, newScope: 'Scope'):
+        ''' Saves previous scope (and if the current scope is the same as the new scope, saves
+        any corresponding temporary state).
         Sets up given scope with empty temporary state and enters it. '''
-        pass
-    def exitScope(self, scope: 'Scope'):
-        ''' Restores previous scope and any corresponding temporary state.
+        newScope.pushTemporaryScope()
+        self.pushScope(newScope)
+    def exitScope(self):
+        ''' Restores previous scope (and if the current scope is the same as the previous scope,
+        restores any corresponding temporary state).
         Discards current scope and any corresponding temporary state. '''
-        pass
+        self.currentScope.popTemporaryScope()
+        self.popScope()
 
 
 class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
