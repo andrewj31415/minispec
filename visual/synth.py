@@ -543,7 +543,16 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         ctx.typeDefValue = None  # will point to the type object after being looked up for the first time,
         # then will be returned again on later lookups.
         self.globalsHandler.currentScope.setPermanent(ctx, ctx.typeId().getText())
-        
+
+    def enterBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
+        beginendScope = Scope(self.globalsHandler, "begin/end", [self.globalsHandler.currentScope])
+        ctx.scope = beginendScope
+        self.globalsHandler.enterScope(beginendScope)
+
+    def exitBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
+        self.globalsHandler.exitScope()
+
+
     def enterForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
         self.globalsHandler.currentScope.setPermanent(None, ctx.initVar.getText())
 
@@ -1631,8 +1640,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Handled in structExpr, should not be visited")
 
     def visitBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
+        beginendScope = ctx.scope
+        beginendScope.parents = [self.globalsHandler.currentScope] # in case we are in a fleeting if/case statement scope
+        self.globalsHandler.enterScope(beginendScope)
         for stmt in ctx.stmt():
             self.visit(stmt)
+        self.globalsHandler.exitScope()
 
     def visitRegWrite(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RegWriteContext):
         '''To assign to a register, we put a wire from the value (rhs) to the register input.'''

@@ -37,12 +37,12 @@ def compare(output: 'Function|Module', expected: 'Function|Module'):
     print('output')
     for child in output.children:
         print(child.__repr__())
-    print(len(output.children))
+    print(len(output.children), len(output.getNodeListRecursive()))
     print()
     print('expected')
     for child in expected.children:
         print(child.__repr__())
-    print(len(expected.children))
+    print(len(expected.children), len(expected.getNodeListRecursive()))
     print()
 
 describe("Function Calls")
@@ -238,6 +238,36 @@ def _():
 
     output = synth.parseAndSynth(text, 'multiplexer1')
     expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly handles variable declared locally in begin/end block''')
+def _():
+    text = pull('if4')
+
+    fin, fo = Node(), Node()
+
+    mux = Mux([Node(), Node()])
+    eq = Function('==', [], [Node(), Node()])
+    cOne, sZero = Function('1'), Function('0')
+    lowBit = Function('[0]', [], [Node()])
+    inv = Function('Invalid')
+    val = Function('Valid', [], [Node()])
+    sftComps = []
+    for i in range(1,32):
+        sftComps.append(Function(f'[{i}]', [], [Node()])) # from input
+    for i in range(31):
+        sftComps.append(Function(f'[{i}]', [], [Node(), Node()])) # collect output
+    sftWires = [Wire(sZero.output, sftComps[31].inputs[0]), Wire(sftComps[61].output, val.inputs[0])]
+    for i in range(0,31):
+        sftWires.append(Wire(fin, sftComps[i].inputs[0]))
+        sftWires.append(Wire(sftComps[i].output, sftComps[i+31].inputs[1]))
+    for i in range(0,30):
+        sftWires.append(Wire(sftComps[i+31].output, sftComps[i+32].inputs[0]))
+
+    computeHalf = Function('computeHalf', [mux, eq, cOne, sZero, lowBit, inv, val] + sftComps + sftWires + [Wire(val.output, mux.inputs[1]), Wire(inv.output, mux.inputs[0]), Wire(mux.output, fo), Wire(lowBit.output, eq.inputs[0]), Wire(cOne.output, eq.inputs[1]), Wire(eq.output, mux.control), Wire(fin, lowBit.inputs[0])], [fin], fo)
+
+    output = synth.parseAndSynth(text, 'computeHalf')
+    expected = computeHalf
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 describe('''Case Statements''')
