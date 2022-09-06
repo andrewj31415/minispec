@@ -992,12 +992,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.outputNode = methodOutput
                 self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
                 methodScope = ctx.scope
-                methodScope.clearTemporaryValues() # clear the temporary values
-                for registerName in self.globalsHandler.currentScope.temporaryScope.registers:  # bind the registers
-                    register = self.globalsHandler.currentScope.temporaryScope.registers[registerName]
+                moduleScope = self.globalsHandler.currentScope
+                self.globalsHandler.enterScope(methodScope)
+                for registerName in moduleScope.temporaryScope.registers:  # bind the registers
+                    register = moduleScope.temporaryScope.registers[registerName]
                     methodScope.setPermanent(None, registerName)
                     methodScope.set(register.value, registerName)
-                self.globalsHandler.enterScope(methodScope)
+                    print('set a register output in scope', methodScope)
                 for stmt in ctx.stmt():  # evaluate the method
                     self.visit(stmt)
                 self.globalsHandler.exitScope()
@@ -1482,6 +1483,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
         '''This is the return expression in a function. We need to put the correct wire
         attaching the right hand side to the output of the function.'''
+        print('returning', ctx.getText())
+        print('from scope', self.globalsHandler.currentScope)
         rhs = self.visit(ctx.expression())  # the node with the value to return
         if isMLiteral(rhs):
             rhs = rhs.getHardware(self.globalsHandler)
