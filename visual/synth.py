@@ -171,6 +171,7 @@ class Scope:
     '''
     def __init__(self, globalsHandler: 'GlobalsHandler', name: 'str', parents: 'list[Scope]'):
         self.globalsHandler = globalsHandler
+        self.globalsHandler.allScopes.append(self)
         self.parents = parents.copy()
         self.name = name
         self.permanentValues = {}
@@ -205,6 +206,10 @@ class Scope:
     def clearTemporaryValues(self):
         '''clears temporary values used in synthesis. should be called after synthesizing a function/module.'''
         self.temporaryValues = {}
+    def enterChildScope(self, scope):
+        pass
+    def exitChildScope(self, scope):
+        pass
     def matchParams(visitor, intValues: 'list[int]', storedParams: 'list[ctxType|str]'):
         '''returns a dictionary mapping str -> int if intValues can fit storedParams.
         returns None otherwise.'''
@@ -363,28 +368,17 @@ class GlobalsHandler:
         a function call. Should be set whenever calling a function. Used to determine how to name
         the function in the corresponding component.'''
         self.outputNode = None  # the output node to which a return statement should go, used in functions and methods
+        
+        self.allScopes: 'list[Scope]' = []
+        self.currentScope: 'Scope' = None
     def isGlobalsHandler(self):
         ''' Used by assert statements '''
         return True
-    
-
-class MinispecStructure:
-    def __init__(self, builtinScope: 'BuiltInScope', startingFile: 'Scope'):
-        '''will hold all created scopes. used for lookups.'''
-        self.allScopes = [builtinScope, startingFile]
-        self.currentScope = startingFile
-    '''def __setattr__(self, __name: str, __value: Any) -> None: #For debugging lookups.
-        if __name == 'lastParameterLookup':
-            for j in __value:
-                print(j.__class__)
-            print(__value.__repr__())
-        self.__dict__[__name] = __value'''
 
 
 class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
-    def __init__(self, globalsHandler: 'GlobalsHandler', collectedScopes: 'MinispecStructure') -> None:
+    def __init__(self, globalsHandler: 'GlobalsHandler') -> None:
         self.globalsHandler = globalsHandler
-        self.collectedScopes = collectedScopes
 
     def enterPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
         '''The entry node to the parse tree.'''
@@ -403,16 +397,16 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
                 else:
                     assert False, "parameters with typeValues are not supported yet"
         #log the function's scope
-        self.collectedScopes.currentScope.setPermanent(ctx, functionName, params)
-        functionScope = Scope(self.globalsHandler, functionName, [self.collectedScopes.currentScope])
+        self.globalsHandler.currentScope.setPermanent(ctx, functionName, params)
+        functionScope = Scope(self.globalsHandler, functionName, [self.globalsHandler.currentScope])
         ctx.scope = functionScope
-        self.collectedScopes.currentScope = functionScope
-        self.collectedScopes.allScopes.append(functionScope)
+        self.globalsHandler.currentScope = functionScope
+        self.globalsHandler.allScopes.append(functionScope)
 
     def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''We have defined a function, so we step back into the parent scope.'''
-        assert len(self.collectedScopes.currentScope.parents) == 1, "function can only have parent scope"
-        self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
+        assert len(self.globalsHandler.currentScope.parents) == 1, "function can only have parent scope"
+        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
 
     def enterModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We are defining a module. We need to give this module a corresponding scope.'''
@@ -430,54 +424,54 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
                 else:
                     assert False, "parameters with typeValues are not supported yet"
         # log the module's scope
-        self.collectedScopes.currentScope.setPermanent(ctx, moduleName, params)
-        moduleScope = Scope(self.globalsHandler, moduleName, [self.collectedScopes.currentScope])
+        self.globalsHandler.currentScope.setPermanent(ctx, moduleName, params)
+        moduleScope = Scope(self.globalsHandler, moduleName, [self.globalsHandler.currentScope])
         ctx.scope = moduleScope
-        self.collectedScopes.currentScope = moduleScope
-        self.collectedScopes.allScopes.append(moduleScope)
+        self.globalsHandler.currentScope = moduleScope
+        self.globalsHandler.allScopes.append(moduleScope)
 
     def exitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We have defined a module, so we step back into the parent scope.'''
-        assert len(self.collectedScopes.currentScope.parents) == 1, "module can only have parent scope"
-        self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
+        assert len(self.globalsHandler.currentScope.parents) == 1, "module can only have parent scope"
+        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
 
     def enterRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
         '''Rules get a scope'''
         ruleName = ctx.name.getText()
-        ruleScope = Scope(self.globalsHandler, ruleName, [self.collectedScopes.currentScope])
+        ruleScope = Scope(self.globalsHandler, ruleName, [self.globalsHandler.currentScope])
         ctx.scope = ruleScope
-        self.collectedScopes.currentScope = ruleScope
-        self.collectedScopes.allScopes.append(ruleScope)
+        self.globalsHandler.currentScope = ruleScope
+        self.globalsHandler.allScopes.append(ruleScope)
 
     def exitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
         '''We have defined a rule, so we step back into the parent scope.'''
-        assert len(self.collectedScopes.currentScope.parents) == 1, "rule can only have parent scope"
-        self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
+        assert len(self.globalsHandler.currentScope.parents) == 1, "rule can only have parent scope"
+        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
 
     def enterMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
         '''Methods get a scope'''
         methodName = ctx.name.getText()
-        methodScope = Scope(self.globalsHandler, methodName, [self.collectedScopes.currentScope])
+        methodScope = Scope(self.globalsHandler, methodName, [self.globalsHandler.currentScope])
         ctx.scope = methodScope
-        self.collectedScopes.currentScope = methodScope
-        self.collectedScopes.allScopes.append(methodScope)
+        self.globalsHandler.currentScope = methodScope
+        self.globalsHandler.allScopes.append(methodScope)
 
     def exitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
         '''We have defined a method, so we step back into the parent scope.'''
-        assert len(self.collectedScopes.currentScope.parents) == 1, "method can only have parent scope"
-        self.collectedScopes.currentScope = self.collectedScopes.currentScope.parents[0]
+        assert len(self.globalsHandler.currentScope.parents) == 1, "method can only have parent scope"
+        self.globalsHandler.currentScope = self.globalsHandler.currentScope.parents[0]
 
     def enterVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
         '''We have found a named constant. Log it for later evaluation (since it may depend on other named constants, etc.)'''
         for varInit in ctx.varInit():
             if varInit.rhs:
-                self.collectedScopes.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
+                self.globalsHandler.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
 
     def enterTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
         ''' Log the typedef under the appropriate name. It will be evalauted when it is looked up. '''
         if ctx.typeId().paramFormals():
             raise Exception("Not implemented")
-        self.collectedScopes.currentScope.setPermanent(ctx, ctx.typeId().getText())
+        self.globalsHandler.currentScope.setPermanent(ctx, ctx.typeId().getText())
 
     def enterTypeDefEnum(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumContext):
         ''' Evaluate the typedef and log the appropriate variables. '''
@@ -486,9 +480,9 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         for element in ctx.typeDefEnumElement():
             enumNames.append(element.tag.getText())
         enumType = Enum(enumName, set(enumNames))
-        self.collectedScopes.currentScope.setPermanent(enumType, enumName)
+        self.globalsHandler.currentScope.setPermanent(enumType, enumName)
         for name in enumNames:
-            self.collectedScopes.currentScope.setPermanent(enumType(name), name)
+            self.globalsHandler.currentScope.setPermanent(enumType(name), name)
 
     def enterTypeDefStruct(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext):
         ''' Log the typedef under the appropriate name. It will be evalauted when it is looked up. '''
@@ -496,7 +490,7 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
             raise Exception("Not implemented")
         ctx.typeDefValue = None  # will point to the type object after being looked up for the first time,
         # then will be returned again on later lookups.
-        self.collectedScopes.currentScope.setPermanent(ctx, ctx.typeId().getText())
+        self.globalsHandler.currentScope.setPermanent(ctx, ctx.typeId().getText())
         
 
 '''
@@ -585,9 +579,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
         return Register('Reg#(' + str(mtype) + ')')
 
-    def __init__(self, globalsHandler: 'GlobalsHandler', collectedScopes: 'MinispecStructure') -> None:
+    def __init__(self, globalsHandler: 'GlobalsHandler') -> None:
         self.globalsHandler = globalsHandler
-        self.collectedScopes = collectedScopes
     
     def visitLowerCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LowerCaseIdentifierContext):
         raise Exception("Not implemented")
@@ -634,7 +627,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for param in ctx.params().param():
                 params.append(self.visit(param))
         typeName = ctx.name.getText()
-        typeObject = self.collectedScopes.currentScope.get(self, typeName, params)
+        typeObject = self.globalsHandler.currentScope.get(self, typeName, params)
         assert typeObject != None, f"Failed to find type {typeName} with parameters {params}"
         if typeObject.__class__ == MType:
             # we have a type
@@ -704,7 +697,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value = None
             if value.__class__ == Node:
                 value.setMType(typeValue)
-            self.collectedScopes.currentScope.set(value, varName)
+            self.globalsHandler.currentScope.set(value, varName)
 
     def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
         '''A let binding declares a variable or a concatenation of variables and optionally assigns
@@ -715,7 +708,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             rhsValue = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
         if len(ctx.lowerCaseIdentifier()) == 1:
             varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-            self.collectedScopes.currentScope.set(rhsValue, varName)
+            self.globalsHandler.currentScope.set(rhsValue, varName)
         else:
             raise Exception("Not Implemented")
         
@@ -736,10 +729,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         moduleScope = ctx.scope
         # log the current scope
-        previousScope = self.collectedScopes.currentScope
-        self.collectedScopes.currentScope = moduleScope
+        previousScope = self.globalsHandler.currentScope
+        self.globalsHandler.currentScope = moduleScope
 
-        originalModuleScope = self.collectedScopes.currentScope
+        originalModuleScope = self.globalsHandler.currentScope
         previousNonregisters = originalModuleScope.nonregisterSubmodules # save information in case the submodule is recursive
         previousRegisters = originalModuleScope.registers
         originalModuleScope.nonregisterSubmodules = {}
@@ -858,7 +851,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             
         moduleScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
-        self.collectedScopes.currentScope = previousScope
+        self.globalsHandler.currentScope = previousScope
 
         originalModuleScope.nonregisterSubmodules = previousNonregisters # restore information
         originalModuleScope.registers = previousRegisters
@@ -883,7 +876,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
          '''
         moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
 
-        originalModuleScope = self.collectedScopes.currentScope
+        originalModuleScope = self.globalsHandler.currentScope
 
         moduleComponent = self.visit(moduleDef)  #synthesize the module
 
@@ -900,10 +893,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
         Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').) '''
         inputName = ctx.name.getText()
-        self.collectedScopes.currentScope.currentInputsWithDefault[inputName] = ctx.defaultVal
+        self.globalsHandler.currentScope.currentInputsWithDefault[inputName] = ctx.defaultVal
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
-        self.collectedScopes.currentScope.set(inputNode, inputName)
+        self.globalsHandler.currentScope.set(inputNode, inputName)
         self.globalsHandler.currentComponent.addInput(inputNode, inputName)
         # I think we might need to be a little fancy with default values.
         # If an input is assigned sometimes as determined by an if statement, then there will be a mux
@@ -950,14 +943,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
                 methodScope = ctx.scope
                 methodScope.clearTemporaryValues() # clear the temporary values
-                for registerName in self.collectedScopes.currentScope.registers:  # bind the registers
-                    register = self.collectedScopes.currentScope.registers[registerName]
+                for registerName in self.globalsHandler.currentScope.registers:  # bind the registers
+                    register = self.globalsHandler.currentScope.registers[registerName]
                     methodScope.set(register.value, registerName)
-                previousScope = self.collectedScopes.currentScope
-                self.collectedScopes.currentScope = methodScope # enter the method scope
+                previousScope = self.globalsHandler.currentScope
+                self.globalsHandler.currentScope = methodScope # enter the method scope
                 for stmt in ctx.stmt():  # evaluate the method
                     self.visit(stmt)
-                self.collectedScopes.currentScope = previousScope
+                self.globalsHandler.currentScope = previousScope
                 self.globalsHandler.outputNode = None  # methods can't occur inside a function, so there is no need to remember any previous output node.
         else:
             raise Exception("Not implemented")
@@ -965,7 +958,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
         # registers keep their original value unless modified
         ruleScope: 'Scope' = ctx.scope
-        moduleScope: 'Scope' = self.collectedScopes.currentScope
+        moduleScope: 'Scope' = self.globalsHandler.currentScope
         ruleScope.clearTemporaryValues() # clear the temporary values
         for registerName in moduleScope.registers:
             register = moduleScope.registers[registerName]
@@ -974,10 +967,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             value = moduleScope.submoduleInputValues[inputName]
             # if value != None:  # don't need this since none values should never by referenced
             ruleScope.set(value, inputName)
-        self.collectedScopes.currentScope = ruleScope # enter the rule scope
+        self.globalsHandler.currentScope = ruleScope # enter the rule scope
         for stmt in ctx.stmt():
             self.visit(stmt)
-        self.collectedScopes.currentScope = moduleScope
+        self.globalsHandler.currentScope = moduleScope
         # wire in the register writes
         for registerName in moduleScope.registers:
             register = moduleScope.registers[registerName]
@@ -1003,8 +996,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         previousTemporaryValues = functionScope.temporaryValues  # in case this function is recursive parametric and changes the current temporary values
         functionScope.clearTemporaryValues() # clear the temporary values
         # log the current scope
-        previousScope = self.collectedScopes.currentScope
-        self.collectedScopes.currentScope = functionScope
+        previousScope = self.globalsHandler.currentScope
+        self.globalsHandler.currentScope = functionScope
         #bind any parameters in the function scope
         bindings = self.globalsHandler.parameterBindings
         for var in bindings:  
@@ -1029,7 +1022,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.visit(stmt)
         functionScope.temporaryValues = previousTemporaryValues  # in case this function is recursive and changed the current temporary values        
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
-        self.collectedScopes.currentScope = previousScope
+        self.globalsHandler.currentScope = previousScope
         self.globalsHandler.outputNode = previousOutputNode
         return funcComponent
 
@@ -1058,7 +1051,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # we don't visit the simplelvalue context since simplelvalue automatically produces hardware
             #   for slicing/indexing/etc. (as all other remaining cases require this).
             varName = ctx.var.getText()
-            self.collectedScopes.currentScope.set(value, varName)
+            self.globalsHandler.currentScope.set(value, varName)
             return
         # Otherwise, we convert to hardware.
         if isMLiteral(value):
@@ -1066,20 +1059,20 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
             # assign the variable, no slicing/subfields needed
             varName = lvalue.getText()
-            self.collectedScopes.currentScope.set(value, varName)
+            self.globalsHandler.currentScope.set(value, varName)
             return
         # insert the field/slice/index
         # first, detect if we are setting a module input (vectors of modules are not yet implemented)
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
             if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
                 moduleName = lvalue.lvalue().getText()  #assuming we have a module
-                settingOverall = self.collectedScopes.currentScope.get(self, moduleName)
+                settingOverall = self.globalsHandler.currentScope.get(self, moduleName)
                 if settingOverall.__class__ == Module:  # we are, in fact, setting a module input
                     inputName = lvalue.lowerCaseIdentifier().getText()
                     # inputNode = settingOverall.inputs[inputName]
                     # inputWire = Wire(value, inputNode)
                     # self.globalsHandler.currentComponent.addChild(inputWire)
-                    self.collectedScopes.currentScope.set(value, moduleName + "." + inputName)
+                    self.globalsHandler.currentScope.set(value, moduleName + "." + inputName)
                     return
         text, nodes, varName = self.visit(lvalue)
         insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
@@ -1089,7 +1082,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         newWire = Wire(value, insertComponent.inputs[len(nodes)])
         self.globalsHandler.currentComponent.addChild(insertComponent)
         self.globalsHandler.currentComponent.addChild(newWire)
-        self.collectedScopes.currentScope.set(insertComponent.output, varName)
+        self.globalsHandler.currentScope.set(insertComponent.output, varName)
 
 
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
@@ -1119,7 +1112,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        valueFound = self.collectedScopes.currentScope.get(self, ctx.getText())
+        valueFound = self.globalsHandler.currentScope.get(self, ctx.getText())
         if valueFound == None:
             # value has not yet been initialized
             return ("", tuple(), ctx.getText())
@@ -1399,7 +1392,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #   to be evaluated and must evaluate to an integer).
                 assert value.__class__ == IntegerLiteral, f"Parameters must be an integer, not {value} which is {value.__class__}"
                 params.append(value)
-        value = self.collectedScopes.currentScope.get(self, ctx.var.getText(), params)
+        value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params)
         self.globalsHandler.lastParameterLookup = params
         return value
 
@@ -1547,7 +1540,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 assert value.__class__ == IntegerLiteral, f"Parameters must be an integer, not {value} which is {value.__class__}"
                 params.append(value)
         try:
-            functionDef = self.collectedScopes.currentScope.get(self, functionToCall, params)
+            functionDef = self.globalsHandler.currentScope.get(self, functionToCall, params)
             self.globalsHandler.lastParameterLookup = params
             funcComponent = self.visit(functionDef)  #synthesize the function internals
         except MissingVariableException as e:
@@ -1610,7 +1603,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if ctx.lhs.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
             raise Exception("Not implemented") # this is for vectors of registers
         regName = ctx.lhs.getText()
-        self.collectedScopes.currentScope.set(value, regName)
+        self.globalsHandler.currentScope.set(value, regName)
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
         ''' Each variety of statement is handled separately. '''
@@ -1626,16 +1619,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         Use in visitIfStmt and visitCaseStmt. '''
         # we run both branches in separate scopes, then combine
 
-        ifScope = Scope(self.globalsHandler, "ifScope", [self.collectedScopes.currentScope])
-        elseScope = Scope(self.globalsHandler, "elseScope", [self.collectedScopes.currentScope])
-        self.collectedScopes.allScopes.append(ifScope)
-        self.collectedScopes.allScopes.append(elseScope)
-        originalScope = self.collectedScopes.currentScope
+        ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope])
+        elseScope = Scope(self.globalsHandler, "elseScope", [self.globalsHandler.currentScope])
+        self.globalsHandler.allScopes.append(ifScope)
+        self.globalsHandler.allScopes.append(elseScope)
+        originalScope = self.globalsHandler.currentScope
 
-        self.collectedScopes.currentScope = ifScope
+        self.globalsHandler.currentScope = ifScope
         self.visit(ifStmt)
         if elseStmt:
-            self.collectedScopes.currentScope = elseScope
+            self.globalsHandler.currentScope = elseScope
             self.visit(elseStmt)
         
         self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope])
@@ -1643,7 +1636,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]'):
         ''' Given if/else scopes, the original scope, and a condition node, copies the variables set in the 
         if and else scopes back into the original scope with muxes controlled by the condition node. '''
-        self.collectedScopes.currentScope = originalScope
+        self.globalsHandler.currentScope = originalScope
         varsToBind = set()
         for scope in childScopes:
             for var in scope.temporaryValues:
@@ -1673,11 +1666,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.runIfStmt(condition, ctx.stmt(0), ctx.stmt(1))
 
     def doCaseStmtStep(self, expr: 'Node|MLiteral', expri: 'list', index: 'int', defaultItem: 'None|build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext') -> None:
-        ifScope = Scope(self.globalsHandler, "ifScope", [self.collectedScopes.currentScope])
-        elseScope = Scope(self.globalsHandler, "elseScope", [self.collectedScopes.currentScope])
-        self.collectedScopes.allScopes.append(ifScope)
-        self.collectedScopes.allScopes.append(elseScope)
-        originalScope = self.collectedScopes.currentScope
+        ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope])
+        elseScope = Scope(self.globalsHandler, "elseScope", [self.globalsHandler.currentScope])
+        self.globalsHandler.allScopes.append(ifScope)
+        self.globalsHandler.allScopes.append(elseScope)
+        originalScope = self.globalsHandler.currentScope
 
         exprToMatch = expri[index][0]
         ifStmt = expri[index][1]
@@ -1725,10 +1718,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(component)
             condition = eqComp.output
 
-        self.collectedScopes.currentScope = ifScope
+        self.globalsHandler.currentScope = ifScope
         self.visit(ifStmt)
 
-        self.collectedScopes.currentScope = elseScope
+        self.globalsHandler.currentScope = elseScope
         if index + 1 < len(expri):
             self.doCaseStmtStep(expr, expri, index+1, defaultItem)
         elif defaultItem:
@@ -1736,7 +1729,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope])
 
-        self.collectedScopes.currentScope = originalScope
+        self.globalsHandler.currentScope = originalScope
 
     def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):
         ''' The case statement:
@@ -1812,19 +1805,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 coversAllCases = False
             scopes = []
             for i in range(len(expri) + (0 if coversAllCases else 1)):
-                childScope = Scope(self.globalsHandler, "childScope"+str(i), [self.collectedScopes.currentScope])
-                self.collectedScopes.allScopes.append(childScope)
+                childScope = Scope(self.globalsHandler, "childScope"+str(i), [self.globalsHandler.currentScope])
+                self.globalsHandler.allScopes.append(childScope)
                 scopes.append(childScope)
-            originalScope = self.collectedScopes.currentScope
+            originalScope = self.globalsHandler.currentScope
 
             for i in range(len(expri)):
                 scope = scopes[i]
                 exprToMatch, exprStmt = expri[i]
-                self.collectedScopes.currentScope = scope
+                self.globalsHandler.currentScope = scope
                 self.visit(exprStmt)
             if hasDefault and numLiteralsPresent < numLiteralsNeeded:  # run the default scope in the last scope
                 scope = scopes[-1]
-                self.collectedScopes.currentScope = scope
+                self.globalsHandler.currentScope = scope
                 self.visit(ctx.caseStmtDefaultItem().stmt())
             
             self.copyBackIfStmt(originalScope, expr, scopes)
@@ -1842,14 +1835,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         iterVarName = ctx.initVar.getText()
         initVal = self.visit(ctx.expression(0))
         assert isMLiteral(initVal), "For loops must be unrolled before synthesis"
-        self.collectedScopes.currentScope.set(initVal, iterVarName)
+        self.globalsHandler.currentScope.set(initVal, iterVarName)
         checkDone = self.visit(ctx.expression(1))
         assert isMLiteral(checkDone) and checkDone.__class__ == BooleanLiteral, "For loops must be unrolled before synthesis"
         while checkDone.value:
             self.visit(ctx.stmt())
             nextIterVal = self.visit(ctx.expression(2))
             assert isMLiteral(nextIterVal), "For loops must be unrolled before synthesis"
-            self.collectedScopes.currentScope.set(nextIterVal, iterVarName)
+            self.globalsHandler.currentScope.set(nextIterVal, iterVarName)
             checkDone = self.visit(ctx.expression(1))
             assert isMLiteral(checkDone) and checkDone.__class__ == BooleanLiteral, "For loops must be unrolled before synthesis"
         
@@ -1873,16 +1866,16 @@ def parseAndSynth(text, topLevel) -> 'Component':
     builtinScope = BuiltInScope(globalsHandler, "built-ins", [])
     startingFile = Scope(globalsHandler, "startingFile", [builtinScope])
 
-    collectedScopes = MinispecStructure(builtinScope, startingFile) #collects scopes
+    globalsHandler.currentScope = startingFile
 
     walker = build.MinispecPythonListener.ParseTreeWalker()
-    listener = StaticTypeListener(globalsHandler, collectedScopes)
+    listener = StaticTypeListener(globalsHandler)
     walker.walk(listener, tree)  # walk the listener through the tree
 
-    # for scope in collectedScopes.allScopes:
+    # for scope in globalsHandler.allScopes:
     #     print(scope)
 
-    synthesizer = SynthesizerVisitor(globalsHandler, collectedScopes)
+    synthesizer = SynthesizerVisitor(globalsHandler)
 
     topLevel = f'''
 function Bool _();
@@ -1895,7 +1888,7 @@ endfunction
     outputDef = synthesizer.visit(ctxOfNote)  # follow the call to the function and get back the functionDef/moduleDef.
     output = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
 
-    # for scope in collectedScopes.allScopes:
+    # for scope in globalsHandler.allScopes:
     #     print(scope)
 
     output.prune() #remove unused components
