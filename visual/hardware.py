@@ -81,8 +81,8 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
         if len(item.children) == 0:
             jsonObj['width'] = 15
             jsonObj['height'] = 15
-        if item.__class__ == Register:
-            jsonObj['properties']['layered.layering.layerConstraint'] = 'LAST' # put registers at the end, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-layered-layering-layerConstraint.html
+        # if item.__class__ == Register:  # this should only run if the register is used as a module method ... consider intermediate stages in a bitonic sorter or similar.
+        #     jsonObj['properties']['layered.layering.layerConstraint'] = 'LAST' # put registers at the end, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-layered-layering-layerConstraint.html
         return jsonObj
     elif item.__class__ == Wire:
         return { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
