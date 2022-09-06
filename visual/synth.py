@@ -188,8 +188,10 @@ class Scope:
         dict sending varName: str -> Node object
         variable names map to nodes with the correct value.
     permanentValues are for static information, while temporaryValues are for information during synthesis.
+
+    If fleeting, then the scope does not pass local assignments up the scope chain.
     '''
-    def __init__(self, globalsHandler: 'GlobalsHandler', name: 'str', parents: 'list[Scope]'):
+    def __init__(self, globalsHandler: 'GlobalsHandler', name: 'str', parents: 'list[Scope]', fleeting: 'bool' = False):
         self.globalsHandler = globalsHandler
         self.globalsHandler.allScopes.append(self)
         self.parents = parents.copy()
@@ -197,6 +199,7 @@ class Scope:
         self.permanentValues = {}
         self.temporaryScope = TemporaryScope()
         self.temporaryScopeStack = [] # stores old temporary scopes (but not the current self.temporaryScope)
+        self.fleeting = fleeting
     def popTemporaryScope(self):
         ''' Restores the previous temporary scope. Discards the current temporary scope. '''
         self.temporaryScope = self.temporaryScopeStack.pop()
@@ -260,7 +263,15 @@ class Scope:
         Currently ignores parameters.'''
         if parameters == None:
             parameters = []
-        self.temporaryScope.temporaryValues[varName] = value
+        assert len(parameters) == 0, f"Can't assign variable {varName} dynamically with parameters"
+        if self.fleeting:
+            self.temporaryScope.temporaryValues[varName] = value
+        else:
+            if varName in self.permanentValues:
+                self.temporaryScope.temporaryValues[varName] = value
+            else:
+                assert len(self.parents) == 1, f"Can't assign variable {varName} dynamically in a file scope"
+                self.parents[0].set(value, varName, parameters)
     def setPermanent(self, value, varName: 'str', parameters: 'list[ctxType|str]' = None):
         '''Sets the given name/parameters to the given value in permanent storage.
         Overrules but does not overwrite previous values with the same name.
@@ -302,6 +313,8 @@ class BuiltInScope(Scope):
         self.name = name
         # self.permanentValues = {}
         # self.temporaryValues = {}
+    def set(self, value, varName: 'str', parameters: 'list[int]' = None):
+        raise Exception(f"Can't set value {varName} in the built-in scope")
     def get(self, visitor, varName: 'str', parameters: 'list[int|MType]' = None) -> 'ctxType|Node':
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
@@ -415,6 +428,9 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
     def enterFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''We are defining a function. We need to give this function a corresponding scope.'''
         functionName = ctx.functionId().name.getText() # get the name of the function
+
+        functionScope = Scope(self.globalsHandler, functionName, [self.globalsHandler.currentScope])
+        ctx.scope = functionScope
         params = []
         if ctx.functionId().paramFormals():
             for param in ctx.functionId().paramFormals().paramFormal():
@@ -422,14 +438,18 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
                 if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
                     params.append(param.param())
                 elif param.intName:  # param is a variable name. extract the name.
-                    params.append(param.intName.getText())
+                    varName = param.intName.getText()
+                    params.append(varName)
+                    functionScope.setPermanent(None, varName)  # bind the parameter
                 else:
                     assert False, "parameters with typeValues are not supported yet"
         #log the function's scope
         self.globalsHandler.currentScope.setPermanent(ctx, functionName, params)
-        functionScope = Scope(self.globalsHandler, functionName, [self.globalsHandler.currentScope])
-        ctx.scope = functionScope
         self.globalsHandler.enterScope(functionScope)
+        # bind function arguments to None in permanentValues
+        if ctx.argFormals():
+            for argFormal in ctx.argFormals().argFormal():
+                functionScope.setPermanent(None, argFormal.argName.getText())
 
     def exitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''We have defined a function, so we step back into the parent scope.'''
@@ -440,6 +460,9 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         moduleName = ctx.moduleId().name.getText() # get the name of the module
         if ctx.argFormals():
             raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
+        
+        moduleScope = Scope(self.globalsHandler, moduleName, [self.globalsHandler.currentScope])
+        ctx.scope = moduleScope
         params = []
         if ctx.moduleId().paramFormals():
             for param in ctx.moduleId().paramFormals().paramFormal():
@@ -447,13 +470,13 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
                 if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
                     params.append(param.param())
                 elif param.intName:  # param is a variable name. extract the name.
-                    params.append(param.intName.getText())
+                    varName = param.intName.getText()
+                    params.append(varName)
+                    moduleScope.setPermanent(None, varName)  # bind the parameter
                 else:
                     assert False, "parameters with typeValues are not supported yet"
         # log the module's scope
         self.globalsHandler.currentScope.setPermanent(ctx, moduleName, params)
-        moduleScope = Scope(self.globalsHandler, moduleName, [self.globalsHandler.currentScope])
-        ctx.scope = moduleScope
         self.globalsHandler.enterScope(moduleScope)
 
     def exitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
@@ -485,8 +508,16 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
     def enterVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
         '''We have found a named constant. Log it for later evaluation (since it may depend on other named constants, etc.)'''
         for varInit in ctx.varInit():
+            varName = varInit.var.getText()
             if varInit.rhs:
-                self.globalsHandler.currentScope.setPermanent(varInit.rhs, varInit.var.getText())
+                self.globalsHandler.currentScope.setPermanent(varInit.rhs, varName)
+            else:
+                self.globalsHandler.currentScope.setPermanent(None, varName)
+
+    def enterLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
+        for identifier in ctx.lowerCaseIdentifier():
+            varName = identifier.getText()
+            self.globalsHandler.currentScope.setPermanent(None, varName)
 
     def enterTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
         ''' Log the typedef under the appropriate name. It will be evalauted when it is looked up. '''
@@ -513,6 +544,8 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         # then will be returned again on later lookups.
         self.globalsHandler.currentScope.setPermanent(ctx, ctx.typeId().getText())
         
+    def enterForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
+        self.globalsHandler.currentScope.setPermanent(None, ctx.initVar.getText())
 
 '''
 Documentation for SynthesizerVisitor visit method return types:
@@ -888,6 +921,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
         originalModuleScope = self.globalsHandler.currentScope
+        originalModuleScope.setPermanent(None, submoduleName)
         originalModuleScope.set(moduleComponent, submoduleName)
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
@@ -902,6 +936,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentScope.temporaryScope.currentInputsWithDefault[inputName] = ctx.defaultVal
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
+        self.globalsHandler.currentScope.setPermanent(None, inputName)
         self.globalsHandler.currentScope.set(inputNode, inputName)
         self.globalsHandler.currentComponent.addInput(inputNode, inputName)
         # I think we might need to be a little fancy with default values.
@@ -951,6 +986,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 methodScope.clearTemporaryValues() # clear the temporary values
                 for registerName in self.globalsHandler.currentScope.temporaryScope.registers:  # bind the registers
                     register = self.globalsHandler.currentScope.temporaryScope.registers[registerName]
+                    methodScope.setPermanent(None, registerName)
                     methodScope.set(register.value, registerName)
                 self.globalsHandler.enterScope(methodScope)
                 for stmt in ctx.stmt():  # evaluate the method
@@ -967,10 +1003,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.enterScope(ruleScope)
         for registerName in moduleScope.temporaryScope.registers:
             register = moduleScope.temporaryScope.registers[registerName]
+            ruleScope.setPermanent(None, registerName)
             ruleScope.set(register.value, registerName)
         for inputName in moduleScope.temporaryScope.submoduleInputValues:  # bind any default inputs
             value = moduleScope.temporaryScope.submoduleInputValues[inputName]
             # if value != None:  # don't need this since none values should never by referenced
+            ruleScope.setPermanent(None, inputName)
             ruleScope.set(value, inputName)
         for stmt in ctx.stmt():
             self.visit(stmt)
@@ -1620,8 +1658,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         Use in visitIfStmt and visitCaseStmt. '''
         # we run both branches in separate scopes, then combine
 
-        ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope])
-        elseScope = Scope(self.globalsHandler, "elseScope", [self.globalsHandler.currentScope])
+        ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope], fleeting=True)
+        elseScope = Scope(self.globalsHandler, "elseScope", [self.globalsHandler.currentScope], fleeting=True)
         originalScope = self.globalsHandler.currentScope
 
         self.globalsHandler.currentScope = ifScope
@@ -1665,8 +1703,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.runIfStmt(condition, ctx.stmt(0), ctx.stmt(1))
 
     def doCaseStmtStep(self, expr: 'Node|MLiteral', expri: 'list', index: 'int', defaultItem: 'None|build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext') -> None:
-        ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope])
-        elseScope = Scope(self.globalsHandler, "elseScope", [self.globalsHandler.currentScope])
+        ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope], fleeting=True)
+        elseScope = Scope(self.globalsHandler, "elseScope", [self.globalsHandler.currentScope], fleeting=True)
         originalScope = self.globalsHandler.currentScope
 
         exprToMatch = expri[index][0]
@@ -1802,7 +1840,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 coversAllCases = False
             scopes = []
             for i in range(len(expri) + (0 if coversAllCases else 1)):
-                childScope = Scope(self.globalsHandler, "childScope"+str(i), [self.globalsHandler.currentScope])
+                childScope = Scope(self.globalsHandler, "childScope"+str(i), [self.globalsHandler.currentScope], fleeting=True)
                 scopes.append(childScope)
             originalScope = self.globalsHandler.currentScope
 
