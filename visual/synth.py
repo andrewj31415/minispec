@@ -748,18 +748,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
         moduleScope = ctx.scope
-        # log the current scope
-        previousScope = self.globalsHandler.currentScope
-        self.globalsHandler.currentScope = moduleScope
-
-        originalModuleScope = self.globalsHandler.currentScope
-        previousNonregisters = originalModuleScope.temporaryScope.nonregisterSubmodules # save information in case the submodule is recursive
-        previousRegisters = originalModuleScope.temporaryScope.registers
-        originalModuleScope.temporaryScope.nonregisterSubmodules = {}
-        originalModuleScope.temporaryScope.registers = {}
-
-        previousTemporaryValues = moduleScope.temporaryScope.temporaryValues  # in case any submodules are recursive and change the current temporary values
-        moduleScope.clearTemporaryValues() # clear the temporary values
+        previousTemporaryScope = self.globalsHandler.currentScope.temporaryScope #TODO refactor to get rid of this weird manipulation
+        self.globalsHandler.enterScope(moduleScope)
         
         #bind any parameters in the module scope
         bindings = self.globalsHandler.parameterBindings
@@ -804,7 +794,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for inputName in moduleScope.temporaryScope.currentInputsWithDefault:
                 defaultValCtxOrNone = moduleScope.temporaryScope.currentInputsWithDefault[inputName]
                 # copy any inputs into the parent scope, so that any parent module knows about the inputs
-                previousScope.temporaryScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
+                previousTemporaryScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
             moduleScope.temporaryScope.currentInputsWithDefault = oldCurrentInputs
         for submoduleDecl in submoduleDecls:
             self.visit(submoduleDecl)
@@ -869,12 +859,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             wireIn = Wire(value, inputNode)
             self.globalsHandler.currentComponent.addChild(wireIn)
             
-        moduleScope.temporaryScope.temporaryValues = previousTemporaryValues  # in case any submodules are recursive and change the current temporary values
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
-        self.globalsHandler.currentScope = previousScope
-
-        originalModuleScope.temporaryScope.nonregisterSubmodules = previousNonregisters # restore information
-        originalModuleScope.temporaryScope.registers = previousRegisters
+        self.globalsHandler.exitScope()
 
         return moduleComponent
 
