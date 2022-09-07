@@ -783,3 +783,74 @@ function ExecInst execute( DecodedInst dInst, Word rVal1, Word rVal2, Word pc );
 
     return ExecInst{iType: dInst.iType, dst: dInst.dst, data: data, addr: addr, nextPc: nextPc};
 endfunction
+
+
+
+
+bsvimport Magic;
+import ProcTypes;
+
+module MagicMemory;
+    // 64 KB magic memory array
+    MagicMemoryArray magicMem("mem.vmh");
+
+    method Word read(Word addr) = magicMem.sub(truncate(addr >> 2));
+
+    input Maybe#(MemWriteReq) write default = Invalid;
+
+    rule doWrite;
+        if (isValid(write)) begin
+            MemWriteReq req = fromMaybe(?, write);
+            if (req.addr == 'h4000_0000) begin
+                // Write character to stdout
+                $write("%c", req.data[7:0]);
+            end else if (req.addr == 'h4000_0004) begin
+                // Write integer to stdout
+                $write("%0d", req.data);
+            end else if (req.addr == 'h4000_1000) begin
+                // Exit simulation
+                if (req.data == 0) begin
+                    $display("PASSED");
+                end else begin
+                    $display("FAILED %0d", req.data);
+                end
+                $finish;
+            end else begin
+                // Write memory array
+                magicMem.upd = ArrayWriteReq{idx: truncate(req.addr >> 2), data: req.data};
+            end
+        end
+    endrule
+endmodule
+
+
+
+import ProcTypes;
+
+module RegisterFile;
+    Vector#(32, Reg#(Word)) regs(0);
+
+    method Word rd1(RIndx rindx) = regs[rindx];
+    method Word rd2(RIndx rindx) = regs[rindx];
+
+    input Maybe#(RegWriteArgs) wr default = Invalid;
+
+    rule rfWrite;
+        if (isValid(wr)) begin
+            RegWriteArgs rwd = fromMaybe(?, wr);
+            if (rwd.index != 0)
+                regs[rwd.index] <= rwd.data;
+        end
+    endrule
+
+    // Simulation-only debugging method
+    // IMPORTANT: Do not modify this code! The microtests depend on this.
+    method Fmt fshow;
+        Fmt f = $format;
+        for (Integer i = 0; i < 32; i = i+1) begin
+            f = f + $format("x%0d = 0x%x", i, regs[i]);
+            if (i < 31) f = f + $format("\n");
+        end
+        return f;
+    endmethod
+endmodule

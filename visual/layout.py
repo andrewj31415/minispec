@@ -14,7 +14,7 @@ minispecCode = minispecCodeFile.read_text()
 
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Outer')
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'execute')
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'RegisterFile')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'computeHalf')
 
 print('done synthesizing!')

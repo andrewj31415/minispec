@@ -244,6 +244,8 @@ def _():
 def _():
     text = pull('if4')
 
+    k = 8
+
     fin, fo = Node(), Node()
 
     mux = Mux([Node(), Node()])
@@ -253,20 +255,20 @@ def _():
     inv = Function('Invalid')
     val = Function('Valid', [], [Node()])
     sftComps = []
-    for i in range(1,32):
+    for i in range(1,k):
         sftComps.append(Function(f'[{i}]', [], [Node()])) # from input
-    for i in range(31):
+    for i in range(k-1):
         sftComps.append(Function(f'[{i}]', [], [Node(), Node()])) # collect output
-    sftWires = [Wire(sZero.output, sftComps[31].inputs[0]), Wire(sftComps[61].output, val.inputs[0])]
-    for i in range(0,31):
+    sftWires = [Wire(sZero.output, sftComps[k-1].inputs[0]), Wire(sftComps[2*k-3].output, val.inputs[0])]
+    for i in range(0,k-1):
         sftWires.append(Wire(fin, sftComps[i].inputs[0]))
-        sftWires.append(Wire(sftComps[i].output, sftComps[i+31].inputs[1]))
-    for i in range(0,30):
-        sftWires.append(Wire(sftComps[i+31].output, sftComps[i+32].inputs[0]))
+        sftWires.append(Wire(sftComps[i].output, sftComps[i+k-1].inputs[1]))
+    for i in range(0,k-2):
+        sftWires.append(Wire(sftComps[i+k-1].output, sftComps[i+k].inputs[0]))
 
-    computeHalf = Function('computeHalf', [mux, eq, cOne, sZero, lowBit, inv, val] + sftComps + sftWires + [Wire(val.output, mux.inputs[1]), Wire(inv.output, mux.inputs[0]), Wire(mux.output, fo), Wire(lowBit.output, eq.inputs[0]), Wire(cOne.output, eq.inputs[1]), Wire(eq.output, mux.control), Wire(fin, lowBit.inputs[0])], [fin], fo)
+    computeHalf = Function('computeHalf#(' + str(k) + ')', [mux, eq, cOne, sZero, lowBit, inv, val] + sftComps + sftWires + [Wire(val.output, mux.inputs[1]), Wire(inv.output, mux.inputs[0]), Wire(mux.output, fo), Wire(lowBit.output, eq.inputs[0]), Wire(cOne.output, eq.inputs[1]), Wire(eq.output, mux.control), Wire(fin, lowBit.inputs[0])], [fin], fo)
 
-    output = synth.parseAndSynth(text, 'computeHalf')
+    output = synth.parseAndSynth(text, 'computeHalf#(' + str(k) + ')')
     expected = computeHalf
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
@@ -570,7 +572,6 @@ def _():
 
     fa, fi, fj, fk, fo = Node(), Node(), Node(), Node(), Node()
     s1 = Function('[1][_:_][_]', [], [Node(), Node(), Node(), Node(), Node()])
-    #s2 = Function('[_][_:2][0]', [], [Node(), Node(), Node()])
     s21 = Function('[_]', [], [Node(), Node()])
     s22 = Function('[_:2]', [], [Node(), Node()])
     s23 = Function('[0]', [], [Node()])
@@ -627,7 +628,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'permute')
     expected = permute
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 #TODO test enum literals
 
@@ -656,6 +657,23 @@ def _():
     output = synth.parseAndSynth(text, 'combine#(1, 1, 1, 2)')
     expected = Function('combine#(1,1,1,2)', [inp1, ind, inp2, inp3, inpset, r, pack, Wire(a, inp1.inputs[0]), Wire(b, ind.inputs[0]), Wire(inp1.output, pack.inputs[0]), Wire(ind.output, pack.inputs[1]), Wire(pack.output, inpset.inputs[0]), Wire(pack.output, inp2.inputs[0]), Wire(b, inp3.inputs[0]), Wire(inp2.output, r.inputs[0]), Wire(inp3.output, r.inputs[1]), Wire(r.output, inpset.inputs[1]), Wire(inpset.output, o)], [a, b], o)
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Handles parameterized typedef synonyms''')
+def _():
+    text = pull('paramTypedefs1')
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = None
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Handles parameterized typedef structs''')
+def _():
+    text = pull('paramTypedefs2')
+
+    output = synth.parseAndSynth(text, 'sumVector#(3,3)')
+    expected = None
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 describe('''Maybe Types''')
 
