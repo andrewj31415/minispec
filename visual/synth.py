@@ -443,8 +443,10 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
                     varName = param.intName.getText()
                     params.append(varName)
                     functionScope.setPermanent(None, varName)  # bind the parameter
-                else:
-                    assert False, "parameters with typeValues are not supported yet"
+                else: # param is a type name. extract and bind the name.
+                    varName = param.typeValue.getText()
+                    params.append(varName)
+                    functionScope.setPermanent(None, varName)  # bind the parameter
         #log the function's scope
         self.globalsHandler.currentScope.setPermanent(ctx, functionName, params)
         self.globalsHandler.enterScope(functionScope)
@@ -475,8 +477,10 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
                     varName = param.intName.getText()
                     params.append(varName)
                     moduleScope.setPermanent(None, varName)  # bind the parameter
-                else:
-                    assert False, "parameters with typeValues are not supported yet"
+                else: # param is a type name. extract and bind the name.
+                    varName = param.typeValue.getText()
+                    params.append(varName)
+                    moduleScope.setPermanent(None, varName)  # bind the parameter
         # log the module's scope
         self.globalsHandler.currentScope.setPermanent(ctx, moduleName, params)
         self.globalsHandler.enterScope(moduleScope)
@@ -523,9 +527,24 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
 
     def enterTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
         ''' Log the typedef under the appropriate name. It will be evalauted when it is looked up. '''
+        typedefName = ctx.typeId().name.getText()
+        typeDefScope = Scope(self.globalsHandler, typedefName, [self.globalsHandler.currentScope])
+        ctx.scope = typeDefScope  # used for evaluating parameters
+        params = []
         if ctx.typeId().paramFormals():
-            raise Exception("Not implemented")
-        self.globalsHandler.currentScope.setPermanent(ctx, ctx.typeId().getText())
+            for param in ctx.typeId().paramFormals().paramFormal():
+                # each parameter is either an integer or a name.
+                if param.param():  # our parameter is an actual integer or type name, which will be evaluated immediately before lookups.
+                    params.append(param.param())
+                elif param.intName:  # param is a variable name. extract and bind the name.
+                    varName = param.intName.getText()
+                    params.append(varName)
+                    typeDefScope.setPermanent(None, varName)  # bind the parameter
+                else: # param is a type name. extract and bind the name.
+                    varName = param.typeValue.getText()
+                    params.append(varName)
+                    typeDefScope.setPermanent(None, varName)  # bind the parameter
+        self.globalsHandler.currentScope.setPermanent(ctx, typedefName, params)
 
     def enterTypeDefEnum(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumContext):
         ''' Evaluate the typedef and log the appropriate variables. '''
@@ -540,11 +559,12 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
 
     def enterTypeDefStruct(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext):
         ''' Log the typedef under the appropriate name. It will be evalauted when it is looked up. '''
+        typedefName = ctx.typeId().name.getText()
         if ctx.typeId().paramFormals():
             raise Exception("Not implemented")
         ctx.typeDefValue = None  # will point to the type object after being looked up for the first time,
         # then will be returned again on later lookups.
-        self.globalsHandler.currentScope.setPermanent(ctx, ctx.typeId().getText())
+        self.globalsHandler.currentScope.setPermanent(ctx, typedefName)
 
     def enterBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
         beginendScope = Scope(self.globalsHandler, "begin/end", [self.globalsHandler.currentScope])
@@ -722,10 +742,26 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
         ''' We look up the original type, then construct and return a synonym. '''
-        if ctx.typeId().paramFormals():
-            raise Exception("Not implemented")
+        typedefName = ctx.typeId().name.getText()
+        params = self.globalsHandler.lastParameterLookup
+        if len(params) > 0:  #attach parameters to the function name if present
+            typedefName += "#(" + ",".join(str(i) for i in params) + ")"
+
+        
+        typedefScope = ctx.scope
+        self.globalsHandler.enterScope(typedefScope)
+
+        bindings = self.globalsHandler.parameterBindings
+        for var in bindings:  
+            val = bindings[var]
+            # if val.__class__ != int: #val is a type, so we unroll it
+            #     val = self.visit(val)
+            typedefScope.set(val, var)
+
         originalType = self.visit(ctx.typeName())
-        return Synonym(originalType, ctx.typeId().getText())
+
+        self.globalsHandler.exitScope()
+        return Synonym(originalType, typedefName)
 
     def visitTypeId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeIdContext):
         raise Exception("Handled directly, should not be visited.")
@@ -1594,7 +1630,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #note that params may be either integers (which can be used as-is)
                 #   or variables (which need to be looked up) or expressions in integers (which need
                 #   to be evaluated and must evaluate to an integer).
-                assert value.__class__ == IntegerLiteral, f"Parameters must be an integer, not {value} which is {value.__class__}"
+                assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
                 params.append(value)
         try:
             functionDef = self.globalsHandler.currentScope.get(self, functionToCall, params)

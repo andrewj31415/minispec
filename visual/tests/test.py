@@ -662,8 +662,14 @@ def _():
 def _():
     text = pull('paramTypedefs1')
 
+    fv, fo = Node(), Node()
+    gEv, gEo = Node(), Node()
+    s = Function('[1]', [], [Node()])
+    gE = Function('getEntry#(Bool,2,1)', [s, Wire(gEv, s.inputs[0]), Wire(s.output, gEo)], [gEv], gEo)
+    f = Function('f', [gE, Wire(fv, gE.inputs[0]), Wire(gE.output, fo)], [fv], fo)
+
     output = synth.parseAndSynth(text, 'f')
-    expected = None
+    expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Handles parameterized typedef structs''')
