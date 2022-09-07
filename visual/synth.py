@@ -1503,7 +1503,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #note that params may be either integers (which can be used as-is)
                 #   or variables (which need to be looked up) or expressions in integers (which need
                 #   to be evaluated and must evaluate to an integer).
-                assert value.__class__ == IntegerLiteral, f"Parameters must be an integer, not {value} which is {value.__class__}"
+                assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
                 params.append(value)
         value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params)
         self.globalsHandler.lastParameterLookup = params

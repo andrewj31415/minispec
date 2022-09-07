@@ -19,9 +19,9 @@ synthesizedComponent = synth.parseAndSynth(minispecCode, 'sumVector#(3,3)')
 
 print('done synthesizing!')
 
-from hardware import *
-fa, fo = Node(), Node()
-synthesizedComponent = Function('f', [Wire(fa, fo)], [fa], fo)
+# from hardware import *
+# fa, fo = Node(), Node()
+# synthesizedComponent = Function('f', [Wire(fa, fo)], [fa], fo)
 
 # input/output files for elk
 pythonToJSFile = pathlib.Path(__file__).with_name("elk").joinpath("elkInput.txt")
