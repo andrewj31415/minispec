@@ -315,6 +315,8 @@ class BuiltInScope(Scope):
         # self.temporaryValues = {}
     def set(self, value, varName: 'str', parameters: 'list[int]' = None):
         raise Exception(f"Can't set value {varName} in the built-in scope")
+    def setPermanent(self, value, varName: 'str', parameters: 'list[ctxType|str]' = None):
+        raise Exception(f"Can't set value {varName} permanently in the built-in scope")
     def get(self, visitor, varName: 'str', parameters: 'list[int|MType]' = None) -> 'ctxType|Node':
         '''Looks up the given name/parameter combo. Prefers current scope to parent scopes, and
         then prefers temporary values to permanent values. Returns whatever is found,
@@ -1069,8 +1071,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = funcComponent
         # synthesize the function internals
         for stmt in ctx.stmt():
-            self.visit(stmt)      
-         
+            self.visit(stmt)
+
         self.globalsHandler.exitScope()
         self.globalsHandler.currentComponent = previousComponent #reset the current component
         self.globalsHandler.outputNode = previousOutputNode
@@ -1330,6 +1332,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     controlWires.append(Wire(expr, n.inputs[0]))
                     controlWires.append(Wire(n.output, muxControl))
             else:
+                if isMLiteral(controlValue):
+                    controlValue = controlValue.getHardware(self.globalsHandler)
                 eq = Function('==', [], [Node(), Node()])
                 controlComponents.append(eq)
                 controlWires.append(Wire(expr, eq.inputs[0]))
@@ -1450,7 +1454,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Bit concatenation is just a function. Returns the function output. '''
         toConcat = []
         for expr in ctx.expression():
-            toConcat.append(self.visit(expr))
+            value = self.visit(expr)
+            if isMLiteral(value):
+                value = value.getHardware(self.globalsHandler)
+            toConcat.append(value)
         inputs = []
         for node in toConcat:
             inputNode = Node()
@@ -1862,11 +1869,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for i in range(len(expri)):
                 scope = scopes[i]
                 exprToMatch, exprStmt = expri[i]
-                self.globalsHandler.enterScope(scope)
+                # self.globalsHandler.enterScope(scope)
+                self.globalsHandler.currentScope = scope
                 self.visit(exprStmt)
             if hasDefault and numLiteralsPresent < numLiteralsNeeded:  # run the default scope in the last scope
                 scope = scopes[-1]
-                self.globalsHandler.enterScope(scope)
+                # self.globalsHandler.enterScope(scope)
+                self.globalsHandler.currentScope = scope
                 self.visit(ctx.caseStmtDefaultItem().stmt())
             
             self.copyBackIfStmt(originalScope, expr, scopes)

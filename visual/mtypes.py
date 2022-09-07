@@ -358,7 +358,7 @@ class Integer(MLiteral):
     _name = "Integer"
     def __init__(self, value):
         ''' Create an integer literal '''
-        assert value.__class__ == int
+        assert value.__class__ == int, f"Expected int, not {value} which is {value.__class__}"
         self.value = value
     def numLiterals(self) -> 'int|float':
         return math.inf
@@ -421,7 +421,7 @@ class Integer(MLiteral):
     def booleaninv(self):
         raise Exception("Not implemented")
     def inv(self):
-        raise Exception("Not implemented")
+        return IntegerLiteral(-self.value)
     def redand(self):
         raise Exception("Not implemented")
     def redor(self):
@@ -449,7 +449,7 @@ def Bit(n: 'IntegerLiteral'):
             Value may be any integer even though bsc requires Bit#(n) literals
             to be in the range -2**(n-1), ..., (2**n)-1. '''
             self.n = n
-            assert value.__class__ == int
+            assert value.__class__ == int, f"Expected int, not {value} which is {value.__class__}"
             self.value = value % (2**n.value)
         def numLiterals(self) -> 'int|float':
             return 2**n.value
@@ -467,7 +467,7 @@ def Bit(n: 'IntegerLiteral'):
             return str(self.n) + "'b" + output
         def fromIntegerLiteral(self, i: 'IntegerLiteral'):
             assert -(2**(self.n-1)) <= i.toInt() < 2**self.n, "Bluespec requires Bit#(n) literals to be in range -2**(n-1),...,2**n-1."
-            return BitLiteral(self.n)(i.toInt())
+            return Bit(self.n)(i.toInt())
         '''binary operations'''
         def pow(self, other):
             raise Exception("Not implemented")
@@ -478,7 +478,7 @@ def Bit(n: 'IntegerLiteral'):
         def mod(self, other):
             raise Exception("Not implemented")
         def add(self, other):
-            return BitLiteral(max(self.n, other.n))(self.value + other.value)
+            return Bit(max(self.n, other.n))(self.value + other.value)
         def sub(self, other):
             raise Exception("Not implemented")
         def sleft(self, other):
@@ -523,13 +523,13 @@ def Bit(n: 'IntegerLiteral'):
         def unaryadd(self):
             raise Exception("Not implemented")
         def neg(self):
-            return BitLiteral(self.n)(-self.value)
+            return Bit(self.n)(-self.value)
         ''' other operations '''
         def slice(self, msb, lsb=None):
             if lsb:
                 raise Exception("Not implemented")
             else:
-                return BitLiteral(IntegerLiteral(1))((self.value//(2**msb.value)) % 2)
+                return Bit(IntegerLiteral(1))((self.value//(2**msb.value)) % 2)
     return BitLiteral
 BitLiteral = Bit #useful synonym
 
