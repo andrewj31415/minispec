@@ -47,7 +47,7 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
                     'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
                     'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
-        if len(item.children) == 0:
+        if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
             jsonObj['width'] = 15
             jsonObj['height'] = 15
         return jsonObj

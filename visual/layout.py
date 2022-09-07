@@ -9,18 +9,19 @@ import synth
 
 import pathlib
 
-minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("assortedtests.ms")
+minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("paramTypedefs2.ms")
 minispecCode = minispecCodeFile.read_text()
 
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Outer')
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'RegisterFile')
-# synthesizedComponent = synth.parseAndSynth(minispecCode, 'computeHalf')
+# synthesizedComponent = synth.parseAndSynth(minispecCode, 'RegisterFile')
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'sumVector#(3,3)')
 
 print('done synthesizing!')
 
-# from hardware import *
-# synthesizedComponent = f
+from hardware import *
+fa, fo = Node(), Node()
+synthesizedComponent = Function('f', [Wire(fa, fo)], [fa], fo)
 
 # input/output files for elk
 pythonToJSFile = pathlib.Path(__file__).with_name("elk").joinpath("elkInput.txt")
