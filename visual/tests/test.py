@@ -706,6 +706,19 @@ def _():
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
   
 
+describe('''Advanced Modules''')
+
+@it('''Correctly handles vectors of submodules''')
+def _():
+    text = pull('moduleVector')
+
+    output = synth.parseAndSynth(text, 'Reverse#(2)')
+    print(output.__repr__())
+
+    expected = None
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
 
 #run all the tests
 import time

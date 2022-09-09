@@ -611,7 +611,7 @@ BooleanLiteral = Bool  #useful alias
 def Vector(k: 'int', typeValue: 'MLiteral'):
     class VectorType(MLiteral):
         '''The Vector(k, tt) type'''
-        _name = f"Vector#({k}{typeValue})"
+        _name = f"Vector#({k},{typeValue})"
         _constructor = Vector
         _k = k
         _typeValue = typeValue
@@ -625,6 +625,10 @@ def Vector(k: 'int', typeValue: 'MLiteral'):
             return self._k == other._k and self._typeValue == other._typeValue
         def __str__(self):
             return "Vector#(" + str(self.k) + ", " + str(self.typeValue) + ")"
+        @classmethod
+        def accept(cls, visitor):  #note that accept is called on Vector the class, not an instance of vector.
+            ''' If the vector is being visited as a type, redirect it to synthesizing a vector. '''
+            return visitor.visitVectorSubmodule(cls)
         '''unary operations'''
         def booleaninv(self):
             raise Exception("Not implemented")

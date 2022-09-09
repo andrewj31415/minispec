@@ -668,6 +668,33 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
         return Register('Reg#(' + str(mtype) + ')')
 
+    def visitVectorSubmodule(self, vectorType):
+        ''' We have a vector submodule. We create the relevant hardware. '''
+        vectorComp = Module("", [], {}, {})  # the name can't be determined until we visit the inner modules and get their name
+        previousComp = self.globalsHandler.currentComponent
+        self.globalsHandler.currentComponent = vectorComp
+        # TODO consider entering/exiting the builtin scope here?
+
+        vectorizedSubmodule = vectorType._typeValue
+        numCopies = vectorType._k.value
+        assert numCopies >= 1, "It does not make sense to have a vector of no submodules."
+        for i in range(numCopies):
+            submodule = self.visit(vectorizedSubmodule)
+            vectorComp.addChild(submodule)
+
+        vectorComp.name = "Vector#(" + str(submodule.name) + ")"
+        previousComp.addChild(vectorComp)
+        self.globalsHandler.currentComponent = previousComp
+
+        # assigning M[i][j] = value should be the same as assigning the ith submodule of M to have inputs
+        # corresponding to value and j, then then having the jth input of M[i] be assigned to whichever input
+        # corresponding to value. For nonconstant i,j, we will need to feed them into the appropriate muxes.
+
+        # also, any assignment M[i][j] etc. must end with .input for some named input, or it is a register
+        # and the relevant .input is implicitly ._input.
+
+        return vectorComp
+
     def __init__(self, globalsHandler: 'GlobalsHandler') -> None:
         self.globalsHandler = globalsHandler
     
@@ -977,6 +1004,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             submoduleDecl <-> callExpr
          '''
         moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
+        print('got submodule def', moduleDef, repr(moduleDef))
 
         moduleComponent = self.visit(moduleDef)  #synthesize the module
 
@@ -1135,6 +1163,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
         ''' Assign the given variable to the given expression. No returns, mutates existing hardware. '''
+        print('assigning var', ctx.getText())
         varList = ctx.lvalue()  #list of lhs vars
         #TODO "varList" in the Minispec grammar points to a curly brace '{', not a list of variables.
         #   This is confusing and not useful--should 'varList=' be removed from the grammar?
@@ -1167,16 +1196,23 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # insert the field/slice/index
         # first, detect if we are setting a module input (vectors of modules are not yet implemented)
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
-            if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-                moduleName = lvalue.lvalue().getText()  #assuming we have a module
-                settingOverall = self.globalsHandler.currentScope.get(self, moduleName)
-                if settingOverall.__class__ == Module:  # we are, in fact, setting a module input
-                    inputName = lvalue.lowerCaseIdentifier().getText()
-                    # inputNode = settingOverall.inputs[inputName]
-                    # inputWire = Wire(value, inputNode)
-                    # self.globalsHandler.currentComponent.addChild(inputWire)
-                    self.globalsHandler.currentScope.set(value, moduleName + "." + inputName)
-                    return
+            prospectiveModuleName = lvalue.getText().split('[')[0].split('.')[0] # remove slices ([) and fields (.)
+            print('maybe module', prospectiveModuleName)
+            try:
+                settingOverall = self.globalsHandler.currentScope.get(self, prospectiveModuleName)
+                if settingOverall.__class__ == Module:
+                    # submodule input assignment has the form
+                    #   moduleName[i]...[k].inputName
+                    if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext: # no slicing is present, only the input name.
+                        inputName = lvalue.lowerCaseIdentifier().getText()
+                        self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
+                        return
+                    else:
+                        raise Exception("Not implemented")
+            except:  #didn't find a module with the given name
+                pass
+                print('missed prospective module', prospectiveModuleName)
+                print('in scope', self.globalsHandler.currentScope)
         text, nodes, varName = self.visit(lvalue)
         insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
         for i in range(len(nodes)):
@@ -1590,38 +1626,42 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 return toSliceFrom.slice(msb)
         if isMLiteral(toSliceFrom):
             toSliceFrom = toSliceFrom.getHardware(self.globalsHandler)
-        assert isNode(toSliceFrom), f"Expected a node, got {toSliceFrom} of class {toSliceFrom.__class__}"
-        text = "["
-        inNode = Node()
-        inputs = [inNode]
-        inWire = Wire(toSliceFrom, inNode)
-        inWires = [inWire]
-        if isMLiteral(msb):
-            text += str(msb)
-        else:
-            assert isNode(msb), "Expected a node"
-            text += '_'
-            inNode1 = Node()
-            inputs.append(inNode1)
-            inWire1 = Wire(msb, inNode1)
-            inWires.append(inWire1)
-        if ctx.lsb:
-            text += ':'
-            if isMLiteral(lsb):
-                text += str(lsb)
+        if isNode(toSliceFrom):  # we are slicing into an ordinary variable
+            text = "["
+            inNode = Node()
+            inputs = [inNode]
+            inWire = Wire(toSliceFrom, inNode)
+            inWires = [inWire]
+            if isMLiteral(msb):
+                text += str(msb)
             else:
-                assert isNode(lsb), "Expected a node"
+                assert isNode(msb), "Expected a node"
                 text += '_'
-                inNode2 = Node()
-                inputs.append(inNode2)
-                inWire2 = Wire(lsb, inNode2)
-                inWires.append(inWire2)
-        text += "]"
-        sliceComponent = Function(text, [], inputs)
-        self.globalsHandler.currentComponent.addChild(sliceComponent)
-        for wire in inWires:
-            self.globalsHandler.currentComponent.addChild(wire)
-        return sliceComponent.output
+                inNode1 = Node()
+                inputs.append(inNode1)
+                inWire1 = Wire(msb, inNode1)
+                inWires.append(inWire1)
+            if ctx.lsb:
+                text += ':'
+                if isMLiteral(lsb):
+                    text += str(lsb)
+                else:
+                    assert isNode(lsb), "Expected a node"
+                    text += '_'
+                    inNode2 = Node()
+                    inputs.append(inNode2)
+                    inWire2 = Wire(lsb, inNode2)
+                    inWires.append(inWire2)
+            text += "]"
+            sliceComponent = Function(text, [], inputs)
+            self.globalsHandler.currentComponent.addChild(sliceComponent)
+            for wire in inWires:
+                self.globalsHandler.currentComponent.addChild(wire)
+            return sliceComponent.output
+        else: # we are slicing into a submodule
+            assert toSliceFrom.__class__ == Module, "Must be vector of submodules"
+            return Node()
+
 
     def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
         '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
@@ -1712,7 +1752,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # if isMLiteral(value):  # convert value to hardware before assigning to register
         #     value = value.getHardware(self.globalsHandler)  # I don't think we need to convert to hardware yet.
         if ctx.lhs.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-            raise Exception("Not implemented") # this is for vectors of registers
+            # raise Exception("Not implemented") # this is for vectors of registers
+            regName = ctx.lhs.getText()
+            self.globalsHandler.currentScope.setPermanent(value, regName + ".input")
         regName = ctx.lhs.getText()
         self.globalsHandler.currentScope.set(value, regName + ".input")
 
