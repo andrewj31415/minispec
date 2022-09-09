@@ -677,7 +677,7 @@ def _():
     text = pull('paramTypedefs2')
 
     sv, so = Node(), Node()
-    gl3 = synth.parseAndSynth(text, 'getList#(3, Bit#(3))')
+    gl3 = synth.parseAndSynth(text, 'getList#(3, Bit#(3))')  #TODO elaborate these expected items
     sb3 = synth.parseAndSynth(text, 'sumBitList#(3,3)')
     sumVec = Function('sumVector#(3,3)', [gl3, sb3, Wire(sv, gl3.inputs[0]), Wire(gl3.output, sb3.inputs[0]), Wire(sb3.output, so)], [sv], so)
 

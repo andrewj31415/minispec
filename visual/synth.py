@@ -1,7 +1,5 @@
 import inspect
 
-import math
-
 import antlr4
 import build.MinispecPythonParser
 import build.MinispecPythonLexer
@@ -23,13 +21,12 @@ newline = '\n' #used to format f-strings such as "Hi{newline}there" since backsl
 '''
 Implementation Agenda:
 
-    - parameterized typedefs
-    - Module methods with arguments
-    - Modules with arguments
-    - Shared modules
+    - Fixing parametric lookups
     - Other files (imports)
-    - BSV imports
-    - Vectors of submodules
+    - Module methods with arguments
+    - Vectors of submodules (and more generally, indexing into a submodule)--use a demultiplexer
+    - Shared modules/Modules with arguments
+    - BSV imports of modules
 
 Implemented:
 
@@ -38,19 +35,14 @@ Implemented:
     - Parametrics (+ associated variable lookups)
     - Type handling (+ associated python type objects)
     - Literals
-    - If/case statements (+ muxes)
+    - If/ternary statements (+ muxes)
     - For loops
     - Modules
     - Indexing/Slicing
-    - Structs
+    - Typedef structs/synonyms/enums
     - Case statements
     - Case expressions
-
-Notes for parametrics:
-    paramFormals are used when defining functions/modules/types, and may be Integer n or
-    5 (or an expression that evaluates to an integer) or 'type' X (as in creating a typedef alias of vector).
-    params are used when calling functions/synth modules/invoking custom parameterized types, and may
-    only be an integer or the name of a type.
+    - parameterized typedefs
 
 '''
 
@@ -62,7 +54,7 @@ to different parts of the minispec grammar (packageDef, exprPrimary, returnExpr,
 We will:
 1. Run a tree walker through the parse tree to add static elaboration information, eg, 
   collecting all scopes that arise across various files/modules and binding all declared
-  functions/modules in the relevant scopes.
+  functions/modules/variables in the relevant scopes.
 2. Locate the module/function to synthesize, then use a visitor to go through the tree
   (starting at the module/function to synthesize) and synthesize the minispec code into
   a hardware representation (see hardware.py).
@@ -1436,8 +1428,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     '!=': MLiteralOperations.neq,
                     '&': MLiteralOperations.bitand,
                     '^': MLiteralOperations.bitxor,
-                    '^~': MLiteralOperations.bitxnor,
-                    '~^': MLiteralOperations.bitxnor,
+                    '^~': MLiteralOperations.bitnor,
+                    '~^': MLiteralOperations.bitnor,
                     '|': MLiteralOperations.bitor,
                     '&&': MLiteralOperations.booleanand,
                     '||': MLiteralOperations.booleanor}[op](left, right)
@@ -1474,7 +1466,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
         if isMLiteral(value):
-            #TODO fill out dict
             return {'!': MLiteralOperations.booleaninv,
                     '~': MLiteralOperations.inv,
                     '&': MLiteralOperations.redand,
@@ -1795,7 +1786,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # we create an equality tester to compare the expr and the exprToMatch and pass in the output node.
         # if they are booleans and one is a literal, we feed the non-boolean in directly (or inverted) to avoid boolean laundering.
         # if both are literals, we evaluate directly.
-        if isMLiteral(expr) and isMLiteral(exprToMatch):  
+        if isMLiteral(expr) and isMLiteral(exprToMatch):
             #TODO test short-circuiting literals early
             # two cases: expr and exprToMatch agree, in which case the case statement ends here and there is no branching, 
             # or expr and exprToMatch do not agree, which should not happen since we have already removed nonmatching literals when constructing expri.

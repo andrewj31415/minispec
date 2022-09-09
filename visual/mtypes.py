@@ -61,7 +61,7 @@ Names for methods in code:
 != is neq, in terms of eq
 & is bitand.
 ^ is bitxor.
-^~, ~^ is bitnotxor.
+^~, ~^ is bitnor.
 | is bitor.
 && is booleanand.
 || is booleanor.
@@ -76,7 +76,7 @@ Names for methods in code:
 '|' is redor.
 '~|' is notredor.
 '^' is redxor.
-'^~', '~^' is notredxor.
+'^~', '~^' is notredxor.  #TODO see http://csg.csail.mit.edu/6.S078/6_S078_2012_www/resources/reference-guide.pdf page 157 for actual names, documentation
 '+' is unaryadd.
 '-' is neg.
 
@@ -156,7 +156,7 @@ class MLiteral(metaclass=MType):
         raise Exception("Not implemented")
     def bitxor(self, other):
         raise Exception("Not implemented")
-    def bitxnor(self, other):
+    def bitnor(self, other):
         raise Exception("Not implemented")
     def bitor(self, other):
         raise Exception("Not implemented")
@@ -185,7 +185,10 @@ class MLiteral(metaclass=MType):
 
 class MLiteralOperations:
     '''class for calling operations on literals. handles typechecking and coercions.
-    also redirects some operations to others, eg >= in terms of > and ==.'''
+    also redirects some operations to others, eg >= in terms of > and ==.
+    For typechecking specs, see, page ~170, "Type Classes for Bit" etc.
+        http://csg.csail.mit.edu/6.375/6_375_2019_www/resources/bsv-reference-guide.pdf
+    '''
     def coerceArithmetic(first, second):
         if first.__class__ == IntegerLiteral and second.__class__ == BooleanLiteral:
             first = second.fromIntegerLiteral(first)
@@ -233,7 +236,7 @@ class MLiteralOperations:
         raise Exception("Not implemented")
     def bitxor(first, second):
         raise Exception("Not implemented")
-    def bitxnor(first, second):
+    def bitnor(first, second):
         raise Exception("Not implemented")
     def bitor(first, second):
         raise Exception("Not implemented")
@@ -265,8 +268,6 @@ class MLiteralOperations:
     def neg(first):
         return first.neg()
 
-
-#TODO we're not implementing parameterized typedefs for a while.
 
 def Synonym(mtype: 'MType', newName: 'str'):
     ''' Returns a class which is a synonym of the given class, with the appropriate name.
@@ -409,7 +410,7 @@ class Integer(MLiteral):
         raise Exception("Not implemented")
     def bitxor(self, other):
         raise Exception("Not implemented")
-    def bitxnor(self, other):
+    def bitnor(self, other):
         raise Exception("Not implemented")
     def bitor(self, other):
         raise Exception("Not implemented")
@@ -501,7 +502,7 @@ def Bit(n: 'IntegerLiteral'):
             raise Exception("Not implemented")
         def bitxor(self, other):
             raise Exception("Not implemented")
-        def bitxnor(self, other):
+        def bitnor(self, other):
             raise Exception("Not implemented")
         def bitor(self, other):
             raise Exception("Not implemented")
@@ -582,7 +583,7 @@ class Bool(MLiteral):
         raise Exception("Not implemented")
     def bitxor(self, other):
         raise Exception("Not implemented")
-    def bitxnor(self, other):
+    def bitnor(self, other):
         raise Exception("Not implemented")
     def bitor(self, other):
         raise Exception("Not implemented")
@@ -710,7 +711,7 @@ class DontCareLiteral(MLiteral):
         return self
     def bitxor(self, other):
         return self
-    def bitxnor(self, other):
+    def bitnor(self, other):
         return self
     def bitor(self, other):
         return self

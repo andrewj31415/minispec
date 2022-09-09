@@ -17,6 +17,16 @@ function List#(k, Type) getList#(Integer k, type Type)(Vector#(k, Type) v);
     return Cons#(Type, List#(k-1, Type)){ car: v[0], cdr: getList#(k-1, Type)(rest) };
 endfunction
 
+/* TODO the current paradigm for inserting into unassigned bitstrings/vectors is confusing--
+inserting an index (1) into the first index (0) is confusing, as it produces:
+-> [1] -> [0] -> ...
+Consider making it do
+        []
+-> [1] -> [0]
+  -> [2] -> [1] ...
+instead, with the blank box [] representing an uninitialized value. Another option is [?].
+ */
+
 function List#(1, Type) getList#(1, type Type)(Vector#(1, Type) v);
     return v[0];
 endfunction

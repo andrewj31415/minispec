@@ -9,13 +9,13 @@ import synth
 
 import pathlib
 
-minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("paramTypedefs2.ms")
+minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("counters.ms")
 minispecCode = minispecCodeFile.read_text()
 
-# synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Outer')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'RegisterFile')
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'sumVector#(3,3)')
+# synthesizedComponent = synth.parseAndSynth(minispecCode, 'sumVector#(3,3)')
 
 print('done synthesizing!')
 
