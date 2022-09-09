@@ -2007,7 +2007,7 @@ def getParseTree(text: 'str') -> 'build.MinispecPythonParser.MinispecPythonParse
     #print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
     return tree
 
-def parseAndSynth(text, topLevel) -> 'Component':
+def parseAndSynth(text: 'str', topLevel: 'str') -> 'Component':
 
     tree = getParseTree(text)
 
@@ -2044,6 +2044,17 @@ endfunction
     output.prune() #remove unused components
 
     return output
+
+
+def tokensAndWhitespace(text: 'str') -> 'list[str]':
+    ''' Returns a list of all grammar tokens from ANTLR in text, including whitespace tokens. '''
+    data = antlr4.InputStream(text)
+    lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
+    stream = antlr4.CommonTokenStream(lexer)
+    stream.getText() # mutates stream somehow to populate stream.tokens ... not sure exactly what is going here.
+    tokenTextList = [token.text for token in stream.tokens]
+    return tokenTextList
+
 
 if __name__ == '__main__':
 

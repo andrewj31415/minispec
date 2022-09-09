@@ -9,14 +9,16 @@ import synth
 
 import pathlib
 
-minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("assortedtests.ms")
-# minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath("counters.ms")
+# minispecFileName = "assortedtests"
+minispecFileName = "counters"
+
+minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath(f"{minispecFileName}.ms")
 minispecCode = minispecCodeFile.read_text()
 
-# synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Outer')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'RegisterFile')
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'alu')
+# synthesizedComponent = synth.parseAndSynth(minispecCode, 'alu')
 
 print('done synthesizing!')
 
@@ -37,3 +39,19 @@ text = JSToPythonFile.read_text() # the output from elk
 print()
 print("received:")
 print(text)
+
+templateFile = pathlib.Path(__file__).with_name('template.html')
+template = templateFile.read_text()
+
+templateParts = template.split("/* Python data goes here */")
+numInsertionPoints = 1
+assert len(templateParts) == numInsertionPoints + 1, f"Expected {numInsertionPoints+1} segments from {numInsertionPoints} insertion points but found {len(templateParts)} segments instead."
+
+sourcesInfo = f'''sources.set("{minispecFileName}", {{
+    tokens: {synth.tokensAndWhitespace(minispecCode)}
+}});'''
+
+template = templateParts[0] + sourcesInfo + templateParts[1]
+
+output = pathlib.Path(__file__).with_name('sample.html')
+output.open("w").write(template)

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Minispec Visual</title>
+        <style>
+            :root {
+                --button-gray: rgb(192, 192, 192);
+                font-size: 12pt;
+            }
+            html {
+                height: 100vh;
+                width: 100vw;
+                overflow: hidden;
+            }
+            body {
+                background-color: white;
+                height: 100%;
+                margin: 0;
+            }
+            #root {
+                height: 100%;
+                width: 100%;
+                display: flex;
+                flex-direction: row;
+                position: relative;
+            }
+            #source-div {
+                position: relative;
+                height: 100%;
+                width: 35vw;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+            #source-filenames-div {
+                z-index: 2;
+                width: 100%;
+                background-color: rgb(220, 220, 220);
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                flex-shrink: 0;
+            }
+            .source-filename-div {
+                padding: 10px;
+                background-color: var(--button-gray);
+                cursor: pointer;
+            }
+            #source-filetexts-div {
+                position: relative;
+                width: 100%;
+                flex-grow: 1;
+            }
+            .source-file-div {
+                z-index: 0;
+                position: absolute;
+                white-space: pre;
+                overflow: auto;
+                width: 100%;
+                height: 100%;
+                background-color: white;
+            }
+            #resize-div {
+                height: 100%;
+                width: 4px;
+                background-color: black;
+                cursor: e-resize;
+            }
+            #display-svg {
+                object-fit: contain;
+                flex: 2;
+                cursor: default;
+            }
+            #control-button-div {
+                width: 150px;
+                height: 50px;
+                position: absolute;
+                bottom: 0;
+                right: 0;
+            }
+            #button-fullscreen-background-div {
+                z-index: 1;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 105px;
+                background-color: var(--button-gray);
+            }
+            #button-fullscreen-image-embed {
+                z-index: 2;
+                position: absolute;
+                width: 50px;
+                height: 50px;
+                top: 0px;
+                left: 100px;
+            }
+            #button-fullscreen-click-div {
+                z-index: 3;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 105px;
+                background-color: transparent;
+                cursor: pointer;
+            }
+            #button-resetzoom-image-embed {
+                z-index: 2;
+                position: absolute;
+                width: 50px;
+                height: 50px;
+                top: 0px;
+                left: 50px;
+            }
+            #button-resetzoom-background-div {
+                z-index: 1;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 55px;
+                background-color: var(--button-gray);
+            }
+            #button-resetzoom-click-div {
+                z-index: 3;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 55px;
+                background-color: transparent;
+                cursor: pointer;
+            }
+            #button-help-image-embed {
+                z-index: 2;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 5px;
+            }
+            #button-help-background-div {
+                z-index: 1;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 5px;
+                background-color: var(--button-gray);
+            }
+            #button-help-click-div {
+                z-index: 3;
+                position: absolute;
+                width: 40px;
+                height: 40px;
+                top: 5px;
+                left: 5px;
+                background-color: transparent;
+                cursor: pointer;
+            }
+            #help-container-div {
+                width: 100%;
+                height: 100%;
+                position: absolute;
+                top: 0;
+                left: 0;
+                display: flex;
+                flex-direction: row;
+                overflow: hidden;
+                align-items: center;
+                justify-content: center;
+                pointer-events: none;
+            }
+            #help-div {
+                /* See https://codepen.io/imprakash/pen/GgNMXO */
+                width: 80%;
+                height: 80%;
+                overflow: auto;
+                background-color: white;
+                border-width: 3px;
+                border-color: black;
+                border-style: solid;
+                z-index: 5;
+                pointer-events: all;
+            }
+            #wire-inspect-div {
+                position: absolute;
+                background-color: white;
+                border-width: 3px;
+                border-color: black;
+                border-style: solid;
+                z-index: 6;
+                pointer-events: none;
+                transform: translate(-100%, -100%); /* position the div by its bottom right corner */
+            }
+        </style>
+    </head>
+    <body>
+        <div id="root">
+            <div id="source-div">
+                <div id="source-filenames-div"></div>
+                <div id="source-filetexts-div"></div>
+            </div>
+            <div id="resize-div" onmousedown="event.preventDefault(); /* prevents highlighting of source when resizing */"></div>
+            <svg id="display-svg" viewBox="0 0 100 100"></svg>
+            <div id="wire-inspect-div"></div>
+            <div id="control-button-div">
+                <div id="button-fullscreen-background-div"></div>
+                <div id="button-resetzoom-background-div"></div>
+                <div id="button-help-background-div"></div>
+                <!-- Source: https://thenounproject.com/icon/reset-zoom-54041/ -->
+                <embed
+                    id="button-resetzoom-image-embed"
+                    src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB3aWR0aD0iNzUycHQiIGhlaWdodD0iNzUycHQiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDc1MiA3NTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiA8ZGVmcz4KICA8Y2xpcFBhdGggaWQ9ImEiPgogICA8cGF0aCBkPSJtMTQyIDE2OGg0NzAuNzl2NDMxaC00NzAuNzl6Ii8+CiAgPC9jbGlwUGF0aD4KIDwvZGVmcz4KIDxnIGNsaXAtcGF0aD0idXJsKCNhKSI+CiAgPHBhdGggZD0ibTYwNCA1MjQuNzVjLTAuMzA4NTktMC4yODUxNi0wLjY0NDUzLTAuNDMzNTktMC45MjE4OC0wLjY3OTY5bC04NS40MzgtODMuOTY5LTIxLjU1NS0yMS4xNzZjMjIuMDI3LTQ4LjQ3NyAyMi4xNDEtMTA2LjMtNC43OTY5LTE1Ni44LTQ2LjAwNC04Ni4xNTItMTUzLjUyLTExOC44NS0yMzkuNjctNzIuODc5LTEuODIwMyAwLjk2NDg0LTMuNTM5MSAyLjA1ODYtNS4zMTY0IDMuMDk3Ny0yNy43ODEgMTYuMDc4LTQ5LjY5NSAzOC42MzctNjQuNzE5IDY0LjgwNS05Ljk4NDQtNS4xMjUtMTcuMjE1LTkuNTcwMy0xOC4yNTQtMTAuMjM0IDAuOTgwNDcgMC42MzY3MiAwLjMxMjUgMC4wMzEyNS0wLjkxNzk3LTAuODQzNzUtMC44ODY3Mi0wLjc0MjE5LTEuODk0NS0xLjMyMDMtMi45OTIyLTEuODA4Ni0wLjQxNDA2LTAuMjEwOTQtMC44NTkzNy0wLjM4NjcyLTEuMjE0OC0wLjUwNzgxLTAuOTQ5MjItMC4yOTY4OC0xLjkyNTgtMC40MTQwNi0yLjg3NS0wLjQ0MTQxLTAuMjM0MzgtMC4wMzEyNS0wLjQxNDA2LTAuMDE1NjI1LTAuNjgzNTktMC4wMTU2MjUtMC44MjgxMiAwLjAxNTYyNS0xLjY1NjIgMC4xMDE1Ni0yLjQ2MDkgMC4yODEyNS0wLjA4OTg0NCAwLjAzMTI1LTAuMTc1NzggMC4wMzEyNS0wLjI2NTYzIDAuMDU4NTk0LTMuODc4OSAwLjk2NDg0LTcuMTk5MiAzLjg1MTYtOC40NTcgOC0wLjQ4ODI4IDEuNTI3My0wLjU3ODEyIDMuMDgyLTAuNDQxNDEgNC41OTM4IDAgMC0wLjA0Njg3NSAwLjA0Njg3NS0wLjAxNTYyNSAwLjA1ODU5M3YwLjAzMTI1YzAuMDMxMjUgMS4zMzIgMC4xNzU3OCAyLjc1MzkgMC41MzEyNSA0LjI2NTZsMTUuMzk4IDY2LjIwNyA0LjgxMjUgMjAuNzg1IDQuMjgxMiAxOC4zNDQgMS4zNzUgNS44OTQ1YzIuODE2NCAxMi4yNDIgMTIuNjUyIDE1LjIzIDIxLjg0IDYuNjQwNmwyMC41MDQtMTkuMTU2IDUuODA4Ni01LjQ1MzEgMTMuMzU5LTEyLjQ4OCA0MS4wNy0zOC40MTggMi42NTIzLTIuNDc2NmMwLjMxMjUtMC4yOTY4OCAwLjUxOTUzLTAuNTkzNzUgMC43ODUxNi0wLjg4NjcybDEuNzIyNy0xLjY5MTQtMC4xMjEwOS0wLjAzMTI1YzEuMDcwMy0xLjIxNDggMS45ODgzLTIuNjA1NSAyLjQ4ODMtNC4yMzgzIDAuMTM2NzItMC40Mjk2OSAwLjE3OTY5LTAuODU5MzggMC4yNjU2My0xLjI3MzQgMC43OTY4Ny0zLjE3MTkgMC4xNzU3OC02LjE5MTQtMS44MDg2LTguNzM4My0xLjQ2NDgtMi4xNzk3LTMuNjEzMy0zLjkxMDItNi4zMTI1LTQuNzI2NiAwIDAtMTUuOTY5IDEuMTA5NC0zOC45MzQtMy40ODQ0IDUuMzA0Ny03LjczMDUgMTEuNDk2LTE0LjkwMiAxOC41NDctMjEuMzc5IDcuNDk2MS02Ljg1OTQgMTUuOTQxLTEyLjkzNCAyNS4zMDUtMTcuOTI2IDE3LjU3NC05LjM2MzMgMzYuMzg3LTE0LjA0NyA1NS4wMjctMTQuNTIgNDUuNDg0LTEuMTY4IDg5Ljk4OCAyMi43NTQgMTEyLjg0IDY1LjU1OSAyOC45MTggNTQuMjIzIDEzLjM2MyAxMjAuNDgtMzMuODY3IDE1Ni43My0xLjY0MDYgMS4yNDYxLTMuMjg5MSAyLjQ3NjYtNC45NzY2IDMuNjQ4NC0wLjY1MjM0IDAuNDQxNDEtMS4zMDQ3IDAuODg2NzItMS45NTMxIDEuMzIwMy0wLjQxNDA2IDAuMjk2ODgtMC44NTkzOCAwLjU2MjUtMS4zMDQ3IDAuODQzNzUtMi4yMjI3IDEuNDQxNC00LjUzNTIgMi43NTM5LTYuODc1IDQuMDc0Mi0zMy45MyAxOC43MTUtNzYuMTIxIDIxLjM2My0xMTMuNjYgMy4zNTE2LTQuODkwNi0yLjM1OTQtOS41NDMtNS4wMzkxLTEzLjk4NC03Ljk0MTQtMS4yNzM0LTAuODMyMDMtMi41NjY0LTEuNjg3NS0zLjgyMDMtMi41NzgxLTAuOTE3OTctMC4yOTY4OC0xLjg2NzItMC41MDc4MS0yLjg5MDYtMC41MDc4MS0xLjY3NTggMC4wMzEyNS0zLjIxNDggMC41MTk1My00LjUzMTIgMS4zMzJsLTEuNzA3IDEuMzUxNi0yNy4xNDEgMjEuMTU2LTMuMTA5NCAyLjQxNDFjLTEuMjczNCAxLjUzOTEtMi4wNDY5IDMuNDg0NC0yLjA0NjkgNS42NDg0IDAuMDMxMjUgMS44MjAzIDAuNTkzNzUgMy41MTE3IDEuNTM5MSA0LjkxOCAxLjMzMiAxLjA4MiAyLjY5NTMgMi4xNjQxIDQuMDYyNSAzLjIxNDggOS4zOTA2IDcuMTg3NSAxOS42MTMgMTMuNTM5IDMwLjY4IDE4Ljg0NCAzOS4xMzMgMTguNzg5IDgxLjc3IDIxLjgyIDEyMC44MiAxMS43MzQgMC4xMTcxOSAwIDAuMjM0MzggMC4wNTg1OTQgMC4zODY3MiAwLjA1ODU5NCAxLjY1NjItMC40NDUzMSAzLjMzNTktMC44ODY3MiA0Ljk4MDUtMS4zNTk0IDExLjM0OC0zLjMyMDMgMjIuNTItNy43OTY5IDMzLjM2My0xMy41NzQgNC4zNjcyLTIuMzM5OCA4LjU2MjUtNC44NzUgMTIuNjgtNy41MjM0IDAuNTYyNS0wLjM1NTQ3IDEuMTQ0NS0wLjcwNzAzIDEuNzA3LTEuMDgyIDEuMTk5Mi0wLjc4NTE2IDIuMzU1NS0xLjYxNzIgMy41MzkxLTIuNDE0MSAwLjQxNDA2LTAuMjkyOTcgMC44MDg1OS0wLjU4NTk0IDEuMjE4OC0wLjg3MTA5bDE4LjE1MiAxNy44NzkgODIuNzM0IDgxLjI1NGMwLjE4MzU5IDAuMTg3NSAwLjMzNTk0IDAuNTAzOTEgMC41MjM0NCAwLjcwNzAzIDE0LjE1NiAxNC4wOTggNDAuMTA5IDEwLjk3MyA1OC4wMTItNyAxNy45NjUtMTcuOTQ1IDIxLjA5NC00My45NDUgNy4wMzEyLTU4LjAxMnoiLz4KIDwvZz4KPC9zdmc+Cg=="
+                />
+                <!-- Source: https://thenounproject.com/icon/fullscreen-1337699/ -->
+                <embed
+                    id="button-fullscreen-image-embed"
+                    src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB3aWR0aD0iNzUycHQiIGhlaWdodD0iNzUycHQiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDc1MiA3NTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiA8Zz4KICA8cGF0aCBkPSJtMTc4LjY4IDE3OC42OHYzOTQuNjVoMzk0LjY1di0zOTQuNjV6bTM1NS4xOSAzNTUuMTloLTMxNS43MnYtMzE1LjcyaDMxNS43MnoiLz4KICA8cGF0aCBkPSJtMzM2LjU0IDQ3NC42NmgtMzEuMjkzbDQ1LjI0Ni00NS4yNDYtMjcuOTAyLTI3LjkwMi00NS4yNDYgNDUuMjQ2di0zMS4yOTdoLTM5LjQ2NXY5OC42NjRoOTguNjZ6Ii8+CiAgPHBhdGggZD0ibTQyOS40MiAzNTAuNDkgNDUuMjQ2LTQ1LjI0NnYzMS4yOTNoMzkuNDY1di05OC42NmgtOTguNjY0djM5LjQ2NWgzMS4yOTdsLTQ1LjI0NiA0NS4yNDZ6Ii8+CiA8L2c+Cjwvc3ZnPgo="
+                />
+                <!-- Source: https://thenounproject.com/icon/help-2647215/ -->
+                <embed
+                    id="button-help-image-embed"
+                    src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB3aWR0aD0iNzUycHQiIGhlaWdodD0iNzUycHQiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDc1MiA3NTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiA8ZGVmcz4KICA8Y2xpcFBhdGggaWQ9ImIiPgogICA8cGF0aCBkPSJtMjE5IDEzOS4yMWgzMTR2MzI4Ljc5aC0zMTR6Ii8+CiAgPC9jbGlwUGF0aD4KICA8Y2xpcFBhdGggaWQ9ImEiPgogICA8cGF0aCBkPSJtMzEyIDUxMGgxMDN2MTAyLjc5aC0xMDN6Ii8+CiAgPC9jbGlwUGF0aD4KIDwvZGVmcz4KIDxnPgogIDxnIGNsaXAtcGF0aD0idXJsKCNiKSI+CiAgIDxwYXRoIGQ9Im0zNjguNTcgMTM5LjIxYzMwLjUyLTAuNDQ5MjIgNjAuODA1IDUuMzY3MiA4OC45ODQgMTcuMDk4IDIzLjg2NyA5LjU2MjUgNDQuMTAyIDI2LjQxOCA1Ny44MjQgNDguMTYgMTYuNjg4IDI3LjAyMyAyMS40NjkgNTkuNzM4IDEzLjIxNSA5MC40MS01LjIxMDkgMjEuMTIxLTE3Ljk5NiAzOC4xMjUtMzMuMTUyIDUzLjMyNC0xMi42NTIgMTEuOTY5LTI2LjE4OCAyMi45NzMtNDAuNDg4IDMyLjkxNC0xMC4zNzEgNy41NzgxLTIwLjUwOCAxNS41MzUtMzAuNTk0IDIzLjY4LTYuODQzOCA1Ljg2MzMtMTIuMDc4IDEzLjM3OS0xNS4yMDMgMjEuODMyLTIuNTU4NiA2LjAzMTItNS4wODIgMTIuMDc4LTcuNTc4MSAxOC4xMzctNS42ODM2IDE0LjU4Ni0xNy4xNDUgMjEuMjE1LTMyLjE1NiAyMi4xNjQtOS4xOTE0IDEuMjE0OC0xOC41MzEtMC42MzI4MS0yNi41NjYtNS4yNTc4LTYuNTIzNC00LjA3ODEtMTEuODItOS44NDM4LTE1LjMzMi0xNi42OTEtMy41MDc4LTYuODQzOC01LjEwMTYtMTQuNTEyLTQuNjA1NS0yMi4xODggMC41MTU2My0xOS4wMiA4LjExNzItMzcuMTU2IDIxLjMwOS01MC44NjMgMTQuNjMzLTE2LjYyMSAzMi43MjMtMjkuMjE5IDQ5Ljg2Ny00Mi45MDZoMC4wMDM5MDZjMTMuMjk3LTkuNjUyMyAyNC43NjItMjEuNjAyIDMzLjg1OS0zNS4yODEgMTIuNDU3LTIwLjYwMiA4LjU3MDMtNTQuNDYxLTEyLjY0NS02OS40NzN2LTAuMDAzOTA2Yy03LjY2OC01LjM5NDUtMTYuNDYxLTguOTcyNy0yNS43MTUtMTAuNDY1LTE0LjA5OC0yLjYzNjctMjguNjI1LTEuODI0Mi00Mi4zNCAyLjM2NzItMTUuOTE0IDUuMDE5NS0yNi4wOTQgMTYuNTc0LTMzLjU3OCAzMC45NzMtNS40NDUzIDEwLjUxMi0xMC4zMjQgMjEuNDA2LTE2LjU3NCAzMS40NDUtMTAuNTEyIDE2Ljk1My0yOC4wODIgMjAuNjQ4LTQ1Ljc0NiAxNy40M3YtMC4wMDM5MDZjLTcuNzA3LTEuMjA3LTE0Ljg4My00LjY4MzYtMjAuNjAyLTkuOTkyMi03LjY3NTgtNy41MjM0LTExLjcwMy0xOC4wMTYtMTEuMDM1LTI4Ljc0NiAwLjI3NzM0LTE4LjMwMSA2LjAzNTItMzYuMTAyIDE2LjUyNy01MS4wOTggMTcuNjI1LTI1LjMyOCA0Mi42NTItNDQuNTg2IDcxLjY1Ni01NS4xMjUgMTkuMzc1LTcuNDYwOSAzOS45MDYtMTEuNDY5IDYwLjY2NC0xMS44NHoiLz4KICA8L2c+CiAgPGcgY2xpcC1wYXRoPSJ1cmwoI2EpIj4KICAgPHBhdGggZD0ibTQxNC42IDU2MS42YzAgMjguMjczLTIyLjkxOCA1MS4xOTUtNTEuMTk1IDUxLjE5NS0yOC4yNzMgMC01MS4xOTEtMjIuOTIyLTUxLjE5MS01MS4xOTUgMC0yOC4yNzMgMjIuOTE4LTUxLjE5NSA1MS4xOTEtNTEuMTk1IDI4LjI3NyAwIDUxLjE5NSAyMi45MjIgNTEuMTk1IDUxLjE5NSIvPgogIDwvZz4KIDwvZz4KPC9zdmc+Cg=="
+                />
+                <div id="button-fullscreen-click-div" onclick="document.documentElement.requestFullscreen()"></div>
+                <div id="button-resetzoom-click-div"></div>
+                <div
+                    id="button-help-click-div"
+                    onmousedown="event.preventDefault(); /* prevents highlighting of div when clicking on icon */"
+                ></div>
+            </div>
+            <div id="help-container-div">
+                <div id="help-div">
+                    Hello! Welcome to Minispec Visual!
+                    <p>
+                        The left pane shows the source code. The right pane displays a diagram of the synthesized circuit. The
+                        circuit is not currently displayed at the logic gate level, though this might be added in the future.
+                    </p>
+                    <p>
+                        You can drag to move and either scroll or pinch to zoom. Click
+                        <!-- Source: https://thenounproject.com/icon/reset-zoom-54041/ -->
+                        <svg style="display: inline; vertical-align: middle; width: 14pt; height: 14pt" viewBox="100 100 552 552">
+                            <g xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    d="m604 524.75c-0.30859-0.28516-0.64453-0.43359-0.92188-0.67969l-85.438-83.969-21.555-21.176c22.027-48.477 22.141-106.3-4.7969-156.8-46.004-86.152-153.52-118.85-239.67-72.879-1.8203 0.96484-3.5391 2.0586-5.3164 3.0977-27.781 16.078-49.695 38.637-64.719 64.805-9.9844-5.125-17.215-9.5703-18.254-10.234 0.98047 0.63672 0.3125 0.03125-0.91797-0.84375-0.88672-0.74219-1.8945-1.3203-2.9922-1.8086-0.41406-0.21094-0.85937-0.38672-1.2148-0.50781-0.94922-0.29688-1.9258-0.41406-2.875-0.44141-0.23438-0.03125-0.41406-0.015625-0.68359-0.015625-0.82812 0.015625-1.6562 0.10156-2.4609 0.28125-0.089844 0.03125-0.17578 0.03125-0.26563 0.058594-3.8789 0.96484-7.1992 3.8516-8.457 8-0.48828 1.5273-0.57812 3.082-0.44141 4.5938 0 0-0.046875 0.046875-0.015625 0.058593v0.03125c0.03125 1.332 0.17578 2.7539 0.53125 4.2656l15.398 66.207 4.8125 20.785 4.2812 18.344 1.375 5.8945c2.8164 12.242 12.652 15.23 21.84 6.6406l20.504-19.156 5.8086-5.4531 13.359-12.488 41.07-38.418 2.6523-2.4766c0.3125-0.29688 0.51953-0.59375 0.78516-0.88672l1.7227-1.6914-0.12109-0.03125c1.0703-1.2148 1.9883-2.6055 2.4883-4.2383 0.13672-0.42969 0.17969-0.85938 0.26563-1.2734 0.79687-3.1719 0.17578-6.1914-1.8086-8.7383-1.4648-2.1797-3.6133-3.9102-6.3125-4.7266 0 0-15.969 1.1094-38.934-3.4844 5.3047-7.7305 11.496-14.902 18.547-21.379 7.4961-6.8594 15.941-12.934 25.305-17.926 17.574-9.3633 36.387-14.047 55.027-14.52 45.484-1.168 89.988 22.754 112.84 65.559 28.918 54.223 13.363 120.48-33.867 156.73-1.6406 1.2461-3.2891 2.4766-4.9766 3.6484-0.65234 0.44141-1.3047 0.88672-1.9531 1.3203-0.41406 0.29688-0.85938 0.5625-1.3047 0.84375-2.2227 1.4414-4.5352 2.7539-6.875 4.0742-33.93 18.715-76.121 21.363-113.66 3.3516-4.8906-2.3594-9.543-5.0391-13.984-7.9414-1.2734-0.83203-2.5664-1.6875-3.8203-2.5781-0.91797-0.29688-1.8672-0.50781-2.8906-0.50781-1.6758 0.03125-3.2148 0.51953-4.5312 1.332l-1.707 1.3516-27.141 21.156-3.1094 2.4141c-1.2734 1.5391-2.0469 3.4844-2.0469 5.6484 0.03125 1.8203 0.59375 3.5117 1.5391 4.918 1.332 1.082 2.6953 2.1641 4.0625 3.2148 9.3906 7.1875 19.613 13.539 30.68 18.844 39.133 18.789 81.77 21.82 120.82 11.734 0.11719 0 0.23438 0.058594 0.38672 0.058594 1.6562-0.44531 3.3359-0.88672 4.9805-1.3594 11.348-3.3203 22.52-7.7969 33.363-13.574 4.3672-2.3398 8.5625-4.875 12.68-7.5234 0.5625-0.35547 1.1445-0.70703 1.707-1.082 1.1992-0.78516 2.3555-1.6172 3.5391-2.4141 0.41406-0.29297 0.80859-0.58594 1.2188-0.87109l18.152 17.879 82.734 81.254c0.18359 0.1875 0.33594 0.50391 0.52344 0.70703 14.156 14.098 40.109 10.973 58.012-7 17.965-17.945 21.094-43.945 7.0312-58.012z"
+                                />
+                            </g>
+                        </svg>
+                        to reset the zoom. Click
+                        <!-- Source: https://thenounproject.com/icon/fullscreen-1337699/ -->
+                        <svg style="display: inline; vertical-align: middle; width: 14pt; height: 14pt" viewBox="100 100 552 552">
+                            <g xmlns="http://www.w3.org/2000/svg">
+                                <path d="m178.68 178.68v394.65h394.65v-394.65zm355.19 355.19h-315.72v-315.72h315.72z" />
+                                <path
+                                    d="m336.54 474.66h-31.293l45.246-45.246-27.902-27.902-45.246 45.246v-31.297h-39.465v98.664h98.66z"
+                                />
+                                <path
+                                    d="m429.42 350.49 45.246-45.246v31.293h39.465v-98.66h-98.664v39.465h31.297l-45.246 45.246z"
+                                />
+                            </g>
+                        </svg>
+                        to enter fullscreen; press escape to exit fullscreen.
+                    </p>
+                    <p>
+                        If you double-click on a component, you can view its internal structure (if available). If you hover on a
+                        component or a wire, its source code will be highlighted; if you click on a component, you will jump to
+                        the source code. You can also click on a component's type if it defined in the minispec source. Hovering
+                        over a wire shows its type and source.
+                    </p>
+                    <p>
+                        The latency of components is shown in green. Note that the timing for a component includes synth's
+                        optimizations for that component, but only for that component, so timings for a component will likely be
+                        shorter than suggested by the timings of its child components, especially for smaller componenets (and
+                        even when examining only the critical path). I will look in to the possibility of synthesizing module
+                        methods separately from module rules to give more detail about latencies as opposed to just the minimal
+                        clock cycle.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <script defer>
+            /* assertions and runtime type checking */
+            /* condition: boolean, message: string */
+            assert = (condition, message = "Assertion Error.") => {
+                if (!isBoolean(condition)) {
+                    throw new Error(`assert statements may only take boolean conditions. Recieved: ${condition}`);
+                }
+                if (!isString(message)) {
+                    throw new Error(`assert statements must have a string as a message. Recieved: ${message}`);
+                }
+                if (!condition) {
+                    throw new Error(message);
+                }
+            };
+            /* n: any
+            Takes in any type and returns true if n is a number. */
+            isNumber = (n) => {
+                return typeof n === "number";
+            };
+            isString = (n) => {
+                return typeof n === "string";
+            };
+            isFunction = (n) => {
+                return typeof n === "function";
+            };
+            isBoolean = (n) => {
+                return typeof n === "boolean";
+            };
+            isArray = (arr) => {
+                return arr instanceof Array;
+            };
+            /* property: (any) => bool
+            returns a function */
+            isArrayWith = (property) => {
+                /* arr: any
+                Takes in any type and returns true if arr is an array such that every element has the given property. */
+                return (arr) => {
+                    if (!isArray(arr)) {
+                        return false;
+                    }
+                    return arr.reduce((prev, cur) => prev && property(cur), true);
+                };
+            };
+            /* Takes any number of function arguments. Returns a function that checks if an array is a tuple
+            with the correct properties. */
+            function isTupleWith() {
+                for (let func of arguments) {
+                    assert(isFunction(func), "isTupleWith can only be called on functions");
+                }
+                return (arr) => {
+                    if (!isArray(arr)) {
+                        return false;
+                    }
+                    return arr.reduce((prev, cur, index) => prev && arguments[index](cur), true);
+                };
+            }
+
+            /* Globals */
+            sourceDisplay = document.getElementById("source-div"); //The div with the source code
+            sourceFilenameDisplay = document.getElementById("source-filenames-div"); //The div with the clickable filenames
+            sourceFiletextDisplay = document.getElementById("source-filetexts-div"); //The div with the text of the files
+            resizeDiv = document.getElementById("resize-div"); //The bar for resizing the display
+            svgDisplay = document.getElementById("display-svg"); //The svg with the diagram
+            helpDiv = document.getElementById("help-div"); //The div with help information
+            helpClickDiv = document.getElementById("button-help-click-div"); //The button to click to show help information
+
+            /* Handle showing the help information */
+            helpDiv.style.visibility = "hidden";
+            helpDivOpening = false;
+            helpDivOpen = false;
+            window.addEventListener("click", () => {
+                //See https://stackoverflow.com/questions/14188654/detect-click-outside-element-vanilla-javascript
+                let isClickInside = helpDiv.contains(event.target);
+                if (!isClickInside && !helpDivOpening) {
+                    helpDiv.style.visibility = "hidden";
+                    helpDivOpen = false;
+                } else {
+                    helpDivOpening = false;
+                    helpDivOpen = true;
+                    helpDiv.style.visibility = "";
+                }
+            });
+            helpClickDiv.addEventListener("click", () => {
+                if (!helpDivOpen) {
+                    helpDivOpening = true;
+                }
+            });
+
+            /* Allow the user to resize the text display/svg display.
+                                        See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
+            isResizing = false;
+            startResize = (event) => {
+                isResizing = true;
+            };
+            stopResize = () => {
+                isResizing = false;
+            };
+            resizeDiv.addEventListener("mousedown", startResize);
+            window.addEventListener("mouseup", stopResize);
+            window.addEventListener("mousemove", (event) => {
+                if (isResizing) {
+                    sourceDisplay.style.width = event.pageX + "px";
+                }
+            });
+
+            /* Sources will be stored using sources: Map<filename: string, { tokens: Array<string> }> */
+            sources = new Map();
+            /* Python data goes here */
+
+            /* Put the sources into the document */
+            sourceDivs = new Map(); //each of these maps filenames to DOM elements.
+            sourceTitleDivs = new Map();
+            sourceTokenSpanArrays = new Map(); //this one maps filenames to an array of DOM elements.
+
+            /* Given a filename, pulls out the given source. */
+            pullGivenSource = (filename) => {
+                sourceDivs.forEach((sourceDiv, otherFilename) => {
+                    sourceDiv.style.zIndex = 0;
+                });
+                sourceTitleDivs.forEach((sourceTitle, otherFilename) => {
+                    sourceTitle.style.backgroundColor = "var(--button-gray)";
+                });
+                sourceDivs.get(filename).style.zIndex = 1;
+                sourceTitleDivs.get(filename).style.backgroundColor = "white";
+            };
+
+            for (let [sourceFileName, source] of sources) {
+                let newSource = document.createElement("div");
+                newSource.classList.add("source-file-div");
+                let sourceTokens = [];
+                for (let index = 0; index < source.tokens.length; index++) {
+                    let token = source.tokens[index];
+                    let tokenSpan = document.createElement("span");
+                    tokenSpan.innerHTML = token;
+                    sourceTokens.push(tokenSpan);
+                }
+                for (let tokenSpan of sourceTokens) {
+                    newSource.appendChild(tokenSpan);
+                }
+                sourceFiletextDisplay.appendChild(newSource);
+                sourceDivs.set(sourceFileName, newSource);
+                sourceTokenSpanArrays.set(sourceFileName, sourceTokens);
+
+                let newSourceTitle = document.createElement("div");
+                newSourceTitle.classList.add("source-filename-div");
+                newSourceTitle.innerHTML = sourceFileName;
+                newSourceTitle.addEventListener("mousedown", (event) => {});
+                newSourceTitle.addEventListener("click", (event) => {
+                    pullGivenSource(sourceFileName);
+                    clearPermanentHighlight();
+                });
+                sourceFilenameDisplay.appendChild(newSourceTitle);
+                sourceTitleDivs.set(sourceFileName, newSourceTitle);
+            }
+            pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
+        </script>
+    </body>
+</html>
