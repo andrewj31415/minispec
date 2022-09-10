@@ -369,6 +369,130 @@
                 }
             });
 
+            getSVGViewBox = () =>
+                svgDisplay
+                    .getAttribute("viewBox")
+                    .split(" ")
+                    .map((item) => Number(item)); //returns the viewbox of svgDisplay as an array of four numbers.
+            /* Given a mouse event from an event listener, returns {x: number, y: number}
+                                        where x and y are the svg coordinates of the click on svgDisplay.
+                                        See https://stackoverflow.com/questions/29261304/how-to-get-the-click-coordinates-relative-to-svg-element-holding-the-onclick-lis
+                                    */
+            getSVGCoordinates = (event) => {
+                let pt = svgDisplay.createSVGPoint();
+                pt.x = event.clientX;
+                pt.y = event.clientY;
+                let cursorpt = pt.matrixTransform(svgDisplay.getScreenCTM().inverse());
+                return cursorpt;
+            };
+
+            /* Allow the user to zoom in/out on the svg by scrolling. */
+            svgDisplay.addEventListener("wheel", (e) => {
+                e.preventDefault();
+                let coords = getSVGCoordinates(e);
+                let rescaleFactor = 2 ** (e.deltaY / 100);
+                let currentSVGViewBox = getSVGViewBox();
+                currentSVGViewBox = [
+                    currentSVGViewBox[0] * rescaleFactor + coords.x * (1 - rescaleFactor),
+                    currentSVGViewBox[1] * rescaleFactor + coords.y * (1 - rescaleFactor),
+                    currentSVGViewBox[2] * rescaleFactor,
+                    currentSVGViewBox[3] * rescaleFactor,
+                ];
+                svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+            });
+
+            /* Allow the user to click to zoom and drag to move
+                                        See https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/
+                                    */
+            isSVGDragging = false;
+            startSVGDragging = (event) => {
+                isSVGDragging = true;
+                let coords = getSVGCoordinates(event);
+                svgDraggingX = coords.x;
+                svgDraggingY = coords.y;
+            };
+            stopSVGDragging = () => {
+                isSVGDragging = false;
+            };
+            svgDisplay.addEventListener("mousedown", startSVGDragging);
+            window.addEventListener("mouseup", stopSVGDragging);
+            window.addEventListener("mousemove", (event) => {
+                if (isSVGDragging) {
+                    event.preventDefault(); //prevent dragging the svg from highlighting the source text
+                    let newCoords = getSVGCoordinates(event);
+                    let currentSVGViewBox = getSVGViewBox();
+                    currentSVGViewBox = [
+                        currentSVGViewBox[0] + svgDraggingX - newCoords.x,
+                        currentSVGViewBox[1] + svgDraggingY - newCoords.y,
+                        currentSVGViewBox[2],
+                        currentSVGViewBox[3],
+                    ];
+                    svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                }
+            });
+            mobileRecalculateSvgDragging = (touches) => {
+                /* computes the point that the SVG is being dragged from as the centroid of the fingers */
+                let coordsArray = [...touches].map((touch) => getSVGCoordinates(touch));
+                svgDraggingX = coordsArray.map((coords) => coords.x).reduce((prev, cur) => prev + cur) / coordsArray.length;
+                svgDraggingY = coordsArray.map((coords) => coords.y).reduce((prev, cur) => prev + cur) / coordsArray.length;
+                if (touches.length == 2) {
+                    svgDraggingScale = Math.sqrt(
+                        (coordsArray[0].x - coordsArray[1].x) ** 2 + (coordsArray[0].y - coordsArray[1].y) ** 2
+                    );
+                }
+            };
+            svgDisplay.addEventListener("touchstart", (event) => {
+                isSVGDragging = true;
+                //let coords = getSVGCoordinates(event.touches[0]);
+                mobileRecalculateSvgDragging(event.touches);
+            });
+            svgDisplay.addEventListener("touchend", (event) => {
+                if (event.touches.length === 0) {
+                    //stop the dragging if no fingers are left
+                    isSVGDragging = false;
+                } else {
+                    mobileRecalculateSvgDragging(event.touches);
+                }
+            });
+            window.addEventListener(
+                "touchmove",
+                (event) => {
+                    if (isSVGDragging && event.touches.length === 1 /*only one finger should drag svg */) {
+                        event.preventDefault(); //prevent the touch from dragging the entire window
+                        let newCoords = getSVGCoordinates(event.touches[0]);
+                        let currentSVGViewBox = getSVGViewBox();
+                        currentSVGViewBox = [
+                            currentSVGViewBox[0] + svgDraggingX - newCoords.x,
+                            currentSVGViewBox[1] + svgDraggingY - newCoords.y,
+                            currentSVGViewBox[2],
+                            currentSVGViewBox[3],
+                        ];
+                        svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                    } else if (isSVGDragging && event.touches.length === 2) {
+                        event.preventDefault(); //prevent the touch from resizing the entire window
+                        let newCoords1 = getSVGCoordinates(event.touches[0]);
+                        let newCoords2 = getSVGCoordinates(event.touches[1]);
+                        let currentSVGViewBox = getSVGViewBox();
+                        currentSVGViewBox = [
+                            currentSVGViewBox[0] + svgDraggingX - (newCoords1.x + newCoords2.x) / 2,
+                            currentSVGViewBox[1] + svgDraggingY - (newCoords1.y + newCoords2.y) / 2,
+                            currentSVGViewBox[2],
+                            currentSVGViewBox[3],
+                        ];
+                        let rescaleFactor =
+                            svgDraggingScale / Math.sqrt((newCoords1.x - newCoords2.x) ** 2 + (newCoords1.y - newCoords2.y) ** 2);
+                        currentSVGViewBox = [
+                            currentSVGViewBox[0] * rescaleFactor + svgDraggingX * (1 - rescaleFactor),
+                            currentSVGViewBox[1] * rescaleFactor + svgDraggingY * (1 - rescaleFactor),
+                            currentSVGViewBox[2] * rescaleFactor,
+                            currentSVGViewBox[3] * rescaleFactor,
+                        ];
+                        svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                    }
+                },
+                { passive: false } //necessary to allow svg dragging to prevent default
+            );
+
             /* Allow the user to resize the text display/svg display.
                                         See https://medium.com/the-z/making-a-resizable-div-in-js-is-not-easy-as-you-think-bda19a1bc53d */
             isResizing = false;
@@ -436,6 +560,71 @@
                 sourceTitleDivs.set(sourceFileName, newSourceTitle);
             }
             pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
+
+            elementsToPlace = {};
+            /* Python data goes here */
+
+            console.log(elementsToPlace);
+            topLevel = elementsToPlace.children[0];
+
+            /* component: an elk node. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
+            placeComponent = (component, parentPos) => {
+                let absolutePos = { x: parentPos.x + component.x, y: parentPos.y + component.y }; // The absolute position of the componenet in the svg
+                let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                for (let rect of [overRect]) {
+                    rect.setAttribute("x", absolutePos.x);
+                    rect.setAttribute("y", absolutePos.y);
+                    rect.setAttribute("width", component.width);
+                    rect.setAttribute("height", component.height);
+                    rect.setAttribute("stroke", "black");
+                    rect.setAttribute("stroke-width", component.height / 50); //make the thickness proportional to the height so that it does not cover the under text
+                    rect.setAttribute("fill", "transparent");
+                }
+                svgDisplay.appendChild(overRect);
+
+                //place children and edges
+                if (component.children) {
+                    for (child of component.children) {
+                        placeComponent(child, absolutePos);
+                    }
+                }
+                if (component.edges) {
+                    for (edge of component.edges) {
+                        placeEdge(edge, absolutePos);
+                    }
+                }
+            };
+
+            /* edge: an elk edge. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
+            placeEdge = (edge, parentPos) => {
+                console.log(edge);
+                let segments = []; //Array<{start:{x:number, y:number}, end:{x:number, y:number}}>
+                let currentLocation = edge.sections[0].startPoint; //walk along the edge and collect its segements
+                if (edge.sections[0].bendPoints) {
+                    for (bendPoint of edge.sections[0].bendPoints) {
+                        nextLocation = bendPoint;
+                        console.log("bendPoint", bendPoint);
+                        segments.push({ start: currentLocation, end: nextLocation });
+                        currentLocation = nextLocation;
+                    }
+                }
+                segments.push({ start: currentLocation, end: edge.sections[0].endPoint });
+                console.log(segments);
+                //draw the line segments of the edge
+                for (let segment of segments) {
+                    console.log("segment", segment);
+                    let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", parentPos.x + segment.start.x);
+                    line.setAttribute("y1", parentPos.y + segment.start.y);
+                    line.setAttribute("x2", parentPos.x + segment.end.x);
+                    line.setAttribute("y2", parentPos.y + segment.end.y);
+                    line.setAttribute("stroke", "black");
+                    line.setAttribute("stroke-width", 1);
+                    svgDisplay.appendChild(line);
+                }
+            };
+
+            placeComponent(topLevel, { x: 0, y: 0 });
         </script>
     </body>
 </html>

@@ -35,23 +35,25 @@ with pythonToJSFile.open('w') as fp: # write to a file to give to elk
 
 os.system("node elk/place.js") # run elk
 
-text = JSToPythonFile.read_text() # the output from elk
+elkOutput = JSToPythonFile.read_text() # the output from elk
 print()
 print("received:")
-print(text)
+print(elkOutput)
 
 templateFile = pathlib.Path(__file__).with_name('template.html')
 template = templateFile.read_text()
 
 templateParts = template.split("/* Python data goes here */")
-numInsertionPoints = 1
+numInsertionPoints = 2
 assert len(templateParts) == numInsertionPoints + 1, f"Expected {numInsertionPoints+1} segments from {numInsertionPoints} insertion points but found {len(templateParts)} segments instead."
 
 sourcesInfo = f'''sources.set("{minispecFileName}", {{
     tokens: {synth.tokensAndWhitespace(minispecCode)}
 }});'''
 
-template = templateParts[0] + sourcesInfo + templateParts[1]
+elementsToPlace = f'''elementsToPlace = {elkOutput}'''
+
+template = templateParts[0] + sourcesInfo + templateParts[1] + elementsToPlace + templateParts[2]
 
 output = pathlib.Path(__file__).with_name('sample.html')
 output.open("w").write(template)
