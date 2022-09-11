@@ -27,7 +27,7 @@ if __name__ == '__main__':
     currentPathString = os.getcwd()
     currentPath = pathlib.Path(currentPathString)
     targetFile = currentPath.joinpath(args.file)
-    visualDir = currentPath.joinpath(args.visualdir)
+    visualDir = pathlib.Path(args.visualdir)
 
     def pullTextFromImport(filename: 'str') -> 'str':
         ''' Given the name of a file to import (eg, filename = "fourbitcounter"), returns the text
@@ -37,18 +37,19 @@ if __name__ == '__main__':
         print('looking at file', textFile)
         return textFile.read_text()
 
-
-    targetText = pullTextFromImport(args.file[:-3]) #[:-3] removes the .ms from the end of the file
+    sourceFilename = pathlib.Path(args.file).stem
+    targetText = pullTextFromImport(sourceFilename) 
     topLevel = args.target
     print('synthing!!!')
-    synthesizedComponent = synth.parseAndSynth(targetText, topLevel, args.file[:-3], pullTextFromImport)
+    synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport)
     print('synthed!!!')
     print(synthesizedComponent)
     
     # input/output files for elk
     pythonToJSFile = visualDir.joinpath("elkInput.txt")
     JSToPythonFile = visualDir.joinpath("elkOutput.txt")
-    ELKcaller = pathlib.Path(__file__).with_name("elk").joinpath("place.js")
+    absoluteFilePath = pathlib.Path(__file__).resolve()
+    ELKcaller = absoluteFilePath.with_name("elk").joinpath("place.js")
 
 
     # if not os.path.exists(JSToPythonFile):
@@ -59,7 +60,7 @@ if __name__ == '__main__':
         fp.write(hardware.getELK(synthesizedComponent))
 
     print("elkcaller", ELKcaller)
-    os.system(f"node {ELKcaller}")
+    os.system(f"cd {visualDir} && node {ELKcaller}")
 
     elkOutput = JSToPythonFile.read_text() # the output from elk
 
@@ -70,7 +71,7 @@ if __name__ == '__main__':
     numInsertionPoints = 2
     assert len(templateParts) == numInsertionPoints + 1, f"Expected {numInsertionPoints+1} segments from {numInsertionPoints} insertion points but found {len(templateParts)} segments instead."
 
-    sourcesInfo = f'''sources.set("{args.file[:-3]}", {{
+    sourcesInfo = f'''sources.set("{sourceFilename}", {{
         tokens: {synth.tokensAndWhitespace(targetText)}
     }});'''
 
@@ -78,6 +79,6 @@ if __name__ == '__main__':
 
     template = templateParts[0] + sourcesInfo + templateParts[1] + elementsToPlace + templateParts[2]
 
-    output = visualDir.with_name('sample.html')
+    output = currentPath.joinpath('sample.html')
     print(f"putting output into {output}")
     output.open("w").write(template)
