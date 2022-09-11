@@ -1701,6 +1701,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if allLiterals:
                 return evaluate(*functionArgs)
             funcComponent = functionComponent
+        funcComponent.tokensSourcedFrom.append(ctx.getSourceInterval()[0])
         # hook up the funcComponent to the arguments passed in.
         for i in range(len(functionArgs)):
             exprValue = functionArgs[i]

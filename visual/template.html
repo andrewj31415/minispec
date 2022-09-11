@@ -701,7 +701,10 @@
             /* component: an elk node. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeComponent = (component, parentPos) => {
                 let absolutePos = { x: parentPos.x + component.x, y: parentPos.y + component.y }; // The absolute position of the componenet in the svg
-                let componentName = component.id.slice(component.id.indexOf("|") + 1);
+                console.log("parsing", component.id.slice(component.id.indexOf("|") + 1));
+                let componentData = JSON.parse(component.id.slice(component.id.indexOf("|") + 1));
+                console.log("got", componentData);
+                let componentName = componentData.name;
 
                 let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                 for (let rect of [overRect]) {
@@ -732,6 +735,23 @@
                 if (component.edges) {
                     for (edge of component.edges) {
                         placeEdge(edge, absolutePos);
+                    }
+                }
+
+                //allow clicking on source to jump to component
+                if (componentData.tokensSourcedFrom) {
+                    let tokensToLink = componentData.tokensSourcedFrom;
+                    for (token of tokensToLink) {
+                        console.log("token", token);
+                        tokenSpan = sourceTokenAndWhitespaceSpanArrays.get("assortedtests")[token]; //TODO file name is currently hardcoded, fix this
+                        console.log("token span", tokenSpan);
+                        tokenSpan.addEventListener("click", () => {
+                            jumpToComponent(component, parentPos);
+                        });
+                        // tokenSpan.style.backgroundColor = "yellow";
+                        tokenSpan.style.border = "1.5px solid black";
+                        tokenSpan.style.borderRadius = "5px";
+                        tokenSpan.style.cursor = "pointer";
                     }
                 }
             };
@@ -768,15 +788,21 @@
             placeComponent(topLevel, { x: 0, y: 0 });
 
             //set up the reset zoom button
-            jumpToComponent = (component) => {
+            jumpToComponent = (component, parentPos) => {
+                console.log(component);
                 let marginPercent = 10;
                 let margin = (component.width * marginPercent) / 100;
-                svgOriginalViewBox = [-margin, -margin, component.width + 2 * margin, component.height + 2 * margin];
-                svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
+                destinationViewBox = [
+                    -margin + component.x + parentPos.x,
+                    -margin + component.y + parentPos.y,
+                    component.width + 2 * margin,
+                    component.height + 2 * margin,
+                ];
+                svgDisplay.setAttribute("viewBox", destinationViewBox.join(" "));
             };
-            jumpToComponent(topLevel);
+            jumpToComponent(topLevel, { x: 0, y: 0 });
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
-                jumpToComponent(topLevel);
+                jumpToComponent(topLevel, { x: 0, y: 0 });
             });
         </script>
     </body>

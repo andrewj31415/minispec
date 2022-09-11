@@ -23,10 +23,12 @@ def elkID(item: 'Component|Node') -> str:
         return f'node{item._id}'
     elif issubclass(item.__class__, Component):
         if item.__class__ == Mux:
-            return f"component{item._id}|"
+            return f"component{item._id}|{json.dumps({'name':''})}"
         if item.__class__ == Wire:
-            return f"component{item._id}|"
-        return f"component{item._id}|{item.name}"
+            return f"component{item._id}|{json.dumps({'name':''})}"
+        if item.__class__ == Function:
+            return f"component{item._id}|{json.dumps({'name':item.name,'tokensSourcedFrom':item.tokensSourcedFrom})}"
+        return f"component{item._id}|{json.dumps({'name':item.name})}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
 def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
@@ -375,8 +377,9 @@ class Register(Module):
    
 
 class Function(Component):
-    ''' children is a list of components. '''
-    __slots__ = '_name', '_children', '_inputs', '_output'
+    ''' children is a list of components.
+    tokensSourcedFrom is an array of token indixes (ints) such that clicking on a given token should jump to this function.'''
+    __slots__ = '_name', '_children', '_inputs', '_output', 'tokensSourcedFrom'
     def __init__(self, name: 'str', children: 'list[Component]'=None, inputs: 'list[Node]'=None, output: 'Node'=None):
         Component.__init__(self)
         self.name = name
@@ -393,6 +396,7 @@ class Function(Component):
             output = Node('_' + self.name + '_output')
         assert output.isNode(), f"Function output node must be a Node, not {output} which is {output.__class__}"
         self._output = output
+        self.tokensSourcedFrom = []
     @property
     def name(self):
         '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
