@@ -22,7 +22,7 @@ if __name__ == '__main__':
     else:
         # Clean up all files, as multi-module builds sometimes get stale data otherwise
         #run("rm -rf %s/*" % (args.visualdir,))
-        pass #TODO erase files
+        pass #TODO erase files (currently not needed)
 
     currentPathString = os.getcwd()
     currentPath = pathlib.Path(currentPathString)
@@ -79,6 +79,8 @@ if __name__ == '__main__':
 
     template = templateParts[0] + sourcesInfo + templateParts[1] + elementsToPlace + templateParts[2]
 
-    output = currentPath.joinpath('sample.html')
+    # the equivalent of synths's sanitizeParametric
+    outputFilename = topLevel.replace("#", "_").replace(",", "_").replace("(", "").replace(")", "").replace(" ", "").replace("\t", "")
+    output = currentPath.joinpath(f'{outputFilename}.html')
     print(f"putting output into {output}")
     output.open("w").write(template)

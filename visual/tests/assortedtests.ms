@@ -322,7 +322,6 @@ endfunction
 
 
 
-import ALU;
 typedef Bit#(32) Word;
 
 // ALU function enumeration is provided by imported ALU.ms
@@ -408,7 +407,6 @@ typedef struct {
 } MemWriteReq;
 
 
-import ProcTypes;
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 /// The following are relevant types and constants for the decoder, copied from ProcTypes.ms
@@ -724,11 +722,9 @@ function DecodedInst decode(Bit#(32) inst);
 endfunction
 
 
-import ProcTypes;
 
 // ALU
 // Imports your ALU from Lab 4
-import ALU;
 
 // Branch ALU
 // BrFunc defined in ProcTypes.ms
@@ -788,8 +784,6 @@ endfunction
 
 
 bsvimport Magic;
-import ProcTypes;
-
 module MagicMemory;
     // 64 KB magic memory array
     MagicMemoryArray magicMem("mem.vmh");
@@ -824,8 +818,6 @@ module MagicMemory;
 endmodule
 
 
-
-import ProcTypes;
 
 module RegisterFile;
     Vector#(32, Reg#(Word)) regs(0);
