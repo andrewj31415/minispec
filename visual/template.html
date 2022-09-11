@@ -6,6 +6,7 @@
             :root {
                 --button-gray: rgb(192, 192, 192);
                 font-size: 10pt;
+                font-family: Consolas;
             }
             html {
                 height: 100vh;
@@ -515,7 +516,6 @@
                 }
             });
 
-            startingFontSize = 100; //in pt
             fontShrinkFactor = 0.75; //after we fit the text vertically, we shrink by this factor up to a few times to try to make the text fit horizontally.
             /* Takes in a line of text and an object with x, y, width, and height attributes.
                                     Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
@@ -553,22 +553,20 @@
                         textBox.setAttribute("y", element.y + element.height);
                         textBox.setAttribute("dominant-baseline", "text-after-edge");
                 }
-                textBox.setAttribute("font-size", String(startingFontSize) + "pt");
+                //fix the font size to fit vertically
+                textBox.setAttribute("font-size", String(element.height) + "px");
                 textBox.style.userSelect = "none";
                 svgDisplay.appendChild(textBox);
 
                 //short-circuit if the text has length 0
                 if (text !== "") {
-                    //fix the font size to fit vertically
-                    let correctedPt = (startingFontSize * element.height) / textBox.getBBox().height;
-                    textBox.setAttribute("font-size", String(correctedPt) + "pt");
-                    let currentSize = correctedPt;
+                    let currentSize = element.height;
 
                     //shrink the text horizontally by a little if necessary
-                    for (let i of [1, 2, 3, 4]) {
+                    for (let i of [1, 2, 3, 4, 5, 6, 7, 8]) {
                         if (textBox.getBBox().width > element.width) {
                             currentSize = currentSize * fontShrinkFactor;
-                            textBox.setAttribute("font-size", String(currentSize) + "pt");
+                            textBox.setAttribute("font-size", String(currentSize) + "px");
                         }
                     }
 
@@ -716,12 +714,14 @@
                     rect.setAttribute("fill", "transparent");
                 }
                 svgDisplay.appendChild(overRect);
-                let overName = fitText(componentName, {
-                    x: absolutePos.x,
-                    y: absolutePos.y,
-                    width: component.width,
-                    height: component.height,
-                });
+                if (componentName.length > 0) {
+                    let overName = fitText(componentName, {
+                        x: absolutePos.x,
+                        y: absolutePos.y,
+                        width: component.width,
+                        height: component.height,
+                    });
+                }
 
                 //place children and edges
                 if (component.children) {
@@ -768,12 +768,15 @@
             placeComponent(topLevel, { x: 0, y: 0 });
 
             //set up the reset zoom button
-            let marginPercent = 10;
-            let margin = (topLevel.width * marginPercent) / 100;
-            svgOriginalViewBox = [-margin, -margin, topLevel.width + 2 * margin, topLevel.height + 2 * margin];
-            svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
-            document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
+            jumpToComponent = (component) => {
+                let marginPercent = 10;
+                let margin = (component.width * marginPercent) / 100;
+                svgOriginalViewBox = [-margin, -margin, component.width + 2 * margin, component.height + 2 * margin];
                 svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
+            };
+            jumpToComponent(topLevel);
+            document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
+                jumpToComponent(topLevel);
             });
         </script>
     </body>
