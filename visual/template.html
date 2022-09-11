@@ -516,7 +516,7 @@
             });
 
             startingFontSize = 100; //in pt
-            fontShrinkFactor = 0.75; //all fonts will have size startingFontSize*(fontShrinkFactor)^k for some integer k
+            fontShrinkFactor = 0.75; //after we fit the text vertically, we shrink by this factor up to a few times to try to make the text fit horizontally.
             /* Takes in a line of text and an object with x, y, width, and height attributes.
                                     Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
                                     DOM object.
@@ -560,19 +560,9 @@
                 //short-circuit if the text has length 0
                 if (text !== "") {
                     //fix the font size to fit vertically
-                    let currentSize = startingFontSize;
-
-                    //grow the text until it just barely does not fit vertically
-                    while (textBox.getBBox().height < element.height) {
-                        currentSize = currentSize / fontShrinkFactor;
-                        textBox.setAttribute("font-size", String(currentSize) + "pt");
-                    }
-
-                    //shrink the text vertically until it fits vertically
-                    while (textBox.getBBox().height > element.height) {
-                        currentSize = currentSize * fontShrinkFactor;
-                        textBox.setAttribute("font-size", String(currentSize) + "pt");
-                    }
+                    let correctedPt = (startingFontSize * element.height) / textBox.getBBox().height;
+                    textBox.setAttribute("font-size", String(correctedPt) + "pt");
+                    let currentSize = correctedPt;
 
                     //shrink the text horizontally by a little if necessary
                     for (let i of [1, 2, 3, 4]) {
@@ -602,7 +592,7 @@
             sourceDivs = new Map(); //each of these maps filenames to DOM elements.
             sourceTitleDivs = new Map();
             sourceTokenAndWhitespaceSpanArrays = new Map(); //these map filenames to an array of DOM elements.
-            sourceTokenSpanArrays = new Map();
+            sourceTokenSpanArrays = new Map(); //the ith span in this array represents the ith ANTLR4 token.
 
             /* Given a filename, pulls out the given source. */
             pullGivenSource = (filename) => {
@@ -624,8 +614,47 @@
                 );
             };
 
-            // token colors
-            commentColor = "green";
+            // token color setting
+            minispecKeywords = new Set([
+                "begin",
+                "bsvimport",
+                "case",
+                "default",
+                "else",
+                "end",
+                "endcase",
+                "endfunction",
+                "endmethod",
+                "endmodule",
+                "endrule",
+                "enum",
+                "for",
+                "function",
+                "if",
+                "import",
+                "input",
+                "let",
+                "method",
+                "module",
+                "return",
+                "rule",
+                "struct",
+                "type",
+                "typedef",
+            ]);
+            /* Given a token:string, returns the color that the token should have. Based on the pygments/minispec.py file. */
+            getTokenColor = (token) => {
+                if (isWhitespaceOrComment(token)) {
+                    return "green";
+                }
+                if (minispecKeywords.has(token)) {
+                    return "blue";
+                }
+                if ("0123456789".includes(token[0]) || token === "False" || token == "True") {
+                    return "red";
+                }
+                return "black";
+            };
 
             // put the source tokens into the html, along with the filename headers
             for (let [sourceFileName, source] of sources) {
@@ -635,8 +664,8 @@
                 for (let index = 0; index < source.tokens.length; index++) {
                     let token = source.tokens[index];
                     let tokenSpan = document.createElement("span");
-                    tokenSpan.innerHTML = token;
-                    tokenSpan.style.color = commentColor;
+                    tokenSpan.textContent = token; //TODO replace other references to .innerHTML with textContext
+                    tokenSpan.style.color = getTokenColor(token);
                     sourceTokens.push(tokenSpan);
                 }
                 for (let tokenSpan of sourceTokens) {
@@ -649,14 +678,9 @@
                 sourceTokenSpanArrays.set(
                     sourceFileName,
                     sourceTokens.filter((token) => {
-                        console.log(token, token.textContent, isWhitespaceOrComment(token));
                         return !isWhitespaceOrComment(token.textContent);
                     })
                 );
-
-                for (token of sourceTokenSpanArrays.get(sourceFileName)) {
-                    token.style.color = "black";
-                }
 
                 let newSourceTitle = document.createElement("div");
                 newSourceTitle.classList.add("source-filename-div");
