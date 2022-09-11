@@ -578,14 +578,12 @@
                     let element = pair[1];
                     if (textBox.getBBox().width > element.width) {
                         textNodesToUpdate.push(pair);
-                        console.log("pushing");
                     }
                 }
                 for (pair of textNodesToUpdate) {
                     let textBox = pair[0];
                     let element = pair[1];
                     let currentSize = Number(textBox.getAttribute("font-size").slice(0, -2));
-                    console.log("size", currentSize);
                     currentSize = currentSize * fontShrinkFactor;
                     textBox.setAttribute("font-size", String(currentSize) + "px");
                     textNodesUpdated.add(pair);
@@ -728,9 +726,7 @@
             /* component: an elk node. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeComponent = (component, parentPos) => {
                 let absolutePos = { x: parentPos.x + component.x, y: parentPos.y + component.y }; // The absolute position of the componenet in the svg
-                console.log("parsing", component.id.slice(component.id.indexOf("|") + 1));
                 let componentData = JSON.parse(component.id.slice(component.id.indexOf("|") + 1));
-                console.log("got", componentData);
                 let componentName = componentData.name;
 
                 let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -769,9 +765,7 @@
                 if (componentData.tokensSourcedFrom) {
                     let tokensToLink = componentData.tokensSourcedFrom;
                     for (token of tokensToLink) {
-                        console.log("token", token);
                         tokenSpan = sourceTokenAndWhitespaceSpanArrays.get("assortedtests")[token]; //TODO file name is currently hardcoded, fix this
-                        console.log("token span", tokenSpan);
                         tokenSpan.addEventListener("click", () => {
                             jumpToComponent(component, parentPos);
                         });
@@ -816,7 +810,6 @@
 
             //set up the reset zoom button
             jumpToComponent = (component, parentPos) => {
-                console.log(component);
                 let marginPercent = 10;
                 let margin = (component.width * marginPercent) / 100;
                 destinationViewBox = [

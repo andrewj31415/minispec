@@ -456,7 +456,7 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         moduleName = ctx.moduleId().name.getText() # get the name of the module
         if ctx.argFormals():
             raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
-        
+
         moduleScope = Scope(self.globalsHandler, moduleName, [self.globalsHandler.currentScope])
         ctx.scope = moduleScope
         params = []
@@ -2008,7 +2008,13 @@ def getParseTree(text: 'str') -> 'build.MinispecPythonParser.MinispecPythonParse
     #print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
     return tree
 
-def parseAndSynth(text: 'str', topLevel: 'str') -> 'Component':
+from typing import Callable # for annotation function calls
+def parseAndSynth(text: 'str', topLevel: 'str', filename: 'str' ='', pullTextFromImport: 'Callable[[int],int]' = lambda x: 1/0) -> 'Component':
+    ''' text is the text to parse and synthesize.
+    topLevel is the name (including parametrics) of the function/module to synthesize.
+    filename is the name of the file that text is from (no .ms).
+    pullTextFromImport is a function that takes in the name of a minispec file to parse (no .ms)
+    and returns the text of the given file. '''
 
     tree = getParseTree(text)
 
@@ -2017,11 +2023,31 @@ def parseAndSynth(text: 'str', topLevel: 'str') -> 'Component':
     builtinScope = BuiltInScope(globalsHandler, "built-ins", [])
     startingFile = Scope(globalsHandler, "startingFile", [builtinScope])
 
-    globalsHandler.currentScope = startingFile
+    namesAlreadyImported: 'set[str]' = {filename} # list of filenames already imported. used to ensure each file is imported exactly once.
+    importsAndText: 'list[tuple[str, str, ctxType]]' = []  # list of tuples consisting of filenames (no .ms), their text, and the base node of the corresponding parse tree.
+    # earlier files are later in the import tree and should be imported sooner.
+    def collectImports(filename, text, tree):
+        ''' Given a file to import, visits all imports called by that file, adds them to namesAlreadyImported
+        and importsAndText, then adds itself to importsAndText. '''
+        for packageStmt in tree.packageStmt():
+            toImport = packageStmt.importDecl()
+            if toImport:
+                for identifier in toImport.identifier():
+                    importFilename = identifier.getText()
+                    if importFilename not in namesAlreadyImported:
+                        namesAlreadyImported.add(importFilename)
+                        importText = pullTextFromImport(importFilename)
+                        importTree = getParseTree(importText)
+                        collectImports(importFilename, importText, importTree)
+        importsAndText.append((filename, text, tree))
+    collectImports(filename, text, tree)
 
     walker = build.MinispecPythonListener.ParseTreeWalker()
     listener = StaticTypeListener(globalsHandler)
-    walker.walk(listener, tree)  # walk the listener through the tree
+
+    for filename, text, tree in importsAndText:
+        globalsHandler.currentScope = startingFile
+        walker.walk(listener, tree)  # walk the listener through the tree
 
     # for scope in globalsHandler.allScopes:
     #     print(scope)

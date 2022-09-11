@@ -1,0 +1,83 @@
+#!/usr/bin/python3
+
+# This script will be called from the command line by the user. It will handle all file i/o.
+
+# example call: ./../minispec/visual/visual eightbitcounter.ms EightBitCounter
+
+import argparse, os, pathlib
+
+import synth
+import hardware
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("file", help="Minispec(.ms) file containing the function or module to view")
+    parser.add_argument("target", help="Name of the function or module to synthesize")
+    parser.add_argument("--visualdir", "-s", default="visualDir", help="Folder for intermediate visual files")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.visualdir):
+        print("Creating synthesis directory")
+        os.makedirs(args.visualdir)
+    else:
+        # Clean up all files, as multi-module builds sometimes get stale data otherwise
+        #run("rm -rf %s/*" % (args.visualdir,))
+        pass #TODO erase files
+
+    currentPathString = os.getcwd()
+    currentPath = pathlib.Path(currentPathString)
+    targetFile = currentPath.joinpath(args.file)
+    visualDir = currentPath.joinpath(args.visualdir)
+
+    def pullTextFromImport(filename: 'str') -> 'str':
+        ''' Given the name of a file to import (eg, filename = "fourbitcounter"), returns the text
+        of the corresponding minispec file in the current directory (eg, the text of "/fourbitcounter.ms")
+        and throws an error if no such file exists. '''
+        textFile = pathlib.Path(targetFile).with_name(filename + ".ms")
+        print('looking at file', textFile)
+        return textFile.read_text()
+
+
+    targetText = pullTextFromImport(args.file[:-3]) #[:-3] removes the .ms from the end of the file
+    topLevel = args.target
+    print('synthing!!!')
+    synthesizedComponent = synth.parseAndSynth(targetText, topLevel, args.file[:-3], pullTextFromImport)
+    print('synthed!!!')
+    print(synthesizedComponent)
+    
+    # input/output files for elk
+    pythonToJSFile = visualDir.joinpath("elkInput.txt")
+    JSToPythonFile = visualDir.joinpath("elkOutput.txt")
+    ELKcaller = pathlib.Path(__file__).with_name("elk").joinpath("place.js")
+
+
+    # if not os.path.exists(JSToPythonFile):
+    #     with JSToPythonFile.open('w') as fp: # create the output file if it does not exist
+    #         pass
+
+    with pythonToJSFile.open('w') as fp: # write to a file to give to elk
+        fp.write(hardware.getELK(synthesizedComponent))
+
+    print("elkcaller", ELKcaller)
+    os.system(f"node {ELKcaller}")
+
+    elkOutput = JSToPythonFile.read_text() # the output from elk
+
+    templateFile = pathlib.Path(__file__).with_name('template.html')
+    template = templateFile.read_text()
+
+    templateParts = template.split("/* Python data goes here */")
+    numInsertionPoints = 2
+    assert len(templateParts) == numInsertionPoints + 1, f"Expected {numInsertionPoints+1} segments from {numInsertionPoints} insertion points but found {len(templateParts)} segments instead."
+
+    sourcesInfo = f'''sources.set("{args.file[:-3]}", {{
+        tokens: {synth.tokensAndWhitespace(targetText)}
+    }});'''
+
+    elementsToPlace = f'''elementsToPlace = {elkOutput}'''
+
+    template = templateParts[0] + sourcesInfo + templateParts[1] + elementsToPlace + templateParts[2]
+
+    output = visualDir.with_name('sample.html')
+    print(f"putting output into {output}")
+    output.open("w").write(template)
