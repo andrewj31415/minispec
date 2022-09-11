@@ -517,6 +517,7 @@
             });
 
             fontShrinkFactor = 0.75; //after we fit the text vertically, we shrink by this factor up to a few times to try to make the text fit horizontally.
+            textNodesToFit = []; //Array<[textBoxNode, element]>
             /* Takes in a line of text and an object with x, y, width, and height attributes.
                                     Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
                                     DOM object.
@@ -560,26 +561,52 @@
 
                 //short-circuit if the text has length 0
                 if (text !== "") {
-                    let currentSize = element.height;
+                    textNodesToFit.push([textBox, element]);
+                }
+                return textBox;
+            };
 
-                    //shrink the text horizontally by a little if necessary
-                    for (let i of [1, 2, 3, 4, 5, 6, 7, 8]) {
-                        if (textBox.getBBox().width > element.width) {
-                            currentSize = currentSize * fontShrinkFactor;
-                            textBox.setAttribute("font-size", String(currentSize) + "px");
-                        }
-                    }
-
-                    //use ellipses to shrink the text horizontally, leaving at least two letters behind
+            fitTextSteps = 0;
+            textNodesUpdated = new Set(); /* The text nodes that have been updated, hence might need to be truncated */
+            /* Shrinks the text in the [text, element] pairs of textNodesToFit to fit inside element.
+            This is a separate function to improve performance--shrinking all text boxes together is faster. */
+            fitAllText = () => {
+                fitTextSteps += 1;
+                let textNodesToUpdate = [];
+                for (pair of textNodesToFit) {
+                    let textBox = pair[0];
+                    let element = pair[1];
                     if (textBox.getBBox().width > element.width) {
-                        textBox.textContent += "...";
-                        while (textBox.getBBox().width > element.width && textBox.textContent.length > 5) {
-                            //remove the last letter before the ellipses
-                            textBox.textContent = textBox.textContent.slice(0, -4) + "...";
+                        textNodesToUpdate.push(pair);
+                        console.log("pushing");
+                    }
+                }
+                for (pair of textNodesToUpdate) {
+                    let textBox = pair[0];
+                    let element = pair[1];
+                    let currentSize = Number(textBox.getAttribute("font-size").slice(0, -2));
+                    console.log("size", currentSize);
+                    currentSize = currentSize * fontShrinkFactor;
+                    textBox.setAttribute("font-size", String(currentSize) + "px");
+                    textNodesUpdated.add(pair);
+                }
+                textNodesToFit = textNodesToUpdate;
+                if (fitTextSteps < 8) {
+                    fitAllText();
+                } else {
+                    // cut off altered text with ellipses if necessary
+                    for (pair of textNodesUpdated) {
+                        let textBox = pair[0];
+                        let element = pair[1];
+                        if (textBox.getBBox().width > element.width) {
+                            textBox.textContent += "...";
+                            while (textBox.getBBox().width > element.width && textBox.textContent.length > 5) {
+                                //remove the last letter before the ellipses
+                                textBox.textContent = textBox.textContent.slice(0, -4) + "...";
+                            }
                         }
                     }
                 }
-                return textBox;
             };
 
             /* Sources will be stored using sources: Map<filename: string, { tokens: Array<string> }> */
@@ -804,6 +831,8 @@
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
                 jumpToComponent(topLevel, { x: 0, y: 0 });
             });
+
+            fitAllText();
         </script>
     </body>
 </html>
