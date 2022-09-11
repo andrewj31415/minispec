@@ -526,7 +526,7 @@
                 assert([undefined, "left", "center", "right"].includes(details.textAnchor), details.textAnchor);
                 assert([undefined, "top", "center", "bottom"].includes(details.dominantBaseline), details.dominantBaseline);
                 let textBox = document.createElementNS("http://www.w3.org/2000/svg", "text");
-                textBox.innerHTML = text;
+                textBox.textContent = text;
                 switch (details.textAnchor ?? "center") {
                     case "center":
                         textBox.setAttribute("x", element.x + element.width / 2);
@@ -572,10 +572,10 @@
 
                     //use ellipses to shrink the text horizontally, leaving at least two letters behind
                     if (textBox.getBBox().width > element.width) {
-                        textBox.innerHTML += "...";
-                        while (textBox.getBBox().width > element.width && textBox.innerHTML.length > 5) {
+                        textBox.textContent += "...";
+                        while (textBox.getBBox().width > element.width && textBox.textContent.length > 5) {
                             //remove the last letter before the ellipses
-                            textBox.innerHTML = textBox.innerHTML.slice(0, -4) + "...";
+                            textBox.textContent = textBox.textContent.slice(0, -4) + "...";
                         }
                     }
                 }
@@ -662,7 +662,7 @@
                 for (let index = 0; index < source.tokens.length; index++) {
                     let token = source.tokens[index];
                     let tokenSpan = document.createElement("span");
-                    tokenSpan.textContent = token; //TODO replace other references to .innerHTML with textContext
+                    tokenSpan.textContent = token;
                     tokenSpan.style.color = getTokenColor(token);
                     sourceTokens.push(tokenSpan);
                 }
@@ -682,7 +682,7 @@
 
                 let newSourceTitle = document.createElement("div");
                 newSourceTitle.classList.add("source-filename-div");
-                newSourceTitle.innerHTML = sourceFileName;
+                newSourceTitle.textContent = sourceFileName;
                 newSourceTitle.addEventListener("mousedown", (event) => {});
                 newSourceTitle.addEventListener("click", (event) => {
                     pullGivenSource(sourceFileName);
