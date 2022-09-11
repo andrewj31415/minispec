@@ -354,7 +354,6 @@
             /* Handle showing the help information */
             helpDiv.style.visibility = "hidden";
             helpDiv.style.display = "block";
-            console.log("display", helpDiv.style.display);
             helpDivOpening = false;
             helpDivOpen = false;
             window.addEventListener("click", () => {
@@ -602,7 +601,8 @@
             /* Put the sources into the document */
             sourceDivs = new Map(); //each of these maps filenames to DOM elements.
             sourceTitleDivs = new Map();
-            sourceTokenSpanArrays = new Map(); //this one maps filenames to an array of DOM elements.
+            sourceTokenAndWhitespaceSpanArrays = new Map(); //these map filenames to an array of DOM elements.
+            sourceTokenSpanArrays = new Map();
 
             /* Given a filename, pulls out the given source. */
             pullGivenSource = (filename) => {
@@ -616,6 +616,18 @@
                 sourceTitleDivs.get(filename).style.backgroundColor = "white";
             };
 
+            /* given token:str, returns true if token represents a comment or whitespace. */
+            isWhitespaceOrComment = (token) => {
+                return (
+                    [" ", "\f", "\n", "\r", "\t"].includes(token[0]) ||
+                    (token[0] === "/" && (token[1] === "/" || token[1] === "*"))
+                );
+            };
+
+            // token colors
+            commentColor = "green";
+
+            // put the source tokens into the html, along with the filename headers
             for (let [sourceFileName, source] of sources) {
                 let newSource = document.createElement("div");
                 newSource.classList.add("source-file-div");
@@ -624,6 +636,7 @@
                     let token = source.tokens[index];
                     let tokenSpan = document.createElement("span");
                     tokenSpan.innerHTML = token;
+                    tokenSpan.style.color = commentColor;
                     sourceTokens.push(tokenSpan);
                 }
                 for (let tokenSpan of sourceTokens) {
@@ -631,7 +644,19 @@
                 }
                 sourceFiletextDisplay.appendChild(newSource);
                 sourceDivs.set(sourceFileName, newSource);
-                sourceTokenSpanArrays.set(sourceFileName, sourceTokens);
+                sourceTokenAndWhitespaceSpanArrays.set(sourceFileName, sourceTokens);
+
+                sourceTokenSpanArrays.set(
+                    sourceFileName,
+                    sourceTokens.filter((token) => {
+                        console.log(token, token.textContent, isWhitespaceOrComment(token));
+                        return !isWhitespaceOrComment(token.textContent);
+                    })
+                );
+
+                for (token of sourceTokenSpanArrays.get(sourceFileName)) {
+                    token.style.color = "black";
+                }
 
                 let newSourceTitle = document.createElement("div");
                 newSourceTitle.classList.add("source-filename-div");
