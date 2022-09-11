@@ -20,9 +20,13 @@ def getELK(component: 'Component') -> str:
 def elkID(item: 'Component|Node') -> str:
     ''' Returns a unique id for the node or component for use in ELK '''
     if item.__class__ == Node:
-        return 'node' + str(item._id)
+        return f'node{item._id}'
     elif issubclass(item.__class__, Component):
-        return f"component{item._id}"
+        if item.__class__ == Mux:
+            return f"component{item._id}"
+        if item.__class__ == Wire:
+            return f"component{item._id}"
+        return f"component{item._id}|{item.name}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
 def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':

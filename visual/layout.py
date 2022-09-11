@@ -9,16 +9,16 @@ import synth
 
 import pathlib
 
-# minispecFileName = "assortedtests"
-minispecFileName = "counters"
+minispecFileName = "assortedtests"
+# minispecFileName = "counters"
 
 minispecCodeFile = pathlib.Path(__file__).with_name("tests").joinpath(f"{minispecFileName}.ms")
 minispecCode = minispecCodeFile.read_text()
 
-synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
+# synthesizedComponent = synth.parseAndSynth(minispecCode, 'Counter#(2)')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'Outer')
 # synthesizedComponent = synth.parseAndSynth(minispecCode, 'RegisterFile')
-# synthesizedComponent = synth.parseAndSynth(minispecCode, 'alu')
+synthesizedComponent = synth.parseAndSynth(minispecCode, 'alu')
 
 print('done synthesizing!')
 

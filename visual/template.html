@@ -5,7 +5,7 @@
         <style>
             :root {
                 --button-gray: rgb(192, 192, 192);
-                font-size: 12pt;
+                font-size: 10pt;
             }
             html {
                 height: 100vh;
@@ -31,7 +31,10 @@
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
+                font-family: Consolas, Monaco, Lucida Console, Liberation Mono, DejaVu Sans Mono, Bitstream Vera Sans Mono,
+                    Courier New; /* see https://meta.stackexchange.com/questions/36176/whats-the-font-used-in-code-blocks */
             }
+
             #source-filenames-div {
                 z-index: 2;
                 width: 100%;
@@ -183,6 +186,7 @@
                 border-style: solid;
                 z-index: 5;
                 pointer-events: all;
+                display: none; /* avoids showing the help div briefly while the rest of the page loads */
             }
             #wire-inspect-div {
                 position: absolute;
@@ -349,6 +353,8 @@
 
             /* Handle showing the help information */
             helpDiv.style.visibility = "hidden";
+            helpDiv.style.display = "block";
+            console.log("display", helpDiv.style.display);
             helpDivOpening = false;
             helpDivOpen = false;
             window.addEventListener("click", () => {
@@ -510,6 +516,85 @@
                 }
             });
 
+            startingFontSize = 100; //in pt
+            fontShrinkFactor = 0.75; //all fonts will have size startingFontSize*(fontShrinkFactor)^k for some integer k
+            /* Takes in a line of text and an object with x, y, width, and height attributes.
+                                    Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
+                                    DOM object.
+                                    Shrinks the font size to fit inside the box.
+                                    details = {dominantBaseline, textAnchor} defaults to centering the text on both axes. */
+            fitText = (text, element, details = {}) => {
+                assert([undefined, "left", "center", "right"].includes(details.textAnchor), details.textAnchor);
+                assert([undefined, "top", "center", "bottom"].includes(details.dominantBaseline), details.dominantBaseline);
+                let textBox = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                textBox.innerHTML = text;
+                switch (details.textAnchor ?? "center") {
+                    case "center":
+                        textBox.setAttribute("x", element.x + element.width / 2);
+                        textBox.setAttribute("text-anchor", "middle");
+                        break;
+                    case "left":
+                        textBox.setAttribute("x", element.x);
+                        textBox.setAttribute("text-anchor", "start");
+                        break;
+                    case "right":
+                        textBox.setAttribute("x", element.x + element.width);
+                        textBox.setAttribute("text-anchor", "end");
+                }
+                switch (details.dominantBaseline ?? "centered") {
+                    case "centered":
+                        textBox.setAttribute("y", element.y + element.height / 2);
+                        textBox.setAttribute("dominant-baseline", "central");
+                        break;
+                    case "top":
+                        textBox.setAttribute("y", element.y);
+                        textBox.setAttribute("dominant-baseline", "text-before-edge");
+                        break;
+                    case "bottom":
+                        textBox.setAttribute("y", element.y + element.height);
+                        textBox.setAttribute("dominant-baseline", "text-after-edge");
+                }
+                textBox.setAttribute("font-size", String(startingFontSize) + "pt");
+                textBox.style.userSelect = "none";
+                svgDisplay.appendChild(textBox);
+
+                //short-circuit if the text has length 0
+                if (text !== "") {
+                    //fix the font size to fit vertically
+                    let currentSize = startingFontSize;
+
+                    //grow the text until it just barely does not fit vertically
+                    while (textBox.getBBox().height < element.height) {
+                        currentSize = currentSize / fontShrinkFactor;
+                        textBox.setAttribute("font-size", String(currentSize) + "pt");
+                    }
+
+                    //shrink the text vertically until it fits vertically
+                    while (textBox.getBBox().height > element.height) {
+                        currentSize = currentSize * fontShrinkFactor;
+                        textBox.setAttribute("font-size", String(currentSize) + "pt");
+                    }
+
+                    //shrink the text horizontally by a little if necessary
+                    for (let i of [1, 2, 3, 4]) {
+                        if (textBox.getBBox().width > element.width) {
+                            currentSize = currentSize * fontShrinkFactor;
+                            textBox.setAttribute("font-size", String(currentSize) + "pt");
+                        }
+                    }
+
+                    //use ellipses to shrink the text horizontally, leaving at least two letters behind
+                    if (textBox.getBBox().width > element.width) {
+                        textBox.innerHTML += "...";
+                        while (textBox.getBBox().width > element.width && textBox.innerHTML.length > 5) {
+                            //remove the last letter before the ellipses
+                            textBox.innerHTML = textBox.innerHTML.slice(0, -4) + "...";
+                        }
+                    }
+                }
+                return textBox;
+            };
+
             /* Sources will be stored using sources: Map<filename: string, { tokens: Array<string> }> */
             sources = new Map();
             /* Python data goes here */
@@ -564,12 +649,13 @@
             elementsToPlace = {};
             /* Python data goes here */
 
-            console.log(elementsToPlace);
             topLevel = elementsToPlace.children[0];
 
             /* component: an elk node. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeComponent = (component, parentPos) => {
                 let absolutePos = { x: parentPos.x + component.x, y: parentPos.y + component.y }; // The absolute position of the componenet in the svg
+                let componentName = component.id.slice(component.id.indexOf("|") + 1);
+
                 let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                 for (let rect of [overRect]) {
                     rect.setAttribute("x", absolutePos.x);
@@ -577,10 +663,16 @@
                     rect.setAttribute("width", component.width);
                     rect.setAttribute("height", component.height);
                     rect.setAttribute("stroke", "black");
-                    rect.setAttribute("stroke-width", component.height / 50); //make the thickness proportional to the height so that it does not cover the under text
+                    rect.setAttribute("stroke-width", Math.sqrt(component.height / 50)); //make the thickness proportional to the height so that it does not cover the under text
                     rect.setAttribute("fill", "transparent");
                 }
                 svgDisplay.appendChild(overRect);
+                let overName = fitText(componentName, {
+                    x: absolutePos.x,
+                    y: absolutePos.y,
+                    width: component.width,
+                    height: component.height,
+                });
 
                 //place children and edges
                 if (component.children) {
@@ -597,22 +689,21 @@
 
             /* edge: an elk edge. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeEdge = (edge, parentPos) => {
-                console.log(edge);
                 let segments = []; //Array<{start:{x:number, y:number}, end:{x:number, y:number}}>
                 let currentLocation = edge.sections[0].startPoint; //walk along the edge and collect its segements
+                if (edge.sections.length !== 1) {
+                    console.log("Got an edge", edge, "with more than one section. This is unexpected.");
+                }
                 if (edge.sections[0].bendPoints) {
                     for (bendPoint of edge.sections[0].bendPoints) {
                         nextLocation = bendPoint;
-                        console.log("bendPoint", bendPoint);
                         segments.push({ start: currentLocation, end: nextLocation });
                         currentLocation = nextLocation;
                     }
                 }
                 segments.push({ start: currentLocation, end: edge.sections[0].endPoint });
-                console.log(segments);
                 //draw the line segments of the edge
                 for (let segment of segments) {
-                    console.log("segment", segment);
                     let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     line.setAttribute("x1", parentPos.x + segment.start.x);
                     line.setAttribute("y1", parentPos.y + segment.start.y);
@@ -624,7 +715,17 @@
                 }
             };
 
+            //place all components
             placeComponent(topLevel, { x: 0, y: 0 });
+
+            //set up the reset zoom button
+            let marginPercent = 10;
+            let margin = (topLevel.width * marginPercent) / 100;
+            svgOriginalViewBox = [-margin, -margin, topLevel.width + 2 * margin, topLevel.height + 2 * margin];
+            svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
+            document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
+                svgDisplay.setAttribute("viewBox", svgOriginalViewBox.join(" "));
+            });
         </script>
     </body>
 </html>
