@@ -715,6 +715,8 @@ def _():
     output = synth.parseAndSynth(text, 'Reverse#(2)')
     print(output.__repr__())
 
+    compare(output, None)
+
     expected = None
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 

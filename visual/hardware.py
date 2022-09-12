@@ -11,6 +11,8 @@ https://snyk.io/advisor/npm-package/elkjs/example
 http://rtsys.informatik.uni-kiel.de/elklive/examples.html
 
 The top link shows how to create adjacent (sub)nodes, which will be useful for bit manipulation.
+Here is another adjacent subnode link:
+https://github.com/kieler/elkjs/issues/111
 '''
 
 def getELK(component: 'Component') -> str:
@@ -69,7 +71,7 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'height': 10 * len(item.inputs),
                     'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         return jsonObj
-    elif item.__class__ == Module or item.__class__ == Register:
+    elif item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
         ports = []
         for nodeName in item.inputs:
             node = item.inputs[nodeName]
@@ -375,6 +377,18 @@ class Register(Module):
     def value(self, value: Node()):
         raise Exception("Can't directly modify this property")
    
+
+
+class VectorModule(Module):
+    def __init__(self, numberedSubmodules: 'list[Module]', *args):
+        ''' Same as initializing a module, just with an extra numberedSubmodules field at the beginning '''
+        self.numberedSubmodules = numberedSubmodules
+        super().__init__(*args)
+    def addNumberedSubmodule(self, submodule: 'Module'):
+        self.numberedSubmodules.append(submodule)
+    def getNumberedSubmodule(self, num: 'int'):
+        ''' Returns the nth submodule of a vector of submodules (possibly a register) '''
+        return self.numberedSubmodules[num]
 
 class Function(Component):
     ''' children is a list of components.
