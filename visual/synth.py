@@ -1688,7 +1688,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     targetInnerSubmodule.addMethod(targetNode, ctx.getText()+str(random.random()))
                     print('targetting', targetInnerSubmodule.name, 'from', toSliceFrom.name)
                     wireIn = Wire(targetNode, methodValue)
-                    self.globalsHandler.currentComponent.addChild(wireIn)
+                    toSliceFrom.addChild(wireIn)
                 else:
                     raise Exception("Variable slicing into a vector of submodules is not implemented yet")
                 return methodValue
