@@ -1732,7 +1732,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if allLiterals:
                 return evaluate(*functionArgs)
             funcComponent = functionComponent
-        funcComponent.tokensSourcedFrom.append(ctx.getSourceInterval()[0])
+        funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
         # hook up the funcComponent to the arguments passed in.
         for i in range(len(functionArgs)):
             exprValue = functionArgs[i]
@@ -2039,13 +2039,23 @@ def getParseTree(text: 'str') -> 'build.MinispecPythonParser.MinispecPythonParse
     #print(tree.toStringTree(recog=parser)) #prints the parse tree in lisp form (see https://www.antlr.org/api/Java/org/antlr/v4/runtime/tree/Trees.html )
     return tree
 
+def getSourceFilename(node: 'ctxType') -> 'str':
+    ''' Given a parse node, returns the filename that the parse node came from (no .ms).
+    Uses the fact that parseAndSynth sets the root of each tree to have attribute
+    `filename` which is the desired filename. '''
+    if node.parentCtx != None:
+        return getSourceFilename(node.parentCtx)
+    return node.filename
+
 from typing import Callable # for annotation function calls
-def parseAndSynth(text: 'str', topLevel: 'str', filename: 'str' ='', pullTextFromImport: 'Callable[[int],int]' = lambda x: 1/0) -> 'Component':
+def parseAndSynth(text: 'str', topLevel: 'str', filename: 'str' ='', pullTextFromImport: 'Callable[[int],int]' = lambda x: 1/0, sourceFilesCollect: 'list[tuple[str, str]]' = []) -> 'Component':
     ''' text is the text to parse and synthesize.
     topLevel is the name (including parametrics) of the function/module to synthesize.
     filename is the name of the file that text is from (no .ms).
     pullTextFromImport is a function that takes in the name of a minispec file to parse (no .ms)
-    and returns the text of the given file. '''
+    and returns the text of the given file.
+    sourceFilesCollect is a mutable list that will be appended with tuples (filename, text) for all
+    files imported, including the original source file.'''
 
     tree = getParseTree(text)
 
@@ -2071,14 +2081,16 @@ def parseAndSynth(text: 'str', topLevel: 'str', filename: 'str' ='', pullTextFro
                         importTree = getParseTree(importText)
                         collectImports(importFilename, importText, importTree)
         importsAndText.append((filename, text, tree))
+        sourceFilesCollect.append((filename, text))
     collectImports(filename, text, tree)
 
+    # statically analyze each parse tree under the same globals handler
     walker = build.MinispecPythonListener.ParseTreeWalker()
     listener = StaticTypeListener(globalsHandler)
-
     for filename, text, tree in importsAndText:
         globalsHandler.currentScope = startingFile
         walker.walk(listener, tree)  # walk the listener through the tree
+        tree.filename = filename  # so the tree knows what file it came from--used by getSourceFilename.
 
     # for scope in globalsHandler.allScopes:
     #     print(scope)

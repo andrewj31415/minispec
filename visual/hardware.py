@@ -392,7 +392,9 @@ class VectorModule(Module):
 
 class Function(Component):
     ''' children is a list of components.
-    tokensSourcedFrom is an array of token indixes (ints) such that clicking on a given token should jump to this function.'''
+    tokensSourcedFrom is an array of tuples (filename, token) where filename is the name of a source file
+    and token is a token index (int) in that source file such that clicking on that token in the given source file should jump
+    to this function. '''
     __slots__ = '_name', '_children', '_inputs', '_output', 'tokensSourcedFrom'
     def __init__(self, name: 'str', children: 'list[Component]'=None, inputs: 'list[Node]'=None, output: 'Node'=None):
         Component.__init__(self)

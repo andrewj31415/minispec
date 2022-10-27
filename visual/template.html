@@ -764,8 +764,10 @@
                 //allow clicking on source to jump to component
                 if (componentData.tokensSourcedFrom) {
                     let tokensToLink = componentData.tokensSourcedFrom;
-                    for (token of tokensToLink) {
-                        tokenSpan = sourceTokenAndWhitespaceSpanArrays.get("assortedtests")[token]; //TODO file name is currently hardcoded, fix this
+                    for (filenameAndToken of tokensToLink) {
+                        let filenameOfOrigin = filenameAndToken[0];
+                        let tokenIndex = filenameAndToken[1];
+                        tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
                         tokenSpan.addEventListener("click", () => {
                             jumpToComponent(component, parentPos);
                         });

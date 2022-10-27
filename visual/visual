@@ -40,8 +40,9 @@ if __name__ == '__main__':
     sourceFilename = pathlib.Path(args.file).stem
     targetText = pullTextFromImport(sourceFilename) 
     topLevel = args.target
+    sourceFilesCollect = []
     print('synthing!!!')
-    synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport)
+    synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
     print('synthed!!!')
     print(synthesizedComponent)
     
@@ -71,9 +72,12 @@ if __name__ == '__main__':
     numInsertionPoints = 2
     assert len(templateParts) == numInsertionPoints + 1, f"Expected {numInsertionPoints+1} segments from {numInsertionPoints} insertion points but found {len(templateParts)} segments instead."
 
-    sourcesInfo = f'''sources.set("{sourceFilename}", {{
-        tokens: {synth.tokensAndWhitespace(targetText)}
-    }});'''
+    sourcesInfo = ''
+    for sourceInfo in sourceFilesCollect:
+        filename, text = sourceInfo
+        sourcesInfo += f'''sources.set("{filename}", {{
+        tokens: {synth.tokensAndWhitespace(text)}
+    }});\n'''
 
     elementsToPlace = f'''elementsToPlace = {elkOutput}'''
 

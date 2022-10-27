@@ -206,7 +206,8 @@ class MLiteralOperations:
         first, second = MLiteralOperations.coerceArithmetic(first, second)
         return first.mul(second)
     def div(first, second):
-        raise Exception("Not implemented")
+        first, second = MLiteralOperations.coerceArithmetic(first, second)
+        return first.div(second)
     def mod(first, second):
         raise Exception("Not implemented")
     def add(first, second):
