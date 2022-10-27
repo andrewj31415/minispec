@@ -1,7 +1,8 @@
 This folder will store the visualization code.
 
-Command to create python3 antlr (dirs may vary):
-java -classpath ~/minispec/antlr4.jar -Xmx500M org.antlr.v4.Tool -o ~/minispec/visual/build/ -Xexact-output-dir -Dlanguage=Python3 -visitor ~/minispec/visual/MinispecPython.g4
+Commands to create python3 antlr4 build (dirs may vary):
+
+Install pip with `sudo apt install python3-pip`, then install the correct version of python antlr4 via pip with `pip install antlr4-python3-runtime==4.7.2`. Build antlr4 with `java -classpath ~/minispec/antlr4.jar -Xmx500M org.antlr.v4.Tool -o ~/minispec/visual/build/ -Xexact-output-dir -Dlanguage=Python3 -visitor ~/minispec/visual/MinispecPython.g4`.
 
 General plan for minispec visual:
 
