@@ -590,6 +590,7 @@
                 }
                 textNodesToFit = textNodesToUpdate;
                 if (fitTextSteps < 8) {
+                    // shrink the text more
                     fitAllText();
                 } else {
                     // cut off altered text with ellipses if necessary
@@ -604,6 +605,11 @@
                             }
                         }
                     }
+
+                    //clear the list of text nodes to fit, since we have fit all of the text nodes on the list
+                    textNodesToFit = [];
+                    fitTextSteps = 0;
+                    textNodesUpdated = new Set();
                 }
             };
 
@@ -711,7 +717,6 @@
                 newSourceTitle.addEventListener("mousedown", (event) => {});
                 newSourceTitle.addEventListener("click", (event) => {
                     pullGivenSource(sourceFileName);
-                    clearPermanentHighlight();
                 });
                 sourceFilenameDisplay.appendChild(newSourceTitle);
                 sourceTitleDivs.set(sourceFileName, newSourceTitle);
@@ -740,6 +745,7 @@
                     rect.setAttribute("fill", "transparent");
                 }
                 svgDisplay.appendChild(overRect);
+                let overName = undefined;
                 if (componentName.length > 0) {
                     let overName = fitText(componentName, {
                         x: absolutePos.x,
@@ -747,8 +753,27 @@
                         width: component.width,
                         height: component.height,
                     });
+                    overName.setAttribute("pointer-events", "none");
                 }
 
+                // //recursive placement of children on click
+                // overRect.addEventListener('dblclick', () => {
+                //     if (overName !== undefined) {
+                //         overName.remove();
+                //     }
+                //     //place children and edges
+                //     if (component.children) {
+                //         for (child of component.children) {
+                //             placeComponent(child, absolutePos);
+                //         }
+                //     }
+                //     if (component.edges) {
+                //         for (edge of component.edges) {
+                //             placeEdge(edge, absolutePos);
+                //         }
+                //     }
+                //     fitAllText();
+                // })
                 //place children and edges
                 if (component.children) {
                     for (child of component.children) {
@@ -782,9 +807,6 @@
             /* edge: an elk edge. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeEdge = (edge, parentPos) => {
                 let segments = []; //Array<{start:{x:number, y:number}, end:{x:number, y:number}}>
-                console.log(edge);
-                console.log(edge.sections);
-                console.log(edge.sections === undefined);
                 let currentLocation = edge.sections[0].startPoint;
                 if (edge.sections === undefined) {
                     console.log(edge);
@@ -815,7 +837,7 @@
                 }
             };
 
-            //place all components
+            //place the top level component
             placeComponent(topLevel, { x: 0, y: 0 });
 
             //set up the reset zoom button
@@ -835,6 +857,7 @@
                 jumpToComponent(topLevel, { x: 0, y: 0 });
             });
 
+            //shrink any components' text boxes so that they fit inside the component
             fitAllText();
         </script>
     </body>
