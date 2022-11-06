@@ -872,7 +872,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if ctx.argFormals():
             raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
-        moduleScope = ctx.scope
+        moduleScope: Scope = ctx.scope
         previousTemporaryScope = self.globalsHandler.currentScope.temporaryScope #TODO refactor to get rid of this weird manipulation
         self.globalsHandler.enterScope(moduleScope)
         
@@ -1204,9 +1204,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             print('maybe module', prospectiveModuleName)
             try:
                 settingOverall = self.globalsHandler.currentScope.get(self, prospectiveModuleName)
+                # submodule input assignment has the form
+                #   moduleName[i]...[k].inputName
+                # TODO the [i]...[k] should only be present when the __class__ is VectorModule--remove this case
+                # from the == Module case.
                 if settingOverall.__class__ == Module:
-                    # submodule input assignment has the form
-                    #   moduleName[i]...[k].inputName
                     if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext: # no slicing is present, only the input name.
                         inputName = lvalue.lowerCaseIdentifier().getText()
                         self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
@@ -1215,6 +1217,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         # we are slicing into a module. we create the appropriate hardware.
                         return
                         raise Exception("Not implemented")  #TODO implement this
+                elif settingOverall.__class__ == VectorModule:
+                    return
+                    raise Exception("Not implemented")  #TODO implement this
                 else:
                     pass  # not a module, move on
             except MissingVariableException:
@@ -1666,6 +1671,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(wire)
             return sliceComponent.output
         else: # we are slicing into a submodule
+            # raise Exception("Not implemented")
             ctx.parentCtx.slicingIntoSubmodule = True  # pass the information outward
             # print('dealing with slice', ctx.array.getText(), ctx.msb.getText())
             assert not ctx.lsb, f"Can't slice {ctx.getText()} into a vector of submodules"
