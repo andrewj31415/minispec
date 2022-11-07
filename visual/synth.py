@@ -621,7 +621,7 @@ visitVarInit: Not visited, varInits are handled in visitVarBinding since only va
 visitModuleDef: Returns the module hardware
 visitModuleId: Error, this node is handled in moduleDef and should not be visited
 visitModuleStmt: Error, this node is handled in moduleDef and should not be visited
-visitSubmoduleDecl: No returns, mutates existing hardware
+visitSubmoduleDecl: Returns the corresponding module hardware
 visitInputDef: No returns, mutates existing hardware
 visitMethodDef: If the method has no args, no returns. If the method has args, then visiting the method is like
     calling a function and will return the output node (this has not yet been implemented).
@@ -868,7 +868,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitVarInit(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarInitContext):
         raise Exception("Not visited--handled under varBinding to access typeName.")
 
-    def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
+    def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext, arguments: 'list[MLiteral|Module]' = None):
+        ''' arguments is a list of arguments to the module. '''
+        if arguments == None:
+            arguments = []
+        print("received arguemnts:", arguments)
+
         moduleName = ctx.moduleId().name.getText()
         params = self.globalsHandler.lastParameterLookup
         if len(params) > 0:  #attach parameters to the function name if present
@@ -877,13 +882,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         moduleScope: Scope = ctx.scope
 
         if ctx.argFormals():
-            for arg in ctx.argFormals().argFormal():
-                pass
-                # TODO parse set module arguemnts in temporary scope
-                # argType = self.visit(arg.typeName()) # typeName parse tree node
-                # argName = arg.argName.getText() # name of the variable
-                # argNode = Node(argName, argType)
-                # moduleScope.set(argNode, argName)
+            print("assigning arguments")
+            for i in range(len(ctx.argFormals().argFormal())):
+                arg = ctx.argFormals().argFormal(i)
+                argName = arg.argName.getText()
+                argValue = arguments[i]
+                print(arg)
+                moduleScope.set(argValue, argName)
             # raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
         previousTemporaryScope = self.globalsHandler.currentScope.temporaryScope #TODO refactor to get rid of this weird manipulation
@@ -1027,9 +1032,21 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''
 
         # TODO bind module arguments/shared modules somehow
-        moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
+        submoduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
 
-        moduleComponent = self.visit(moduleDef)  #synthesize the module
+        # registers currently ignore their arguments since reset circuitry is not currently generated.
+        if submoduleDef.__class__ != BuiltinRegisterCtx:
+            arguments = []
+            if ctx.args():
+                for arg in ctx.args().arg():
+                    print(arg.toStringTree(recog=parser))
+                    value = self.visit(arg.expression())
+                    print(value.__class__)
+                    arguments.append(value)
+            moduleComponent = self.visitModuleDef(submoduleDef, arguments)
+        else:
+            # synthesize a register
+            moduleComponent = self.visit(submoduleDef)  #synthesize the module
 
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
@@ -1346,7 +1363,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''This is an expression corresponding to a binary operation (which may be a unary operation,
         which may be an exprPrimary). We return the Node or MLiteral with the corresponding output value.'''
         value = self.visit(ctx.binopExpr())
-        assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
+        # removed assertion since this may return a module when parsing a shared module.
+        # assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
         return value
 
     def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
@@ -1553,6 +1571,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if not isNodeOrMLiteral(value):
                 if hasattr(value, 'isRegister') and value.isRegister():
                     value: 'Register' = value.value
+                elif isinstance(value, Module):  # we have found a module, such as a shared module.
+                    return value
                 else:
                     value = self.visit(value)
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
