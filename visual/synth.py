@@ -1214,12 +1214,44 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
                         return
                     else:
-                        # we are slicing into a module. we create the appropriate hardware.
-                        return
+                        # we are slicing into a module. we create the appropriate hardware. TODO I think this can only occur in the == VectorModule case.
                         raise Exception("Not implemented")  #TODO implement this
                 elif settingOverall.__class__ == VectorModule:
-                    return
-                    raise Exception("Not implemented")  #TODO implement this
+                    if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
+                        raise Exception("Not implemented")  #TODO implement this, work in progress
+                        inputName = lvalue.lowerCaseIdentifier().getText()
+                        indexValues: 'list[MLiteral|Node]' = []
+                        # iterate through the indices and visit them
+                        currentLvalue = lvalue.lvalue()
+                        while currentLvalue.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+                            if currentLvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext:
+                                indexValues.append(self.visit(currentLvalue.index))
+                            else:
+                                print(currentLvalue.__class__)
+                                raise Exception("Not implemented")  # I don't think this case can occur.
+                            currentLvalue = currentLvalue.lvalue()
+                        for indexValue in indexValues:
+                            if indexValue.__class__ != IntegerLiteral:
+                                raise Exception("Variable indexing into submodules is not implemented")
+                        # TODO: create wires across the relevant modules, picking out submodules by feeding the values from indexValues into .getNumberedSubmodule methods.
+                        print("got inputName:", inputName)
+                        print("got indices:", indexValues)
+                        currentLvalue.getText()
+                        vectorOfSubmodules: 'VectorModule' = settingOverall
+                        print("got submodule:", vectorOfSubmodules)
+                        for index in indexValues:
+                            indexValue = index.value
+                            vectorOfSubmodules = vectorOfSubmodules.getNumberedSubmodule(indexValue)
+                        print("innermost submodule:", vectorOfSubmodules)
+                        # self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
+                        # TODO do this in an if-statement friendly way, with a set and later wiring these in, at the end of the corresponding moduleDef
+                        # submoduleComponent: 'Module' = vectorOfSubmodules
+                        # inputNode = submoduleComponent.inputs[inputName]
+                        # wireIn = Wire(value, inputNode)
+                        # self.globalsHandler.currentComponent.addChild(wireIn)
+                        return
+                    else:
+                        raise Exception("Not implemented")  #TODO implement this
                 else:
                     pass  # not a module, move on
             except MissingVariableException:
