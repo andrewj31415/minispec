@@ -1008,7 +1008,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             submoduleDecl <-> callExpr
          '''
         moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
-        print('got submodule def', moduleDef, repr(moduleDef))
 
         moduleComponent = self.visit(moduleDef)  #synthesize the module
 
@@ -1201,7 +1200,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # first, detect if we are setting a module input
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
             prospectiveModuleName = lvalue.getText().split('[')[0].split('.')[0] # remove slices ([) and fields (.)
-            print('maybe module', prospectiveModuleName)
             try:
                 settingOverall = self.globalsHandler.currentScope.get(self, prospectiveModuleName)
                 # submodule input assignment has the form
@@ -1658,7 +1656,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
         Returns the result of slicing (the output of the slicing function). '''
-        print('slicing into', ctx.getText())
+        # print('slicing into', ctx.getText())
         toSliceFrom = self.visit(ctx.array)
         msb = self.visit(ctx.msb) #most significant bit
         if ctx.lsb:
@@ -1703,7 +1701,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(wire)
             return sliceComponent.output
         else: # we are slicing into a submodule
-            # raise Exception("Not implemented")
+            raise Exception("Not implemented")  #TODO implement this, work in progress
             ctx.parentCtx.slicingIntoSubmodule = True  # pass the information outward
             # print('dealing with slice', ctx.array.getText(), ctx.msb.getText())
             assert not ctx.lsb, f"Can't slice {ctx.getText()} into a vector of submodules"
