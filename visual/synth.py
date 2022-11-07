@@ -454,8 +454,6 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
     def enterModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We are defining a module. We need to give this module a corresponding scope.'''
         moduleName = ctx.moduleId().name.getText() # get the name of the module
-        if ctx.argFormals():
-            raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
         moduleScope = Scope(self.globalsHandler, moduleName, [self.globalsHandler.currentScope])
         ctx.scope = moduleScope
@@ -476,6 +474,12 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         # log the module's scope
         self.globalsHandler.currentScope.setPermanent(ctx, moduleName, params)
         self.globalsHandler.enterScope(moduleScope)
+        
+        # bind module arguments to None in permanentValues
+        if ctx.argFormals():
+            for argFormal in ctx.argFormals().argFormal():
+                moduleScope.setPermanent(None, argFormal.argName.getText())
+
 
     def exitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We have defined a module, so we step back into the parent scope.'''
@@ -869,10 +873,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         params = self.globalsHandler.lastParameterLookup
         if len(params) > 0:  #attach parameters to the function name if present
             moduleName += "#(" + ",".join(str(i) for i in params) + ")"
-        if ctx.argFormals():
-            raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
         moduleScope: Scope = ctx.scope
+
+        if ctx.argFormals():
+            for arg in ctx.argFormals().argFormal():
+                pass
+                # TODO parse set module arguemnts in temporary scope
+                # argType = self.visit(arg.typeName()) # typeName parse tree node
+                # argName = arg.argName.getText() # name of the variable
+                # argNode = Node(argName, argType)
+                # moduleScope.set(argNode, argName)
+            # raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
+
         previousTemporaryScope = self.globalsHandler.currentScope.temporaryScope #TODO refactor to get rid of this weird manipulation
         self.globalsHandler.enterScope(moduleScope)
         
@@ -922,9 +935,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 previousTemporaryScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
             moduleScope.temporaryScope.currentInputsWithDefault = oldCurrentInputs
         for submoduleDecl in submoduleDecls:
-            self.visit(submoduleDecl)
-            # save submodule inputs with default values
+            submoduleComponent = self.visit(submoduleDecl)
             submoduleName = submoduleDecl.name.getText()
+            # log the submodule in the relevant scope
+            moduleScope.setPermanent(None, submoduleName)
+            moduleScope.set(submoduleComponent, submoduleName)
+            # save submodule inputs with default values
             for inputName in moduleScope.temporaryScope.currentInputsWithDefault:
                 defaultExprCtx = moduleScope.temporaryScope.currentInputsWithDefault[inputName]
                 moduleScope.temporaryScope.inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
@@ -1006,7 +1022,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         function/module analogy:
             moduleDef <-> functionDef
             submoduleDecl <-> callExpr
-         '''
+
+        Returns the component corresponding to the submodule.
+        '''
+
+        # TODO bind module arguments/shared modules somehow
         moduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
 
         moduleComponent = self.visit(moduleDef)  #synthesize the module
@@ -1014,13 +1034,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
         originalModuleScope = self.globalsHandler.currentScope
-        originalModuleScope.setPermanent(None, submoduleName)
-        originalModuleScope.set(moduleComponent, submoduleName)
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
             originalModuleScope.temporaryScope.registers[submoduleName] = moduleComponent
         else:
             originalModuleScope.temporaryScope.nonregisterSubmodules[submoduleName] = moduleComponent
+
+        return moduleComponent
 
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
         ''' Add the appropriate input to the module, with hardware to handle the default value.

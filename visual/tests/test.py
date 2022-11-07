@@ -720,7 +720,16 @@ def _():
     expected = None
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Handles module methods with arguments''')
+def _():
+    pass
+    # TODO
 
+@it('''Handles shared modules''')
+def _():
+    text = pull('moduleShared')
+
+    output = synth.parseAndSynth(text, 'TopLevel')
 
 #run all the tests
 import time
