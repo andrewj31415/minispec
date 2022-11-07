@@ -872,7 +872,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' arguments is a list of arguments to the module. '''
         if arguments == None:
             arguments = []
-        print("received arguemnts:", arguments)
 
         moduleName = ctx.moduleId().name.getText()
         params = self.globalsHandler.lastParameterLookup
@@ -880,19 +879,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleName += "#(" + ",".join(str(i) for i in params) + ")"
 
         moduleScope: Scope = ctx.scope
+        previousTemporaryScope = self.globalsHandler.currentScope.temporaryScope #TODO refactor to get rid of this weird manipulation
+        self.globalsHandler.enterScope(moduleScope)
 
         if ctx.argFormals():
-            print("assigning arguments")
             for i in range(len(ctx.argFormals().argFormal())):
                 arg = ctx.argFormals().argFormal(i)
                 argName = arg.argName.getText()
                 argValue = arguments[i]
-                print(arg)
                 moduleScope.set(argValue, argName)
             # raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
-        previousTemporaryScope = self.globalsHandler.currentScope.temporaryScope #TODO refactor to get rid of this weird manipulation
-        self.globalsHandler.enterScope(moduleScope)
         
         #bind any parameters in the module scope
         bindings = self.globalsHandler.parameterBindings
@@ -1039,9 +1036,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             arguments = []
             if ctx.args():
                 for arg in ctx.args().arg():
-                    print(arg.toStringTree(recog=parser))
                     value = self.visit(arg.expression())
-                    print(value.__class__)
                     arguments.append(value)
             moduleComponent = self.visitModuleDef(submoduleDef, arguments)
         else:
