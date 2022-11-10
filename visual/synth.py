@@ -156,7 +156,7 @@ class TemporaryScope:
         ''' dictionary of registers, only used in a module, str is the variable name that points
         to the register in the module scope  so that:
             self.registers[someRegisterName] = self.get(self, someRegisterName) '''
-        self.registers: 'dict[str, Register]' = {}
+        # self.registers: 'dict[str, Register]' = {}
         self.nonregisterSubmodules: 'dict[str, Module]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
         ''' dictionary of inputs, returns the default value ctx if there is one, or None otherwise.
         input string has the form "inner.enable" for input enable of submodule inner. '''
@@ -936,8 +936,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 # copy any inputs into the parent scope, so that any parent module knows about the inputs
                 previousTemporaryScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
             moduleScope.temporaryScope.currentInputsWithDefault = oldCurrentInputs
+        
+        ''' dictionary of registers, only used in a module, str is the variable name that points
+        to the register in the module scope  so that:
+            self.registers[someRegisterName] = self.get(self, someRegisterName) '''
+        registers: 'dict[str, Register]' = {}
+
         for submoduleDecl in submoduleDecls:
-            submoduleComponent = self.visit(submoduleDecl)
+            submoduleComponent = self.visitSubmoduleDecl(submoduleDecl, registers)
             submoduleName = submoduleDecl.name.getText()
             # log the submodule in the relevant scope
             moduleScope.setPermanent(None, submoduleName)
@@ -947,9 +953,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 defaultExprCtx = moduleScope.temporaryScope.currentInputsWithDefault[inputName]
                 moduleScope.temporaryScope.inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
             moduleScope.temporaryScope.currentInputsWithDefault = {}
+
         for methodDef in methodDefs:
             if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
-                self.visit(methodDef)
+                self.visitMethodDef(methodDef, registers)
+
         # evaluate default inputs
         for submoduleAndInputName in moduleScope.temporaryScope.inputsWithDefault:
             defaultCtxOrNone = moduleScope.temporaryScope.inputsWithDefault[submoduleAndInputName]
@@ -959,7 +967,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName] = None
 
         for ruleDef in ruleDefs:
-            self.visit(ruleDef)
+            self.visitRuleDef(ruleDef, registers)
 
         # now that we have synthesized the rules, we need to collect all submodule inputs set across the rules and wire them in.
         # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
@@ -1016,7 +1024,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
         raise Exception("Not accessed directly, handled in moduleDef")
 
-    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext):
+    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext, registers: 'dict[str, Register]'):
         ''' We have a submodule, so we synthesize it and add it to the current module.
         We also need to bind to submodule's methods somehow; methods with no args bind to
         the corresponding module output, while methods with args need to be somehow tracked as
@@ -1025,6 +1033,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleDef <-> functionDef
             submoduleDecl <-> callExpr
 
+        registers is a dictionary mapping register names to the corresponding register hardware.
         Returns the component corresponding to the submodule.
         '''
 
@@ -1048,7 +1057,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         originalModuleScope = self.globalsHandler.currentScope
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
-            originalModuleScope.temporaryScope.registers[submoduleName] = moduleComponent
+            registers[submoduleName] = moduleComponent
         else:
             originalModuleScope.temporaryScope.nonregisterSubmodules[submoduleName] = moduleComponent
 
@@ -1074,8 +1083,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # a module will also need to keep a list of all submodule inputs for handling default values.
         # The mechanism should work identically.
 
-    def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext):
+    def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, registers: 'dict[str, Register]' = None):
         '''
+        registers is a dictionary mapping register names to the corresponding register hardware.
+
         I think methods with arguments need to be handled separately from methods without arguments.
         - No args:
           This can be a bunch of wires/functions inside the module, synthesized with the module,
@@ -1094,6 +1105,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         methodType = self.visit(ctx.typeName())
         if not ctx.argFormals(): # there are no arguments, so we synthesize the method inside the current module.
             if ctx.expression():
+                # the method is a single-line expression.
                 methodName = ctx.name.getText()
                 methodNode = Node(methodName, methodType)
                 value = self.visit(ctx.expression())
@@ -1103,6 +1115,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(setWire)
                 self.globalsHandler.currentComponent.addMethod(methodNode, methodName)
             else:
+                # the method is a multi-line sequence of statements with a return statement at the end.
                 methodName = ctx.name.getText()
                 methodOutput = Node(methodName, methodType)  # set up the output node
                 self.globalsHandler.outputNode = methodOutput
@@ -1110,8 +1123,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 methodScope = ctx.scope
                 moduleScope = self.globalsHandler.currentScope
                 self.globalsHandler.enterScope(methodScope)
-                for registerName in moduleScope.temporaryScope.registers:  # bind the registers
-                    register = moduleScope.temporaryScope.registers[registerName]
+                for registerName in registers:  # bind the register outputs
+                    register = registers[registerName]
                     methodScope.setPermanent(None, registerName)
                     methodScope.set(register.value, registerName)
                 for stmt in ctx.stmt():  # evaluate the method
@@ -1121,13 +1134,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             raise Exception("Not implemented")
 
-    def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext):
+    def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext, registers: 'dict[str, Register]' = None):
+        ''' Synthesize the update rule. registers is a dictionary mapping register names to the corresponding register hardware. '''
+        if registers == None:
+            registers = {}
         # registers keep their original value unless modified
         ruleScope: 'Scope' = ctx.scope
         moduleScope: 'Scope' = self.globalsHandler.currentScope
         self.globalsHandler.enterScope(ruleScope)
-        for registerName in moduleScope.temporaryScope.registers:
-            register = moduleScope.temporaryScope.registers[registerName]
+        for registerName in registers:
+            register = registers[registerName]
             ruleScope.setPermanent(None, registerName + ".input")
             ruleScope.setPermanent(None, registerName)
             ruleScope.set(register.value, registerName + '.input')
@@ -1140,8 +1156,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for stmt in ctx.stmt():
             self.visit(stmt)
         # wire in the register writes
-        for registerName in moduleScope.temporaryScope.registers:
-            register = moduleScope.temporaryScope.registers[registerName]
+        for registerName in registers:
+            register = registers[registerName]
             value = ruleScope.get(self, registerName + ".input")
             if isMLiteral(value):  # convert value to hardware before assigning to register
                 value = value.getHardware(self.globalsHandler)
@@ -1850,7 +1866,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.exitScope()
 
     def visitRegWrite(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RegWriteContext):
-        '''To assign to a register, we put a wire from the value (rhs) to the register input.'''
+        '''To assign to a register, we put a wire from the value (rhs) to the register input.
+        We don't create the wire here, since the register write might have occured during an if statement--
+        the wires are created at the end of the rule, in visitRuleDef.'''
         value = self.visit(ctx.rhs)
         # if isMLiteral(value):  # convert value to hardware before assigning to register
         #     value = value.getHardware(self.globalsHandler)  # I don't think we need to convert to hardware yet.
