@@ -153,9 +153,6 @@ class TemporaryScope:
     def __init__(self):
         self.temporaryValues = {}
         
-        ''' dictionary of inputs, returns the default value ctx if there is one, or None otherwise.
-        input string has the form "inner.enable" for input enable of submodule inner. '''
-        self.inputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
         # temporary version of inputsWithDefault used inside submodules. only stores the name of the input ("enable",
         # not "inner.enable") since the submodule does not have access to this information.
         self.currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
@@ -923,20 +920,24 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # synthesize inputs, submodules, methods, and rules, in that order
 
         for inputDef in inputDefs:
-            oldCurrentInputs = moduleScope.temporaryScope.currentInputsWithDefault
-            moduleScope.temporaryScope.currentInputsWithDefault = {}
-            self.visit(inputDef)
-            for inputName in moduleScope.temporaryScope.currentInputsWithDefault:
-                defaultValCtxOrNone = moduleScope.temporaryScope.currentInputsWithDefault[inputName]
+            # temporary version of inputsWithDefault used inside submodules. only stores the name of the input ("enable",
+            # not "inner.enable") since the submodule does not have access to this information.
+            currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
+            self.visitInputDef(inputDef, currentInputsWithDefault)
+            for inputName in currentInputsWithDefault:
+                defaultValCtxOrNone = currentInputsWithDefault[inputName]
                 # copy any inputs into the parent scope, so that any parent module knows about the inputs
                 previousTemporaryScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
-            moduleScope.temporaryScope.currentInputsWithDefault = oldCurrentInputs
         
         ''' dictionary of registers, only used in a module, str is the variable name that points
         to the register in the module scope  so that:
             self.registers[someRegisterName] = self.get(self, someRegisterName) '''
         registers: 'dict[str, Register]' = {}
         nonregisterSubmodules: 'dict[str, Module]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
+
+        ''' dictionary of inputs, returns the default value ctx if there is one, or None otherwise.
+        input string has the form "inner.enable" for input enable of submodule inner. '''
+        inputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
 
         for submoduleDecl in submoduleDecls:
             submoduleComponent = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules)
@@ -947,7 +948,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # save submodule inputs with default values
             for inputName in moduleScope.temporaryScope.currentInputsWithDefault:
                 defaultExprCtx = moduleScope.temporaryScope.currentInputsWithDefault[inputName]
-                moduleScope.temporaryScope.inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
+                inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
             moduleScope.temporaryScope.currentInputsWithDefault = {}
 
         for methodDef in methodDefs:
@@ -955,8 +956,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.visitMethodDef(methodDef, registers)
 
         # evaluate default inputs
-        for submoduleAndInputName in moduleScope.temporaryScope.inputsWithDefault:
-            defaultCtxOrNone = moduleScope.temporaryScope.inputsWithDefault[submoduleAndInputName]
+        for submoduleAndInputName in inputsWithDefault:
+            defaultCtxOrNone = inputsWithDefault[submoduleAndInputName]
             if defaultCtxOrNone:
                 moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName] = self.visit(defaultCtxOrNone)
             else:
@@ -1060,11 +1061,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         return moduleComponent
 
-    def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
+    def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext, currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]'):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
         Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').) '''
         inputName = ctx.name.getText()
-        self.globalsHandler.currentScope.temporaryScope.currentInputsWithDefault[inputName] = ctx.defaultVal
+        currentInputsWithDefault[inputName] = ctx.defaultVal
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
         self.globalsHandler.currentScope.setPermanent(None, inputName)
