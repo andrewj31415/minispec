@@ -878,6 +878,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 argName = arg.argName.getText()
                 argValue = arguments[i]
                 moduleScope.set(argValue, argName)
+                print('arg class:', argValue.__class__)
+                if argValue.__class__ == hardware.Module:
+                    print('picked up module arg')
+                    for input in argValue.inputs:
+                        print('input', input)
+                        moduleScope.setPermanent(None, argName + '.' + input)
+                        moduleScope.set(None, argName + '.' + input)
             # raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
 
         
@@ -934,10 +941,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         registers: 'dict[str, Register]' = {}
         nonregisterSubmodules: 'dict[str, Module]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
 
-        ''' dictionary of inputs, returns the default value ctx if there is one, or None otherwise.
-        input string has the form "inner.enable" for input enable of submodule inner. '''
-        inputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
-
         for submoduleDecl in submoduleDecls:
             submoduleComponent, submoduleInputsWithDefault = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules)
             submoduleName = submoduleDecl.name.getText()
@@ -946,20 +949,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleScope.set(submoduleComponent, submoduleName)
             # save submodule inputs with default values
             for inputName in submoduleInputsWithDefault:
-                defaultExprCtx = submoduleInputsWithDefault[inputName]
-                inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
+                submoduleAndInputName = submoduleName + "." + inputName
+                defaultCtxOrNone = submoduleInputsWithDefault[inputName]
+                # evaluate default input if it is not None
+                if defaultCtxOrNone:
+                    moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName] = self.visit(defaultCtxOrNone)
+                else:
+                    moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName] = None
 
         for methodDef in methodDefs:
             if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
                 self.visitMethodDef(methodDef, registers)
-
-        # evaluate default inputs
-        for submoduleAndInputName in inputsWithDefault:
-            defaultCtxOrNone = inputsWithDefault[submoduleAndInputName]
-            if defaultCtxOrNone:
-                moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName] = self.visit(defaultCtxOrNone)
-            else:
-                moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName] = None
 
         for ruleDef in ruleDefs:
             self.visitRuleDef(ruleDef, registers)
@@ -994,14 +994,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         inputs have made their assignments (so, default assignments are made in the module in which the shared module is declared).
         '''
         for submoduleAndInputName in moduleScope.temporaryScope.submoduleInputValues:
+            submoduleName, inputName = submoduleAndInputName.split('.')
             value = moduleScope.temporaryScope.submoduleInputValues[submoduleAndInputName]
-            #assert value != None, "All submodule inputs must be assigned"  #TODO put this assert check back in, remove the value==None continue.
-            if value == None:
-                continue
+            assert value != None, f"All submodule inputs must be assigned--missing value for {submoduleAndInputName}"
             if isMLiteral(value):
                 value = value.getHardware(self.globalsHandler)
             assert isNode(value), "value must be hardware in order to wire in to input node"
-            submoduleName, inputName = submoduleAndInputName.split('.')
             submoduleComponent: 'Module' = nonregisterSubmodules[submoduleName]
             inputNode = submoduleComponent.inputs[inputName]
             wireIn = Wire(value, inputNode)
@@ -1144,6 +1142,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # registers keep their original value unless modified
         ruleScope: 'Scope' = ctx.scope
         moduleScope: 'Scope' = self.globalsHandler.currentScope
+        print("synthesizing rule", ruleScope.name, "in module", moduleScope.name, "with parent", moduleScope.parents[0].name)
         self.globalsHandler.enterScope(ruleScope)
         for registerName in registers:
             register = registers[registerName]
