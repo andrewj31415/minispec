@@ -153,11 +153,6 @@ class TemporaryScope:
     def __init__(self):
         self.temporaryValues = {}
         
-        ''' dictionary of registers, only used in a module, str is the variable name that points
-        to the register in the module scope  so that:
-            self.registers[someRegisterName] = self.get(self, someRegisterName) '''
-        # self.registers: 'dict[str, Register]' = {}
-        self.nonregisterSubmodules: 'dict[str, Module]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
         ''' dictionary of inputs, returns the default value ctx if there is one, or None otherwise.
         input string has the form "inner.enable" for input enable of submodule inner. '''
         self.inputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
@@ -941,9 +936,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         to the register in the module scope  so that:
             self.registers[someRegisterName] = self.get(self, someRegisterName) '''
         registers: 'dict[str, Register]' = {}
+        nonregisterSubmodules: 'dict[str, Module]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
 
         for submoduleDecl in submoduleDecls:
-            submoduleComponent = self.visitSubmoduleDecl(submoduleDecl, registers)
+            submoduleComponent = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules)
             submoduleName = submoduleDecl.name.getText()
             # log the submodule in the relevant scope
             moduleScope.setPermanent(None, submoduleName)
@@ -972,9 +968,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # now that we have synthesized the rules, we need to collect all submodule inputs set across the rules and wire them in.
         # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
         ''' Handling inputs.
-        - moduleScope.nonregisterSubmodules is a dictionary mapping the variable name of a submodule to the
+        - nonregisterSubmodules is a dictionary mapping the variable name of a submodule to the
           corresponding component.
-        - Each submodule component in moduleScope.nonregisterSubmodules has a dictionary .inputs mapping the name of the
+        - Each submodule component in nonregisterSubmodules has a dictionary .inputs mapping the name of the
           input to the node corresponding to the input.
         - When each submodule is synthesized, it logs all inputs and any default values in the dictionary moduleScope.inputsWithDefault,
           which maps moduleScope.inputsWithDefault[input: str] = defaultExpressionCtx or None (if there is no default).
@@ -1007,7 +1003,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value = value.getHardware(self.globalsHandler)
             assert isNode(value), "value must be hardware in order to wire in to input node"
             submoduleName, inputName = submoduleAndInputName.split('.')
-            submoduleComponent: 'Module' = moduleScope.temporaryScope.nonregisterSubmodules[submoduleName]
+            submoduleComponent: 'Module' = nonregisterSubmodules[submoduleName]
             inputNode = submoduleComponent.inputs[inputName]
             wireIn = Wire(value, inputNode)
             self.globalsHandler.currentComponent.addChild(wireIn)
@@ -1024,7 +1020,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
         raise Exception("Not accessed directly, handled in moduleDef")
 
-    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext, registers: 'dict[str, Register]'):
+    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext, registers: 'dict[str, Register]', nonregisterSubmodules: 'dict[str, Module]'):
         ''' We have a submodule, so we synthesize it and add it to the current module.
         We also need to bind to submodule's methods somehow; methods with no args bind to
         the corresponding module output, while methods with args need to be somehow tracked as
@@ -1034,6 +1030,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             submoduleDecl <-> callExpr
 
         registers is a dictionary mapping register names to the corresponding register hardware.
+        nonregisterSubmodules similarly maps submodule names to the corresponding hardware.
         Returns the component corresponding to the submodule.
         '''
 
@@ -1050,7 +1047,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleComponent = self.visitModuleDef(submoduleDef, arguments)
         else:
             # synthesize a register
-            moduleComponent = self.visit(submoduleDef)  #synthesize the module
+            moduleComponent = self.visit(submoduleDef)  #synthesize the module, redirects to visitRegister via BuiltinRegisterCtx.
 
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
@@ -1059,7 +1056,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
             registers[submoduleName] = moduleComponent
         else:
-            originalModuleScope.temporaryScope.nonregisterSubmodules[submoduleName] = moduleComponent
+            nonregisterSubmodules[submoduleName] = moduleComponent
 
         return moduleComponent
 
