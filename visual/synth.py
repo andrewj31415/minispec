@@ -356,6 +356,18 @@ class BuiltinRegisterCtx:
         return visitor.visitRegister(self.mtype)
 
 
+class ModuleWithMetadata:
+    ''' During synthesis, a module has extra data that needs to be carried around.
+    This includes its input values, any default input values, and any methods with arguments. '''
+    def __init__(self, module: 'Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]'):
+        '''hey'''
+        self.module = module
+        self.inputsWithDefaults = inputsWithDefaults
+    def syntheiszeInputs(self):
+        ''' Synthesizes the connections between the input values to the module (in inputsWithDefaults)
+        and the actual module inputs of self.module. '''
+        pass
+
 '''
 Functions/modules/components will have nodes. Wires will be attached to nodes.
 This is convenient during synthesis because we can map variables to the node
@@ -611,7 +623,7 @@ visitModuleDef: Returns a tuple consisting of the module hardware and a dictiona
 visitModuleId: Error, this node is handled in moduleDef and should not be visited
 visitModuleStmt: Error, this node is handled in moduleDef and should not be visited
 visitSubmoduleDecl: Returns a tuple consisting of the module hardware and a dictionary of default input values.
-visitInputDef: No returns, mutates existing hardware
+visitInputDef: Returns a tuple (inputName, defaultCtx), where defaultCtx is None if the input has no default value
 visitMethodDef: If the method has no args, no returns. If the method has args, then visiting the method is like
     calling a function and will return the output node (this has not yet been implemented).
 visitRuleDef: No returns, mutates existing hardware
@@ -924,16 +936,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         # synthesize inputs, submodules, methods, and rules, in that order
         
+        # Stores the name of the input ("enable", not "inner.enable") since the submodule does not have access to this information.
+        # Maps the name of the input to the context with the default value, if it exists. Otherwise maps the name of the input to None.
         moduleInputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
         for inputDef in inputDefs:
-            # temporary version of inputsWithDefault used inside submodules. only stores the name of the input ("enable",
-            # not "inner.enable") since the submodule does not have access to this information.
-            currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
-            self.visitInputDef(inputDef, currentInputsWithDefault)
-            for inputName in currentInputsWithDefault:
-                defaultValCtxOrNone = currentInputsWithDefault[inputName]
-                # collect all inputs along with default values
-                moduleInputsWithDefaults[inputName] = defaultValCtxOrNone
+            inputName, defaultValCtxOrNone = self.visitInputDef(inputDef)
+            moduleInputsWithDefaults[inputName] = defaultValCtxOrNone  # collect inputs along with default values
         
         ''' dictionary of registers, only used in a module, str is the variable name that points
         to the register in the module scope  so that:
@@ -1064,25 +1072,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         return moduleComponent, submoduleInputsWithDefault
 
-    def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext, currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]'):
+    def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
-        Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').) '''
+        Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').)
+        Returns a tuple (inputName, defaultCtx), where defaultCtx is None if the input has no default value. '''
         inputName = ctx.name.getText()
-        currentInputsWithDefault[inputName] = ctx.defaultVal
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
         self.globalsHandler.currentScope.setPermanent(None, inputName)
         self.globalsHandler.currentScope.set(inputNode, inputName)
         self.globalsHandler.currentComponent.addInput(inputNode, inputName)
-        # I think we might need to be a little fancy with default values.
-        # If an input is assigned sometimes as determined by an if statement, then there will be a mux
-        # leading to the input and the other branch of the mux should be the default value.
-        # Alternatively, if the input is never assigned, then the default value should be hard-coded in.
-        # For now, we will not implement default values.
-
-        # I think that just as a module keeps a list of all of its registers for reg writes, 
-        # a module will also need to keep a list of all submodule inputs for handling default values.
-        # The mechanism should work identically.
+        return (inputName, ctx.defaultVal)
 
     def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, registers: 'dict[str, Register]' = None):
         '''
