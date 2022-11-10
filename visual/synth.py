@@ -153,9 +153,6 @@ class TemporaryScope:
     def __init__(self):
         self.temporaryValues = {}
         
-        # temporary version of inputsWithDefault used inside submodules. only stores the name of the input ("enable",
-        # not "inner.enable") since the submodule does not have access to this information.
-        self.currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
         # values to assign to each input. To assign True to inner.enable, we set .submoduleInputValues["inner.enable"] = True.
         # all None values must be replaced by the rules, so that all inputs are assigned values.
         self.submoduleInputValues: 'dict[tuple[Module|Register, str], Node|MLiteral|None]' = {}
@@ -610,10 +607,10 @@ visitStructMember:
 visitVarBinding: No returns, binds the given variables to the right-hand-sides in the appropriate scope
 visitLetBinding: No returns, binds the given variable as appropriate in the current scope
 visitVarInit: Not visited, varInits are handled in visitVarBinding since only varBinding has access to the assigned typeName ctx.
-visitModuleDef: Returns the module hardware
+visitModuleDef: Returns a tuple consisting of the module hardware and a dictionary of default input values.
 visitModuleId: Error, this node is handled in moduleDef and should not be visited
 visitModuleStmt: Error, this node is handled in moduleDef and should not be visited
-visitSubmoduleDecl: Returns the corresponding module hardware
+visitSubmoduleDecl: Returns a tuple consisting of the module hardware and a dictionary of default input values.
 visitInputDef: No returns, mutates existing hardware
 visitMethodDef: If the method has no args, no returns. If the method has args, then visiting the method is like
     calling a function and will return the output node (this has not yet been implemented).
@@ -861,7 +858,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Not visited--handled under varBinding to access typeName.")
 
     def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext, arguments: 'list[MLiteral|Module]' = None):
-        ''' arguments is a list of arguments to the module. '''
+        ''' arguments is a list of arguments to the module.
+        
+        returns a tuple containing the module hardware and a dictionary moduleInputsWithDefaults of default inputs. '''
         if arguments == None:
             arguments = []
 
@@ -871,7 +870,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleName += "#(" + ",".join(str(i) for i in params) + ")"
 
         moduleScope: Scope = ctx.scope
-        previousTemporaryScope = self.globalsHandler.currentScope.temporaryScope #TODO refactor to get rid of this weird manipulation
         self.globalsHandler.enterScope(moduleScope)
 
         if ctx.argFormals():
@@ -918,7 +916,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 raise Exception("Unknown variant. Did the grammar change?")
 
         # synthesize inputs, submodules, methods, and rules, in that order
-
+        
+        moduleInputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
         for inputDef in inputDefs:
             # temporary version of inputsWithDefault used inside submodules. only stores the name of the input ("enable",
             # not "inner.enable") since the submodule does not have access to this information.
@@ -926,8 +925,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.visitInputDef(inputDef, currentInputsWithDefault)
             for inputName in currentInputsWithDefault:
                 defaultValCtxOrNone = currentInputsWithDefault[inputName]
-                # copy any inputs into the parent scope, so that any parent module knows about the inputs
-                previousTemporaryScope.currentInputsWithDefault[inputName] = defaultValCtxOrNone
+                # collect all inputs along with default values
+                moduleInputsWithDefaults[inputName] = defaultValCtxOrNone
         
         ''' dictionary of registers, only used in a module, str is the variable name that points
         to the register in the module scope  so that:
@@ -940,16 +939,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         inputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
 
         for submoduleDecl in submoduleDecls:
-            submoduleComponent = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules)
+            submoduleComponent, submoduleInputsWithDefault = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules)
             submoduleName = submoduleDecl.name.getText()
             # log the submodule in the relevant scope
             moduleScope.setPermanent(None, submoduleName)
             moduleScope.set(submoduleComponent, submoduleName)
             # save submodule inputs with default values
-            for inputName in moduleScope.temporaryScope.currentInputsWithDefault:
-                defaultExprCtx = moduleScope.temporaryScope.currentInputsWithDefault[inputName]
+            for inputName in submoduleInputsWithDefault:
+                defaultExprCtx = submoduleInputsWithDefault[inputName]
                 inputsWithDefault[submoduleName + "." + inputName] = defaultExprCtx
-            moduleScope.temporaryScope.currentInputsWithDefault = {}
 
         for methodDef in methodDefs:
             if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
@@ -1012,7 +1010,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
 
-        return moduleComponent
+        return moduleComponent, moduleInputsWithDefaults
 
     def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
         ''' Handled in moduleDef '''
@@ -1032,8 +1030,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         registers is a dictionary mapping register names to the corresponding register hardware.
         nonregisterSubmodules similarly maps submodule names to the corresponding hardware.
-        Returns the component corresponding to the submodule.
+
+        Returns the component corresponding to the submodule and a dictionary mapping input names to the corresponding default ctx (or None if there is no default value)
         '''
+        
+        # submoduleInputsWithDefault maps input names to the corresponding default ctx or none if there is no default value
+        # only stores the name of the input ("enable",
+        # not "inner.enable") since the submodule does not have access to what it will be called in the original module.
+        submoduleInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
 
         # TODO bind module arguments/shared modules somehow
         submoduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
@@ -1045,21 +1049,22 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 for arg in ctx.args().arg():
                     value = self.visit(arg.expression())
                     arguments.append(value)
-            moduleComponent = self.visitModuleDef(submoduleDef, arguments)
+            moduleComponent, inputsWithDefaults = self.visitModuleDef(submoduleDef, arguments)
+            for input in inputsWithDefaults:
+                submoduleInputsWithDefault[input] = inputsWithDefaults[input]
         else:
             # synthesize a register
             moduleComponent = self.visit(submoduleDef)  #synthesize the module, redirects to visitRegister via BuiltinRegisterCtx.
 
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
-        originalModuleScope = self.globalsHandler.currentScope
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
             registers[submoduleName] = moduleComponent
         else:
             nonregisterSubmodules[submoduleName] = moduleComponent
 
-        return moduleComponent
+        return moduleComponent, submoduleInputsWithDefault
 
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext, currentInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]'):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
@@ -2193,7 +2198,13 @@ endfunction
     topLevelParseTree = getParseTree(topLevel)
     ctxOfNote = topLevelParseTree.packageStmt(0).functionDef().stmt(0).exprPrimary().expression().binopExpr().unopExpr().exprPrimary()
     outputDef = synthesizer.visit(ctxOfNote)  # follow the call to the function and get back the functionDef/moduleDef.
-    output = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+    if outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
+        output, inputsWithDefault = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+    elif outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext:
+        output = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+    else:
+        raise Exception(f"Expected module or function, not {outputDef.__class__}")
+
 
     # for scope in globalsHandler.allScopes:
     #     print(scope)
