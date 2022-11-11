@@ -980,17 +980,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
         for submoduleName in moduleScope.temporaryScope.submoduleInputValues:
             for inputName in moduleScope.temporaryScope.submoduleInputValues[submoduleName]:
+                value = moduleScope.temporaryScope.submoduleInputValues[submoduleName][inputName]
+                assert value != None, f"All submodule inputs must be assigned--missing value for {submoduleName}.{inputName}"
+                if isMLiteral(value):
+                    value = value.getHardware(self.globalsHandler)
+                assert isNode(value), "value must be hardware in order to wire in to input node"
                 if submoduleName in nonregisterSubmodules:
-                    #TODO move synthesis of register inputs to here
-                    value = moduleScope.temporaryScope.submoduleInputValues[submoduleName][inputName]
-                    assert value != None, f"All submodule inputs must be assigned--missing value for {submoduleName}.{inputName}"
-                    if isMLiteral(value):
-                        value = value.getHardware(self.globalsHandler)
-                    assert isNode(value), "value must be hardware in order to wire in to input node"
                     submoduleComponent: 'Module' = nonregisterSubmodules[submoduleName].module
                     inputNode = submoduleComponent.inputs[inputName]
-                    wireIn = Wire(value, inputNode)
-                    self.globalsHandler.currentComponent.addChild(wireIn)
+                else:
+                    submoduleComponent: 'Module' = registers[submoduleName].module
+                    inputNode = submoduleComponent.input
+                wireIn = Wire(value, inputNode)
+                self.globalsHandler.currentComponent.addChild(wireIn)
             
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
@@ -1134,15 +1136,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 ruleScope.set(value, fullInputName)
         for stmt in ctx.stmt():
             self.visit(stmt)
-        # wire in the register writes
-        for registerName in registers:
-            register = registers[registerName].module
-            value = ruleScope.get(self, registerName + ".input")
-            if isMLiteral(value):  # convert value to hardware before assigning to register
-                value = value.getHardware(self.globalsHandler)
-            setWire = Wire(value, register.input)
-            self.globalsHandler.currentComponent.addChild(setWire)
-        #find any input assignments
+        # find any submodule input assignments, including register writes
         for submoduleName in moduleScope.temporaryScope.submoduleInputValues:
             for inputName in moduleScope.temporaryScope.submoduleInputValues[submoduleName]:
                 fullInputName = submoduleName + '.' + inputName
