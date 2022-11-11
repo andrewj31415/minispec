@@ -355,11 +355,24 @@ class BuiltinRegisterCtx:
 class ModuleWithMetadata:
     ''' During synthesis, a module has extra data that needs to be carried around.
     This includes its input values, any default input values, and any methods with arguments. '''
-    def __init__(self, module: 'Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]'):
+    def __init__(self, visitor: 'SynthesizerVisitor', module: 'Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]'):
         '''hey'''
         self.module: 'Module' = module
-        self.inputsWithDefaults = inputsWithDefaults
+        # self.inputsWithDefaults = inputsWithDefaults
         self.inputValues: 'dict[str, Node|MLiteral|None]' = {}
+
+        # save submodule inputs with default values
+        for inputName in inputsWithDefaults:
+            defaultCtxOrNone = inputsWithDefaults[inputName]
+            # evaluate default input if it is not None
+            if defaultCtxOrNone:
+                self.inputValues[inputName] = visitor.visit(defaultCtxOrNone)
+            elif self.module.isRegister():
+                # a register's default value is its own value
+                self.inputValues[inputName] = self.module.value
+            else:
+                self.inputValues[inputName] = None
+
     def syntheiszeInputs(self, globalsHandler: 'GlobalsHandler'):
         ''' Synthesizes the connections between the input values to the module (in inputsWithDefaults)
         and the actual module inputs of self.module.
@@ -367,7 +380,7 @@ class ModuleWithMetadata:
         submoduleName = self.module.name
         for inputName in self.inputValues:
             value = self.inputValues[inputName]
-            assert value != None, f"All submodule inputs must be assigned--missing value for {submoduleName}.{inputName}"
+            assert value != None, f"All submodule inputs must be assigned--missing input {inputName} on {submoduleName}"
             # when a value is assigned to a submodule input/register write, we expect to convert it to hardware then since it cannot be reassigned. TODO test this by assigning constant literal values to registers/inputs.
             assert isNode(value), "value must be hardware in order to wire in to input node"
             if hasattr(self.module, 'isRegister') and self.module.isRegister():
@@ -631,7 +644,7 @@ visitVarInit: Not visited, varInits are handled in visitVarBinding since only va
 visitModuleDef: Returns a tuple consisting of the module hardware and a dictionary of default input values.
 visitModuleId: Error, this node is handled in moduleDef and should not be visited
 visitModuleStmt: Error, this node is handled in moduleDef and should not be visited
-visitSubmoduleDecl: Returns a tuple consisting of the module hardware and a dictionary of default input values.
+visitSubmoduleDecl: Returns the module hardware.
 visitInputDef: Returns a tuple (inputName, defaultCtx), where defaultCtx is None if the input has no default value
 visitMethodDef: If the method has no args, no returns. If the method has args, then visiting the method is like
     calling a function and will return the output node (this has not yet been implemented).
@@ -961,22 +974,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         submodules: 'dict[str, ModuleWithMetadata]' = {}
 
         for submoduleDecl in submoduleDecls:
-            submoduleComponent, submoduleInputsWithDefault = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules, submodules)
+            submoduleWithMetadata: ModuleWithMetadata = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules, submodules)
             submoduleName = submoduleDecl.name.getText()
             # log the submodule in the relevant scope
             moduleScope.setPermanent(None, submoduleName)
-            moduleScope.set(submoduleComponent, submoduleName)
-            # save submodule inputs with default values
-            for inputName in submoduleInputsWithDefault:
-                defaultCtxOrNone = submoduleInputsWithDefault[inputName]
-                # evaluate default input if it is not None
-                if defaultCtxOrNone:
-                    submodules[submoduleName].inputValues[inputName] = self.visit(defaultCtxOrNone)
-                elif submoduleName in registers:
-                    # a register's default value is its own value
-                    submodules[submoduleName].inputValues[inputName] = submoduleComponent.value
-                else:
-                    submodules[submoduleName].inputValues[inputName] = None
+            moduleScope.set(submoduleWithMetadata.module, submoduleName)
 
         for methodDef in methodDefs:
             if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
@@ -1015,7 +1017,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         registers is a dictionary mapping register names to the corresponding register hardware.
         nonregisterSubmodules similarly maps submodule names to the corresponding hardware.
 
-        Returns the component corresponding to the submodule and a dictionary mapping input names to the corresponding default ctx (or None if there is no default value)
+        Returns the component corresponding to the submodule.
         '''
         
         # submoduleInputsWithDefault maps input names to the corresponding default ctx or none if there is no default value
@@ -1042,7 +1044,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
 
-        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(moduleComponent, submoduleInputsWithDefault)
+        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, submoduleInputsWithDefault)
         submodules[submoduleName] = moduleWithMetadata
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
@@ -1050,7 +1052,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             nonregisterSubmodules[submoduleName] = moduleWithMetadata
 
-        return moduleComponent, submoduleInputsWithDefault
+
+        return moduleWithMetadata
 
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
