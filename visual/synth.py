@@ -969,12 +969,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         to the register in the module scope so that:
             self.registers[someRegisterName].module = self.get(self, someRegisterName) '''
         registers: 'dict[str, ModuleWithMetadata]' = {}
-        nonregisterSubmodules: 'dict[str, ModuleWithMetadata]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
-        # Holds all submodules (the union of registers and nonregisterSubmodules)
+        # Holds all submodules, including registers
         submodules: 'dict[str, ModuleWithMetadata]' = {}
 
         for submoduleDecl in submoduleDecls:
-            submoduleWithMetadata: ModuleWithMetadata = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules, submodules)
+            submoduleWithMetadata: ModuleWithMetadata = self.visitSubmoduleDecl(submoduleDecl, registers, submodules)
             submoduleName = submoduleDecl.name.getText()
             # log the submodule in the relevant scope
             moduleScope.setPermanent(None, submoduleName)
@@ -1005,7 +1004,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
         raise Exception("Not accessed directly, handled in moduleDef")
 
-    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext, registers: 'dict[str, Register]', nonregisterSubmodules: 'dict[str, Module]', submodules: 'dict[str, ModuleWithMetadata]'):
+    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]'):
         ''' We have a submodule, so we synthesize it and add it to the current module.
         We also need to bind to submodule's methods somehow; methods with no args bind to
         the corresponding module output, while methods with args need to be somehow tracked as
@@ -1015,7 +1014,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             submoduleDecl <-> callExpr
 
         registers is a dictionary mapping register names to the corresponding register hardware.
-        nonregisterSubmodules similarly maps submodule names to the corresponding hardware.
 
         Returns the component corresponding to the submodule.
         '''
@@ -1049,9 +1047,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
             registers[submoduleName] = moduleWithMetadata
-        else:
-            nonregisterSubmodules[submoduleName] = moduleWithMetadata
-
 
         return moduleWithMetadata
 
