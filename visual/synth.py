@@ -434,6 +434,8 @@ class BluespecModuleWithMetadata():
             globalsHandler.currentComponent.addChild(wireIn)
         globalsHandler.currentComponent.addChild(methodComponent)
         return methodComponent.output
+    #TODO implement bluespec module inputs
+    #TODO create wire from bluespec module to method with argument function (one more input)
 
 class UnsynthesizableComponent:
     ''' Used to represent strings, etc. Any interpretation process that encounters an
@@ -749,7 +751,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return Register('Reg#(' + str(mtype) + ')')
 
     def visitVectorSubmodule(self, vectorType):
-        ''' We have a vector submodule. We create the relevant hardware. '''
+        ''' We have a vector submodule. We create the relevant hardware and return the corresponding vector module. '''
         vectorComp = VectorModule([], "", [], {}, {})  # the name can't be determined until we visit the inner modules and get their name
         previousComp = self.globalsHandler.currentComponent
         self.globalsHandler.currentComponent = vectorComp
@@ -760,6 +762,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert numCopies >= 1, "It does not make sense to have a vector of no submodules."
         for i in range(numCopies):
             submodule = self.visit(vectorizedSubmodule)
+            print("Got a submodule!\n\n\n")
+            print(vectorizedSubmodule.__class__)
+            print(submodule)
             self.globalsHandler.currentComponent.addChild(submodule)
             vectorComp.addNumberedSubmodule(submodule)
 
@@ -948,7 +953,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         returns a tuple containing the module hardware and a dictionary moduleInputsWithDefaults of default inputs. '''
         if arguments == None:
             arguments = []
-
+        
         moduleName = ctx.moduleId().name.getText()
         params = self.globalsHandler.lastParameterLookup
         if len(params) > 0:  #attach parameters to the function name if present
@@ -1075,7 +1080,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         try:
             submoduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
         except MissingVariableException as e:
-            # we have an unknown bluespec built-in function
+            # we have an unknown bluespec built-in module
             moduleName = ctx.typeName().getText()
             moduleComponent = Module(moduleName, [], {}, {})
             self.globalsHandler.currentComponent.addChild(moduleComponent)
@@ -1088,7 +1093,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # funcComponent = Function(functionName, [], [Node() for i in range(len(ctx.expression()))])
 
         # registers currently ignore their arguments since reset circuitry is not currently generated.
-        if submoduleDef.__class__ != BuiltinRegisterCtx:
+        if submoduleDef.__class__ == BuiltinRegisterCtx:
+            # synthesize a register
+            moduleComponent = self.visit(submoduleDef)  # synthesize the module, redirects to visitRegister via BuiltinRegisterCtx.
+            submoduleInputsWithDefault = {'input': None}  # the register default input will actually be its own value, but there is no corresponding ctx node so we put None here.
+        elif submoduleDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
             arguments = []
             if ctx.args():
                 for arg in ctx.args().arg():
@@ -1098,10 +1107,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     else:
                         arguments.append(value)
             moduleComponent, submoduleInputsWithDefault = self.visitModuleDef(submoduleDef, arguments)
+        elif submoduleDef.__class__ == MType:
+            # Redirect to vector of modules
+            # TODO handle arguments for vectors of submodules
+            moduleComponent = self.visit(submoduleDef)  # redirects to visitVectorSubmodule via VectorType class. If the type is not a vector type, will fail since no other type implements the "accept" method to accept the parse tree visitor.
+            submoduleInputsWithDefault = {}
+            # raise Exception("Not implemented")
         else:
-            # synthesize a register
-            moduleComponent = self.visit(submoduleDef)  # synthesize the module, redirects to visitRegister via BuiltinRegisterCtx.
-            submoduleInputsWithDefault = {'input': None}  # the register default input will actually be its own value, but there is no corresponding ctx node so we put None here.
+            print('module class', submoduleDef.__class__)
+            raise Exception(f"Unrecognized context for module creation {submoduleDef.__class__}")
 
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
@@ -1755,10 +1769,21 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
-        Returns the result of slicing (the output of the slicing function). '''
-        # print('slicing into', ctx.getText())
+        Returns the result of slicing (the output of the slicing function).
+        topLevel is true if this is the outermost slice in a nested slice (such as m[a][b][c]).'''
+        print('slicing into', ctx.getText())
         toSliceFrom = self.visit(ctx.array)
+        print('sliced')
+        print(toSliceFrom.__class__)
+        print(toSliceFrom)
         msb = self.visit(ctx.msb) #most significant bit
+        if toSliceFrom.__class__ == VectorModule:
+            # slicing into a vector of modules
+            if not isMLiteral(msb):
+                raise Exception("Variable indexing into vector of submodules is not yet implemented")
+            print('picked up numbered submodule')
+            return toSliceFrom.getNumberedSubmodule(msb.value)
+            raise Exception("Not implemented")
         if ctx.lsb:
             lsb = self.visit(ctx.lsb) #least significant bit
         if isMLiteral(toSliceFrom) and isMLiteral(msb) and ( (not (ctx.lsb)) or (ctx.lsb and isMLiteral(lsb)) ):  # perform the slice directly
@@ -1768,6 +1793,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 return toSliceFrom.slice(msb)
         if isMLiteral(toSliceFrom):
             toSliceFrom = toSliceFrom.getHardware(self.globalsHandler)
+        # TODO refactor assert we have a node at this point
         if isNode(toSliceFrom) and not ctx.slicingIntoSubmodule:  # we are slicing into an ordinary variable
             text = "["
             inNode = Node()
@@ -1891,10 +1917,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             toAccess = self.visit(ctx.fcn.exprPrimary())
             fieldToAccess = ctx.fcn.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
-                print(toAccess, fieldToAccess)
                 return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs)
-                pass
-                raise Exception("Not implemented")
             else:
                 # TODO implement module methods with arguments on minispec modules
                 raise Exception("Not implemented")
@@ -1902,9 +1925,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             raise Exception(f"Unexpected lhs of function call {ctx.fcn.__class__}")
 
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
+        print('accessing field', ctx.getText())
         toAccess = self.visit(ctx.exprPrimary())
-        print(ctx.getText())
-        print(toAccess.__class__)
         if toAccess.__class__ == Module:
             fieldToAccess = ctx.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
@@ -1946,12 +1968,36 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         value = self.visit(ctx.rhs)
         # if isMLiteral(value):  # convert value to hardware before assigning to register
         #     value = value.getHardware(self.globalsHandler)  # I don't think we need to convert to hardware yet.
-        if ctx.lhs.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-            # raise Exception("Not implemented") # this is for vectors of registers
+        if ctx.lhs.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
+            # ordinary register, no vectors
             regName = ctx.lhs.getText()
-            self.globalsHandler.currentScope.setPermanent(value, regName + ".input")
-        regName = ctx.lhs.getText()
+            self.globalsHandler.currentScope.set(value, regName + ".input")
+            return
+        # writing to a vector of registers
+        print('assigning to vector of registers', ctx.getText())
+        print(ctx.lhs.__class__)
+        indexes = []
+        currentlvalue = ctx.lhs
+        print(currentlvalue.__class__)
+        while currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext:
+            indexValue = self.visit(currentlvalue.index)
+            if not isMLiteral(indexValue):
+                raise Exception("Variable indexing to assign to registers is not implemented yet")
+            indexes.append(indexValue)
+            currentlvalue = currentlvalue.lvalue()
+        print('got indexes', indexes)
+        assert currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext, "Unrecognized format for assignment to vector of registers"
+        regName = currentlvalue.getText()
+        for indexValue in indexes:
+            # TODO these might be backward?
+            regName += f'[{indexValue.value}]'
+        print(regName)
+        #TODO finish assigning value to register
+        return
         self.globalsHandler.currentScope.set(value, regName + ".input")
+        raise Exception("Not implemented") # this is for vectors of registers
+        regName = ctx.lhs.getText()
+        self.globalsHandler.currentScope.setPermanent(value, regName + ".input")
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
         ''' Each variety of statement is handled separately. '''

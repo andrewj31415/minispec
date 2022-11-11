@@ -708,7 +708,7 @@ def _():
 
 describe('''Advanced Modules''')
 
-@it.skip('''Correctly handles vectors of submodules''')
+@it('''Correctly handles vectors of submodules''')
 def _():
     text = pull('moduleVector')
 
