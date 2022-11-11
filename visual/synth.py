@@ -24,7 +24,6 @@ Implementation Agenda:
     - Fixing parametric lookups
     - Module methods with arguments
     - Vectors of submodules (and more generally, indexing into a submodule)--use a demultiplexer
-    - Shared modules/Modules with arguments
     - BSV imports of modules
 
 Implemented:
@@ -43,6 +42,7 @@ Implemented:
     - Case expressions
     - parameterized typedefs
     - imports of other files
+    - Shared modules/Modules with arguments
 
 '''
 
@@ -299,6 +299,9 @@ class BuiltInScope(Scope):
         then prefers temporary values to permanent values. Returns whatever is found,
         probably a ctx object (functionDef).
         Returns a ctx object or a typeName.'''
+        if varName == 'Integer':
+            assert len(parameters) == 0, "integer takes no parameters"
+            return IntegerLiteral
         if varName == 'Bit':
             assert len(parameters) == 1, "bit takes exactly one parameter"
             n = parameters[0]
@@ -340,6 +343,13 @@ class BuiltInScope(Scope):
             assert len(parameters) == 1, "A maybe type has exactly one parameter"
             mtype = parameters[0]
             return Maybe(mtype)
+        if varName == 'log2':
+            assert len(parameters) == 0, "log base 2 has no parameters"
+            functionComp = Function('log2', [], [Node()])
+            def log2(n: 'MLiteral'):
+                assert n.__class__ == IntegerLiteral, "Can only take log of integer"
+                return IntegerLiteral(n.value.bit_length())
+            raise BluespecBuiltinFunction(functionComp, log2)
         raise MissingVariableException(f"Couldn't find variable {varName} with parameters {parameters}.")
 
 #type annotation for context objects.
@@ -390,6 +400,45 @@ class ModuleWithMetadata:
                 inputNode = self.module.inputs[inputName]
             wireIn = Wire(value, inputNode)
             globalsHandler.currentComponent.addChild(wireIn)
+
+
+class BluespecModuleWithMetadata():
+    ''' An imported bluespec module must be recognizable, with methods for creating inputs/methods dynamically
+    as they are encountered. A bluespec module's default inputs are functions labeled with a ? (not don't care
+    symbols). '''
+    def __init__(self, module: 'Module'):
+        self.module: Module = module
+    def getMethod(self, fieldToAccess: 'str'):
+        ''' Given the name of a method, returns the corresponding node.
+        Dynamically creates the node if it does not exist. '''
+        if (fieldToAccess not in self.module.methods):
+            self.module.addMethod(Node(), fieldToAccess)
+        return self.module.methods[fieldToAccess]
+    def getMethodWithArguments(self, globalsHandler: 'GlobalsHandler', fieldToAccess: 'str', functionArgs: 'list[Node|MLiteral]'):
+        ''' Given the name of a method with arguments, as well as the arguments themselves,
+        creates the corresponding hardware and returns the output node.
+        fieldToAccess is the name of the method, functionArgs is a list of input nodes/literals.'''
+        methodComponent = Function(fieldToAccess, [], [Node() for i in range(len(functionArgs))])
+        # TODO source map support
+        # funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
+        # hook up the funcComponent to the arguments passed in.
+        for i in range(len(functionArgs)):
+            exprValue = functionArgs[i]
+            if isMLiteral(exprValue):
+                exprNode = exprValue.getHardware(globalsHandler)
+            else:
+                exprNode = exprValue
+            funcInputNode = methodComponent.inputs[i]
+            wireIn = Wire(exprNode, funcInputNode)
+            globalsHandler.currentComponent.addChild(wireIn)
+        globalsHandler.currentComponent.addChild(methodComponent)
+        return methodComponent.output
+
+class UnsynthesizableComponent:
+    ''' Used to represent strings, etc. Any interpretation process that encounters an
+    UnsynthesizableComponent should stop and return another UnsynthesizableComponent. '''
+    def __init__(self):
+        pass
 
 '''
 Functions/modules/components will have nodes. Wires will be attached to nodes.
@@ -947,7 +996,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             elif moduleStmt.ruleDef():
                 ruleDefs.append(moduleStmt.ruleDef())
             elif moduleStmt.stmt():
-                raise Exception("moduleStmt stmt is not implemented")
+                # TODO this might mess up order of interpretation?
+                self.visit(moduleStmt.stmt())
+                # raise Exception("moduleStmt stmt is not implemented")
             elif moduleStmt.functionDef():
                 continue # Only synthesize functions when called
             else:
@@ -1020,8 +1071,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # not "inner.enable") since the submodule does not have access to what it will be called in the original module.
         submoduleInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
 
-        # TODO bind module arguments/shared modules somehow
-        submoduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
+        try:
+            submoduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
+        except MissingVariableException as e:
+            # we have an unknown bluespec built-in function
+            moduleName = ctx.typeName().getText()
+            moduleComponent = Module(moduleName, [], {}, {})
+            moduleWithMetadata = BluespecModuleWithMetadata(moduleComponent)
+            moduleComponent.metadata = moduleWithMetadata
+            return moduleWithMetadata
+            # TODO add params
+            # if len(params) > 0:  #attach parameters to the function name if present
+                # functionName += "#(" + ",".join(str(i) for i in params) + ")"
+            # funcComponent = Function(functionName, [], [Node() for i in range(len(ctx.expression()))])
 
         # registers currently ignore their arguments since reset circuitry is not currently generated.
         if submoduleDef.__class__ != BuiltinRegisterCtx:
@@ -1154,6 +1216,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         Gets any parameters from parsedCode.lastParameterLookup and
         finds parameter bindings in bindings = parsedCode.parameterBindings'''
         functionName = ctx.functionId().name.getText()
+        print('functionName', functionName)
         params = self.globalsHandler.lastParameterLookup
         if len(params) > 0:  #attach parameters to the function name if present
             functionName += "#(" + ",".join(str(i) for i in params) + ")"
@@ -1564,6 +1627,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     value: 'Register' = value.value
                 elif isinstance(value, Module):  # we have found a module, such as a shared module.
                     return value
+                elif value.__class__ == UnsynthesizableComponent:
+                    return UnsynthesizableComponent()
                 else:
                     value = self.visit(value)
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
@@ -1627,7 +1692,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         return sliceComponent.output
 
     def visitStringLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StringLiteralContext):
-        pass
+        return UnsynthesizableComponent()
         # I don't think string literals do anything--they are only for system functions (dollar-sign
         # identifiers) or for comments.
 
@@ -1766,57 +1831,78 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         and return the function output node (which corresponds to the value of the function).'''
         # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
         # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
-        functionToCall = ctx.fcn.var.getText()
         functionArgs = []
         allLiterals = True # true if all function args are literals, false otherwise. used for evaluating built-ins.
         for i in range(len(ctx.expression())):
             expr = ctx.expression(i)
             exprValue = self.visit(expr) # visit the expression and get the corresponding node
+            if exprValue.__class__ == UnsynthesizableComponent:
+                return UnsynthesizableComponent()
             functionArgs.append(exprValue)
             if not isMLiteral(exprValue):
                 allLiterals = False
-        params: 'list[int]' = []
-        if ctx.fcn.params():
-            for param in ctx.fcn.params().param():
-                value = self.visit(param) #visit the parameter and extract the corresponding expression, parsing it to an integer
-                #note that params may be either integers (which can be used as-is)
-                #   or variables (which need to be looked up) or expressions in integers (which need
-                #   to be evaluated and must evaluate to an integer).
-                assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
-                params.append(value)
-        try:
-            functionDef = self.globalsHandler.currentScope.get(self, functionToCall, params)
-            self.globalsHandler.lastParameterLookup = params
-            funcComponent = self.visit(functionDef)  #synthesize the function internals
-        except MissingVariableException as e:
-            # we have an unknown bluespec built-in function
-            functionName = functionToCall
-            if len(params) > 0:  #attach parameters to the function name if present
-                functionName += "#(" + ",".join(str(i) for i in params) + ")"
-            funcComponent = Function(functionName, [], [Node() for i in range(len(ctx.expression()))])
-        except BluespecBuiltinFunction as e:
-            functionComponent, evaluate = e.functionComponent, e.evalute
-            if allLiterals:
-                return evaluate(*functionArgs)
-            funcComponent = functionComponent
-        funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
-        # hook up the funcComponent to the arguments passed in.
-        for i in range(len(functionArgs)):
-            exprValue = functionArgs[i]
-            if isMLiteral(exprValue):
-                exprNode = exprValue.getHardware(self.globalsHandler)
+        if ctx.fcn.__class__ == build.MinispecPythonParser.MinispecPythonParser.VarExprContext:
+            # function call
+            params: 'list[int]' = []
+            if ctx.fcn.params():
+                for param in ctx.fcn.params().param():
+                    value = self.visit(param) #visit the parameter and extract the corresponding expression, parsing it to an integer
+                    #note that params may be either integers (which can be used as-is)
+                    #   or variables (which need to be looked up) or expressions in integers (which need
+                    #   to be evaluated and must evaluate to an integer).
+                    assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
+                    params.append(value)
+            functionToCall = ctx.fcn.var.getText()
+            try:
+                functionDef = self.globalsHandler.currentScope.get(self, functionToCall, params)
+                self.globalsHandler.lastParameterLookup = params
+                funcComponent = self.visit(functionDef)  #synthesize the function internals
+            except MissingVariableException as e:
+                # we have an unknown bluespec built-in function
+                print("missing variable exception", functionToCall)
+                functionName = functionToCall
+                if len(params) > 0:  #attach parameters to the function name if present
+                    functionName += "#(" + ",".join(str(i) for i in params) + ")"
+                funcComponent = Function(functionName, [], [Node() for i in range(len(ctx.expression()))])
+            except BluespecBuiltinFunction as e:
+                functionComponent, evaluate = e.functionComponent, e.evalute
+                if allLiterals:
+                    return evaluate(*functionArgs)
+                funcComponent = functionComponent
+            funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
+            # hook up the funcComponent to the arguments passed in.
+            for i in range(len(functionArgs)):
+                exprValue = functionArgs[i]
+                if isMLiteral(exprValue):
+                    exprNode = exprValue.getHardware(self.globalsHandler)
+                else:
+                    exprNode = exprValue
+                funcInputNode = funcComponent.inputs[i]
+                wireIn = Wire(exprNode, funcInputNode)
+                self.globalsHandler.currentComponent.addChild(wireIn)
+            self.globalsHandler.currentComponent.addChild(funcComponent)
+            return funcComponent.output  # return the value of this call, which is the output of the function
+        elif ctx.fcn.__class__ == build.MinispecPythonParser.MinispecPythonParser.FieldExprContext:
+            # module method with arguments
+            toAccess = self.visit(ctx.fcn.exprPrimary())
+            fieldToAccess = ctx.fcn.field.getText()
+            if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
+                print(toAccess, fieldToAccess)
+                return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs)
+                pass
+                raise Exception("Not implemented")
             else:
-                exprNode = exprValue
-            funcInputNode = funcComponent.inputs[i]
-            wireIn = Wire(exprNode, funcInputNode)
-            self.globalsHandler.currentComponent.addChild(wireIn)
-        self.globalsHandler.currentComponent.addChild(funcComponent)
-        return funcComponent.output  # return the value of this call, which is the output of the function
+                # TODO implement module methods with arguments on minispec modules
+                raise Exception("Not implemented")
+        else:
+            raise Exception(f"Unexpected lhs of function call {ctx.fcn.__class__}")
 
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
         toAccess = self.visit(ctx.exprPrimary())
         if toAccess.__class__ == Module:
             fieldToAccess = ctx.field.getText()
+            if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
+                return toAccess.metadata.getMethod(fieldToAccess)
             return toAccess.methods[fieldToAccess]
         else:
             field = ctx.field.getText()

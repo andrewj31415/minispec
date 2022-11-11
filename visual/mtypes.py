@@ -217,9 +217,11 @@ class MLiteralOperations:
         first, second = MLiteralOperations.coerceArithmetic(first, second)
         return first.sub(second)
     def sleft(first, second):
-        raise Exception("Not implemented")
+        first, second = MLiteralOperations.coerceArithmetic(first, second)
+        return first.sleft(second)
     def sright(first, second):
-        raise Exception("Not implemented")
+        first, second = MLiteralOperations.coerceArithmetic(first, second)
+        return first.sright(second)
     def lt(first, second):
         first, second = MLiteralOperations.coerceArithmetic(first, second)
         return first.lt(second)
@@ -356,7 +358,7 @@ class Any(MLiteral):
         return "Any"
 
 class Integer(MLiteral):
-    '''An integer type'''
+    '''An integer type. Has value value.'''
     _name = "Integer"
     def __init__(self, value):
         ''' Create an integer literal '''
@@ -392,9 +394,9 @@ class Integer(MLiteral):
     def sub(self, other):
         return IntegerLiteral(self.value - other.value)
     def sleft(self, other):
-        raise Exception("Not implemented")
+        return IntegerLiteral(self.value << other.value)
     def sright(self, other):
-        raise Exception("Not implemented")
+        return IntegerLiteral(self.value >> other.value)
     def lt(self, other):
         return BooleanLiteral(self.value < other.value)
     def le(self, other):
