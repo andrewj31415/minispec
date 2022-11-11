@@ -4,7 +4,6 @@ which passes them to a sum module that adds them up. */
 
 module FourBitCounter(FIFO queue);
     Reg#(Bit#(4)) count(0);
-    method Bit#(4) getCount = count;
     input Bool enable;
     rule increment;
         if (enable)
@@ -37,7 +36,7 @@ module TopLevel;
     FourBitCounter producer(queue);
     Sum consumer(queue);
     input Bool enable;
-    method Bit#(4) getCount = producer.getCount;
+    method Bit#(4) getCount = consumer.getCount;
     rule tick;
         producer.enable = enable;
     endrule

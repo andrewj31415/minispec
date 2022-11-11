@@ -310,6 +310,7 @@ class BuiltInScope(Scope):
         if varName == 'Bool':
             return Bool
         if varName == 'Reg' or varName == 'RegU':
+            # TODO make RegU read as RegU in output diagrams. Update relevant tests as well.
             assert len(parameters) == 1, "A register takes exactly one parameter"
             return BuiltinRegisterCtx(parameters[0])
         if varName == 'True':
@@ -906,6 +907,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         moduleScope: Scope = ctx.scope
         self.globalsHandler.enterScope(moduleScope)
 
+        # dictionary of shared modules available to this module, but which are not submodules
         sharedSubmodules: 'dict[str, ModuleWithMetadata]' = {}
         if ctx.argFormals():
             for i in range(len(ctx.argFormals().argFormal())):
@@ -916,15 +918,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     sharedSubmodules[argName] = argValue
                     argValue = argValue.module
                 moduleScope.set(argValue, argName)
-                # print('arg class:', argValue.__class__)
-                # if argValue.__class__ == hardware.Module:
-                #     print('picked up module arg')
-                #     for input in argValue.inputs:
-                #         print('input', input)
-                #         moduleScope.setPermanent(None, argName + '.' + input)
-                #         moduleScope.set(None, argName + '.' + input)
-            # raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
-        print(sharedSubmodules)
         
         #bind any parameters in the module scope
         bindings = self.globalsHandler.parameterBindings
@@ -1109,10 +1102,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
                 methodScope = ctx.scope
                 self.globalsHandler.enterScope(methodScope)
-                for registerName in registers:  # bind the register outputs
-                    register = registers[registerName].module
-                    methodScope.setPermanent(None, registerName)
-                    methodScope.set(register.value, registerName)
                 for stmt in ctx.stmt():  # evaluate the method
                     self.visit(stmt)
                 self.globalsHandler.exitScope()
@@ -1124,7 +1113,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Synthesize the update rule. registers is a dictionary mapping register names to the corresponding register hardware. '''
         ruleScope: 'Scope' = ctx.scope
         moduleScope: 'Scope' = self.globalsHandler.currentScope
-        print("synthesizing rule", ruleScope.name, "in module", moduleScope.name, "with parent", moduleScope.parents[0].name)
         self.globalsHandler.enterScope(ruleScope)
         # bind register outputs
         for registerName in registers:
@@ -1135,7 +1123,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for submoduleName in submodules:
             for inputName in submodules[submoduleName].inputValues:
                 fullInputName = submoduleName + '.' + inputName
-                print('setting full input', fullInputName)
                 value = submodules[submoduleName].inputValues[inputName]
                 # if value != None:  # don't need this since none values should never by referenced
                 ruleScope.setPermanent(None, fullInputName)
@@ -1143,7 +1130,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for submoduleName in sharedSubmodules:
             for inputName in sharedSubmodules[submoduleName].inputValues:
                 fullInputName = submoduleName + '.' + inputName
-                print('setting full input', fullInputName)
                 value = sharedSubmodules[submoduleName].inputValues[inputName]
                 # if value != None:  # don't need this since none values should never by referenced
                 ruleScope.setPermanent(None, fullInputName)

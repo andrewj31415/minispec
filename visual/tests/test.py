@@ -729,7 +729,35 @@ def _():
 def _():
     text = pull('moduleShared')
 
+    s1, s2 = Register('Reg#(Bit#(4))'), Register('Reg#(Bit#(4))')
+    out = Node()
+    input = Node()
+    fifo = Module('FIFO', [s1, s2, Wire(input, s1.input), Wire(s1.value, s2.input), Wire(s2.value, out)], {'in': input}, {'out': out})
+
+    output = synth.parseAndSynth(text, 'FIFO')
+    expected = fifo
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+    count = Register('Reg#(Bit#(4))')
+    mux = Mux([Node(), Node()])
+    add = Function('+', [], [Node(), Node()])
+    enable = Node()
+    one = Function('1', [], [])
+    counter = Module('FourBitCounter', [count, mux, add, one, Wire(enable, mux.control), Wire(add.output, mux.inputs[0]), Wire(count.value, mux.inputs[1]), Wire(mux.output, count.input), Wire(count.value, add.inputs[0]), Wire(one.output, add.inputs[1])], {'enable': enable}, {})
+
+    sumCount = Register('Reg#(Bit#(4))')
+    getCount = Node()
+    sumAdd = Function('+', [], [Node(), Node()])
+    sum = Module('Sum', [sumCount, sumAdd, Wire(sumCount.value, getCount), Wire(sumAdd.output, sumCount.input), Wire(sumCount.value, sumAdd.inputs[0]), Wire(out, sumAdd.inputs[1])], {}, {'getCount': getCount})
+
+    topEnable = Node()
+    topGetCount = Node()
+    top = Module('TopLevel', [fifo, counter, sum, Wire(count.value, input), Wire(topEnable, enable), Wire(getCount, topGetCount)], {'enable': topEnable}, {'getCount': topGetCount})
+
     output = synth.parseAndSynth(text, 'TopLevel')
+    expected = top
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+  
 
 #run all the tests
 import time
