@@ -393,6 +393,7 @@ class ModuleWithMetadata:
             value = self.inputValues[inputName]
             assert value != None, f"All submodule inputs must be assigned--missing input {inputName} on {submoduleName}"
             # when a value is assigned to a submodule input/register write, we expect to convert it to hardware then since it cannot be reassigned. TODO test this by assigning constant literal values to registers/inputs.
+            # the following assert might be trigger by a default literal input to which no assignment is ever made. TODO figure out what should happen in this case--is this legitimate behavior? I think it should be.
             assert isNode(value), "value must be hardware in order to wire in to input node"
             if hasattr(self.module, 'isRegister') and self.module.isRegister():
                 inputNode = self.module.input
@@ -1077,10 +1078,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # we have an unknown bluespec built-in function
             moduleName = ctx.typeName().getText()
             moduleComponent = Module(moduleName, [], {}, {})
+            self.globalsHandler.currentComponent.addChild(moduleComponent)
             moduleWithMetadata = BluespecModuleWithMetadata(moduleComponent)
             moduleComponent.metadata = moduleWithMetadata
             return moduleWithMetadata
-            # TODO add params
+            # TODO add params to module name (built-in parameterized modules)
             # if len(params) > 0:  #attach parameters to the function name if present
                 # functionName += "#(" + ",".join(str(i) for i in params) + ")"
             # funcComponent = Function(functionName, [], [Node() for i in range(len(ctx.expression()))])
@@ -1216,7 +1218,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         Gets any parameters from parsedCode.lastParameterLookup and
         finds parameter bindings in bindings = parsedCode.parameterBindings'''
         functionName = ctx.functionId().name.getText()
-        print('functionName', functionName)
         params = self.globalsHandler.lastParameterLookup
         if len(params) > 0:  #attach parameters to the function name if present
             functionName += "#(" + ",".join(str(i) for i in params) + ")"
@@ -1230,12 +1231,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             functionScope.set(val, var)
         # extract arguments to function and set up the input nodes
         inputNodes = []
-        for arg in ctx.argFormals().argFormal():
-            argType = self.visit(arg.typeName()) # typeName parse tree node
-            argName = arg.argName.getText() # name of the variable
-            argNode = Node(argName, argType)
-            functionScope.set(argNode, argName)
-            inputNodes.append(argNode)
+        if ctx.argFormals():
+            # a function with no arguments may still be meaningful--if it is defined in a
+            # module, it still has access to the module registers/inputs.
+            for arg in ctx.argFormals().argFormal():
+                argType = self.visit(arg.typeName()) # typeName parse tree node
+                argName = arg.argName.getText() # name of the variable
+                argNode = Node(argName, argType)
+                functionScope.set(argNode, argName)
+                inputNodes.append(argNode)
         funcComponent = Function(functionName, [], inputNodes)
         previousOutputNode = self.globalsHandler.outputNode
         self.globalsHandler.outputNode = funcComponent.output
@@ -1899,20 +1903,24 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
         toAccess = self.visit(ctx.exprPrimary())
+        print(ctx.getText())
+        print(toAccess.__class__)
         if toAccess.__class__ == Module:
             fieldToAccess = ctx.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
                 return toAccess.metadata.getMethod(fieldToAccess)
             return toAccess.methods[fieldToAccess]
-        else:
-            field = ctx.field.getText()
-            if isMLiteral(toAccess):
-                return toAccess.fieldBinds[field]
-            fieldExtractComp = Function('.'+field, [], [Node()])
-            wireIn = Wire(toAccess, fieldExtractComp.inputs[0])
-            self.globalsHandler.currentComponent.addChild(fieldExtractComp)
-            self.globalsHandler.currentComponent.addChild(wireIn)
-            return fieldExtractComp.output
+        if toAccess.__class__ == Register:
+            # accessing a field of a register containing a struct
+            toAccess = toAccess.value
+        field = ctx.field.getText()
+        if isMLiteral(toAccess):
+            return toAccess.fieldBinds[field]
+        fieldExtractComp = Function('.'+field, [], [Node()])
+        wireIn = Wire(toAccess, fieldExtractComp.inputs[0])
+        self.globalsHandler.currentComponent.addChild(fieldExtractComp)
+        self.globalsHandler.currentComponent.addChild(wireIn)
+        return fieldExtractComp.output
 
     def visitParenExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParenExprContext):
         return self.visit(ctx.expression())
