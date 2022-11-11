@@ -357,13 +357,25 @@ class ModuleWithMetadata:
     This includes its input values, any default input values, and any methods with arguments. '''
     def __init__(self, module: 'Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]'):
         '''hey'''
-        self.module = module
+        self.module: 'Module' = module
         self.inputsWithDefaults = inputsWithDefaults
         self.inputValues: 'dict[str, Node|MLiteral|None]' = {}
-    def syntheiszeInputs(self):
+    def syntheiszeInputs(self, globalsHandler: 'GlobalsHandler'):
         ''' Synthesizes the connections between the input values to the module (in inputsWithDefaults)
-        and the actual module inputs of self.module. '''
-        pass
+        and the actual module inputs of self.module.
+        Called during visitModuleDef after synthesizing all submodules and rules of the parent modules. '''
+        submoduleName = self.module.name
+        for inputName in self.inputValues:
+            value = self.inputValues[inputName]
+            assert value != None, f"All submodule inputs must be assigned--missing value for {submoduleName}.{inputName}"
+            # when a value is assigned to a submodule input/register write, we expect to convert it to hardware then since it cannot be reassigned. TODO test this by assigning constant literal values to registers/inputs.
+            assert isNode(value), "value must be hardware in order to wire in to input node"
+            if hasattr(self.module, 'isRegister') and self.module.isRegister():
+                inputNode = self.module.input
+            else:
+                inputNode = self.module.inputs[inputName]
+            wireIn = Wire(value, inputNode)
+            globalsHandler.currentComponent.addChild(wireIn)
 
 '''
 Functions/modules/components will have nodes. Wires will be attached to nodes.
@@ -976,19 +988,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # now that we have synthesized the rules, we need to collect all submodule inputs set across the rules and wire them in.
         # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
         for submoduleName in submodules:
-            for inputName in submodules[submoduleName].inputValues:
-                value = submodules[submoduleName].inputValues[inputName]
-                assert value != None, f"All submodule inputs must be assigned--missing value for {submoduleName}.{inputName}"
-                # when a value is assigned to a submodule input/register write, we expect to convert it to hardware since it cannot be reassigned. TODO test this by assigning constant literal values to registers/inputs.
-                assert isNode(value), "value must be hardware in order to wire in to input node"
-                if submoduleName in nonregisterSubmodules:
-                    submoduleComponent: 'Module' = nonregisterSubmodules[submoduleName].module
-                    inputNode = submoduleComponent.inputs[inputName]
-                else:
-                    submoduleComponent: 'Module' = registers[submoduleName].module
-                    inputNode = submoduleComponent.input
-                wireIn = Wire(value, inputNode)
-                self.globalsHandler.currentComponent.addChild(wireIn)
+            submoduleWithMetadata: ModuleWithMetadata = submodules[submoduleName]
+            submoduleWithMetadata.syntheiszeInputs(self.globalsHandler)
             
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
