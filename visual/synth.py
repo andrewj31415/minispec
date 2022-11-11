@@ -363,7 +363,7 @@ class ModuleWithMetadata:
         '''hey'''
         self.module = module
         self.inputsWithDefaults = inputsWithDefaults
-        self.inputValues = {}
+        self.inputValues: 'dict[str, Node|MLiteral|None]' = {}
     def syntheiszeInputs(self):
         ''' Synthesizes the connections between the input values to the module (in inputsWithDefaults)
         and the actual module inputs of self.module. '''
@@ -948,7 +948,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         to the register in the module scope  so that:
             self.registers[someRegisterName] = self.get(self, someRegisterName) '''
         registers: 'dict[str, Register]' = {}
-        nonregisterSubmodules: 'dict[str, Module]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
+        nonregisterSubmodules: 'dict[str, ModuleWithMetadata]' = {}  # same as self.registers but for all other submodules. Used to assign submodule inputs.
 
         for submoduleDecl in submoduleDecls:
             submoduleComponent, submoduleInputsWithDefault = self.visitSubmoduleDecl(submoduleDecl, registers, nonregisterSubmodules)
@@ -959,7 +959,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleScope.set(submoduleComponent, submoduleName)
             # save submodule inputs with default values
             for inputName in submoduleInputsWithDefault:
-                submoduleAndInputName = submoduleName + "." + inputName
                 defaultCtxOrNone = submoduleInputsWithDefault[inputName]
                 # evaluate default input if it is not None
                 if defaultCtxOrNone:
@@ -984,7 +983,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if isMLiteral(value):
                     value = value.getHardware(self.globalsHandler)
                 assert isNode(value), "value must be hardware in order to wire in to input node"
-                submoduleComponent: 'Module' = nonregisterSubmodules[submoduleName]
+                submoduleComponent: 'Module' = nonregisterSubmodules[submoduleName].module
                 inputNode = submoduleComponent.inputs[inputName]
                 wireIn = Wire(value, inputNode)
                 self.globalsHandler.currentComponent.addChild(wireIn)
@@ -1031,9 +1030,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 for arg in ctx.args().arg():
                     value = self.visit(arg.expression())
                     arguments.append(value)
-            moduleComponent, inputsWithDefaults = self.visitModuleDef(submoduleDef, arguments)
-            for input in inputsWithDefaults:
-                submoduleInputsWithDefault[input] = inputsWithDefaults[input]
+            moduleComponent, submoduleInputsWithDefault = self.visitModuleDef(submoduleDef, arguments)
         else:
             # synthesize a register
             moduleComponent = self.visit(submoduleDef)  #synthesize the module, redirects to visitRegister via BuiltinRegisterCtx.
@@ -1044,7 +1041,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
             registers[submoduleName] = moduleComponent
         else:
-            nonregisterSubmodules[submoduleName] = moduleComponent
+            nonregisterSubmodules[submoduleName] = ModuleWithMetadata(moduleComponent, submoduleInputsWithDefault)
 
         return moduleComponent, submoduleInputsWithDefault
 
