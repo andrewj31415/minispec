@@ -1,7 +1,6 @@
 
 
 from mtypes import *
-
 import json
 
 '''
@@ -17,7 +16,7 @@ https://github.com/kieler/elkjs/issues/111
 
 def getELK(component: 'Component') -> str:
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
-    return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered' }, 'children': [ toELK(component) ], 'edges': [] } )
+    return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered', 'hierarchyHandling': 'INCLUDE_CHILDREN' }, 'children': [ toELK(component) ], 'edges': [] } )
 
 def elkID(item: 'Component|Node') -> str:
     ''' Returns a unique id for the node or component for use in ELK '''
@@ -208,13 +207,14 @@ class Component:
 
 class Module(Component):
     ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
-    __slots__ = '_name', '_children', '_inputs', '_methods'
+    __slots__ = '_name', '_children', '_inputs', '_methods', 'metadata'
     def __init__(self, name: 'str', children: 'list[Component]', inputs: 'dict[str, Node]', methods: 'dict[str, Node]'):
         Component.__init__(self)
         self.name = name
         self._children = children.copy() #copy the array but not the children themselves
         self._inputs = inputs.copy()
         self._methods = methods.copy()
+        self.metadata = None
     @property
     def name(self):
         '''The name of the module'''

@@ -807,23 +807,22 @@
             /* edge: an elk edge. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeEdge = (edge, parentPos) => {
                 let segments = []; //Array<{start:{x:number, y:number}, end:{x:number, y:number}}>
-                let currentLocation = edge.sections[0].startPoint;
                 if (edge.sections === undefined) {
+                    // behavior should not occur
                     console.log(edge);
-                } else {
-                    let currentLocation = edge.sections[0].startPoint; //walk along the edge and collect its segements
-                    if (edge.sections.length !== 1) {
-                        console.log("Got an edge", edge, "with more than one section. This is unexpected.");
-                    }
-                    if (edge.sections[0].bendPoints) {
-                        for (bendPoint of edge.sections[0].bendPoints) {
-                            nextLocation = bendPoint;
-                            segments.push({ start: currentLocation, end: nextLocation });
-                            currentLocation = nextLocation;
-                        }
-                    }
-                    segments.push({ start: currentLocation, end: edge.sections[0].endPoint });
                 }
+                let currentLocation = edge.sections[0].startPoint; //walk along the edge and collect its segements
+                if (edge.sections.length !== 1) {
+                    console.log("Got an edge", edge, "with more than one section. This is unexpected.");
+                }
+                if (edge.sections[0].bendPoints) {
+                    for (bendPoint of edge.sections[0].bendPoints) {
+                        nextLocation = bendPoint;
+                        segments.push({ start: currentLocation, end: nextLocation });
+                        currentLocation = nextLocation;
+                    }
+                }
+                segments.push({ start: currentLocation, end: edge.sections[0].endPoint });
                 //draw the line segments of the edge
                 for (let segment of segments) {
                     let line = document.createElementNS("http://www.w3.org/2000/svg", "line");

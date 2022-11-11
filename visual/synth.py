@@ -906,21 +906,25 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         moduleScope: Scope = ctx.scope
         self.globalsHandler.enterScope(moduleScope)
 
+        sharedSubmodules: 'dict[str, ModuleWithMetadata]' = {}
         if ctx.argFormals():
             for i in range(len(ctx.argFormals().argFormal())):
                 arg = ctx.argFormals().argFormal(i)
                 argName = arg.argName.getText()
                 argValue = arguments[i]
+                if argValue.__class__ == ModuleWithMetadata:
+                    sharedSubmodules[argName] = argValue
+                    argValue = argValue.module
                 moduleScope.set(argValue, argName)
-                print('arg class:', argValue.__class__)
-                if argValue.__class__ == hardware.Module:
-                    print('picked up module arg')
-                    for input in argValue.inputs:
-                        print('input', input)
-                        moduleScope.setPermanent(None, argName + '.' + input)
-                        moduleScope.set(None, argName + '.' + input)
+                # print('arg class:', argValue.__class__)
+                # if argValue.__class__ == hardware.Module:
+                #     print('picked up module arg')
+                #     for input in argValue.inputs:
+                #         print('input', input)
+                #         moduleScope.setPermanent(None, argName + '.' + input)
+                #         moduleScope.set(None, argName + '.' + input)
             # raise Exception(f"Modules with arguments not currently supported{newline}{ctx.toStringTree(recog=parser)}{newline}{ctx.argFormals().toStringTree(recog=parser)}")
-
+        print(sharedSubmodules)
         
         #bind any parameters in the module scope
         bindings = self.globalsHandler.parameterBindings
@@ -984,7 +988,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.visitMethodDef(methodDef, registers)
 
         for ruleDef in ruleDefs:
-            self.visitRuleDef(ruleDef, registers, submodules)
+            self.visitRuleDef(ruleDef, registers, submodules, sharedSubmodules)
 
         # now that we have synthesized the rules, we need to collect all submodule inputs set across the rules and wire them in.
         # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
@@ -1032,7 +1036,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if ctx.args():
                 for arg in ctx.args().arg():
                     value = self.visit(arg.expression())
-                    arguments.append(value)
+                    if value.__class__ == Module or value.__class__ == Register:
+                        arguments.append(value.metadata)
+                    else:
+                        arguments.append(value)
             moduleComponent, submoduleInputsWithDefault = self.visitModuleDef(submoduleDef, arguments)
         else:
             # synthesize a register
@@ -1043,6 +1050,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         submoduleName = ctx.name.getText()
 
         moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, submoduleInputsWithDefault)
+        moduleComponent.metadata = moduleWithMetadata
         submodules[submoduleName] = moduleWithMetadata
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
@@ -1112,7 +1120,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             raise Exception("Not implemented")
 
-    def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]'):
+    def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]', sharedSubmodules: 'dict[str, ModuleWithMetadata]'):
         ''' Synthesize the update rule. registers is a dictionary mapping register names to the corresponding register hardware. '''
         ruleScope: 'Scope' = ctx.scope
         moduleScope: 'Scope' = self.globalsHandler.currentScope
@@ -1132,6 +1140,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 # if value != None:  # don't need this since none values should never by referenced
                 ruleScope.setPermanent(None, fullInputName)
                 ruleScope.set(value, fullInputName)
+        for submoduleName in sharedSubmodules:
+            for inputName in sharedSubmodules[submoduleName].inputValues:
+                fullInputName = submoduleName + '.' + inputName
+                print('setting full input', fullInputName)
+                value = sharedSubmodules[submoduleName].inputValues[inputName]
+                # if value != None:  # don't need this since none values should never by referenced
+                ruleScope.setPermanent(None, fullInputName)
+                ruleScope.set(value, fullInputName)
         for stmt in ctx.stmt():
             self.visit(stmt)
         # find any submodule input assignments, including register writes
@@ -1140,6 +1156,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 fullInputName = submoduleName + '.' + inputName
                 newValue = ruleScope.get(self, fullInputName)
                 submodules[submoduleName].inputValues[inputName] = newValue
+        for submoduleName in sharedSubmodules:
+            for inputName in sharedSubmodules[submoduleName].inputValues:
+                fullInputName = submoduleName + '.' + inputName
+                newValue = ruleScope.get(self, fullInputName)
+                sharedSubmodules[submoduleName].inputValues[inputName] = newValue
         self.globalsHandler.exitScope()
 
     def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
