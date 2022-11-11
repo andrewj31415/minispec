@@ -694,7 +694,7 @@ visitStructMember:
 visitVarBinding: No returns, binds the given variables to the right-hand-sides in the appropriate scope
 visitLetBinding: No returns, binds the given variable as appropriate in the current scope
 visitVarInit: Not visited, varInits are handled in visitVarBinding since only varBinding has access to the assigned typeName ctx.
-visitModuleDef: Returns a tuple consisting of the module hardware and a dictionary of default input values.
+visitModuleDef: Returns a module with metadata object.
 visitModuleId: Error, this node is handled in moduleDef and should not be visited
 visitModuleStmt: Error, this node is handled in moduleDef and should not be visited
 visitSubmoduleDecl: Returns the module hardware.
@@ -748,7 +748,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitRegister(self, mtype: 'MType'):
         ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
-        return Register('Reg#(' + str(mtype) + ')')
+        registerComponent = Register('Reg#(' + str(mtype) + ')')
+        registerInputsWithDefault = {'input': None}  # the register default input will actually be its own value, but there is no corresponding ctx node so we put None here.
+        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, registerComponent, registerInputsWithDefault)
+        registerComponent.metadata = moduleWithMetadata
+        return moduleWithMetadata
 
     def visitVectorSubmodule(self, vectorType):
         ''' We have a vector submodule. We create the relevant hardware and return the corresponding vector module. '''
@@ -761,7 +765,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         numCopies = vectorType._k.value
         assert numCopies >= 1, "It does not make sense to have a vector of no submodules."
         for i in range(numCopies):
-            submodule = self.visit(vectorizedSubmodule)
+            submoduleWithMetadata = self.visit(vectorizedSubmodule)
+            submodule = submoduleWithMetadata.module
             print("Got a submodule!\n\n\n")
             print(vectorizedSubmodule.__class__)
             print(submodule)
@@ -778,7 +783,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # also, any assignment M[i][j] etc. must end with .input for some named input, or it is a register
         # and the relevant .input is implicitly ._input.
 
-        return vectorComp
+        submoduleInputsWithDefault = {}
+        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, vectorComp, submoduleInputsWithDefault)
+        vectorComp.metadata = moduleWithMetadata
+
+        return moduleWithMetadata
 
     def __init__(self, globalsHandler: 'GlobalsHandler') -> None:
         self.globalsHandler = globalsHandler
@@ -1049,7 +1058,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
 
-        return moduleComponent, moduleInputsWithDefaults
+        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, moduleInputsWithDefaults)
+        moduleComponent.metadata = moduleWithMetadata
+
+        return moduleWithMetadata
 
     def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
         ''' Handled in moduleDef '''
@@ -1075,7 +1087,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # submoduleInputsWithDefault maps input names to the corresponding default ctx or none if there is no default value
         # only stores the name of the input ("enable",
         # not "inner.enable") since the submodule does not have access to what it will be called in the original module.
-        submoduleInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
+        # submoduleInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
 
         try:
             submoduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
@@ -1095,8 +1107,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # registers currently ignore their arguments since reset circuitry is not currently generated.
         if submoduleDef.__class__ == BuiltinRegisterCtx:
             # synthesize a register
-            moduleComponent = self.visit(submoduleDef)  # synthesize the module, redirects to visitRegister via BuiltinRegisterCtx.
-            submoduleInputsWithDefault = {'input': None}  # the register default input will actually be its own value, but there is no corresponding ctx node so we put None here.
+            moduleWithMetadata = self.visit(submoduleDef)  # synthesize the module, redirects to visitRegister via BuiltinRegisterCtx.
+            moduleComponent = moduleWithMetadata.module
         elif submoduleDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
             arguments = []
             if ctx.args():
@@ -1106,12 +1118,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         arguments.append(value.metadata)
                     else:
                         arguments.append(value)
-            moduleComponent, submoduleInputsWithDefault = self.visitModuleDef(submoduleDef, arguments)
+            moduleWithMetadata = self.visitModuleDef(submoduleDef, arguments)
+            moduleComponent = moduleWithMetadata.module
         elif submoduleDef.__class__ == MType:
             # Redirect to vector of modules
             # TODO handle arguments for vectors of submodules
-            moduleComponent = self.visit(submoduleDef)  # redirects to visitVectorSubmodule via VectorType class. If the type is not a vector type, will fail since no other type implements the "accept" method to accept the parse tree visitor.
-            submoduleInputsWithDefault = {}
+            moduleWithMetadata = self.visit(submoduleDef)  # redirects to visitVectorSubmodule via VectorType class. If the type is not a vector type, will fail since no other type implements the "accept" method to accept the parse tree visitor.
+            moduleComponent = moduleWithMetadata.module
             # raise Exception("Not implemented")
         else:
             print('module class', submoduleDef.__class__)
@@ -1120,8 +1133,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
 
-        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, submoduleInputsWithDefault)
-        moduleComponent.metadata = moduleWithMetadata
         submodules[submoduleName] = moduleWithMetadata
 
         if moduleComponent.isRegister():  # log the submodule in the appropriate dictionary for handling register assignments/submodule inputs.
@@ -2316,7 +2327,7 @@ endfunction
     ctxOfNote = topLevelParseTree.packageStmt(0).functionDef().stmt(0).exprPrimary().expression().binopExpr().unopExpr().exprPrimary()
     outputDef = synthesizer.visit(ctxOfNote)  # follow the call to the function and get back the functionDef/moduleDef.
     if outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
-        output, inputsWithDefault = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+        output = synthesizer.visit(outputDef).module  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
     elif outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext:
         output = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
     else:
