@@ -758,7 +758,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Redirects to one of visitModuleDef, visitRegister, or visitVectorSubmodule as apporpriate.
         Passes params and args as necessary. Returns the corresponding output. '''
         if moduleCtx.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
-            return self.visitModuleDef(moduleCtx, args, params)
+            return self.visitModuleDef(moduleCtx, params, args)
         elif moduleCtx.__class__ == BuiltinRegisterCtx:
             return self.visitRegister(params[0])
         elif moduleCtx.__class__ == BuiltinVectorCtx:
@@ -986,7 +986,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitVarInit(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarInitContext):
         raise Exception("Not visited--handled under varBinding to access typeName.")
 
-    def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext, arguments: 'list[MLiteral|Module]', params: 'list[MLiteral|MType]'):
+    def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext, params: 'list[MLiteral|MType]', arguments: 'list[MLiteral|Module]'):
         ''' arguments is a list of arguments to the module.
         
         returns a tuple containing the module hardware and a dictionary moduleInputsWithDefaults of default inputs. '''
@@ -2353,7 +2353,7 @@ endfunction
     if outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
         moduleArgs = []
         moduleParams = globalsHandler.lastParameterLookup  # TODO refactor to handle multiple layers of parameters
-        output = synthesizer.visitModuleDef(outputDef, moduleArgs, moduleParams).module  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+        output = synthesizer.visitModuleDef(outputDef, moduleParams, moduleArgs).module  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
     elif outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext:
         output = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
     else:
