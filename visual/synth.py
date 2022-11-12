@@ -1067,7 +1067,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             submoduleWithMetadata: ModuleWithMetadata = self.visitSubmoduleDecl(submoduleDecl, registers, submodules)
             submoduleName = submoduleDecl.name.getText()
             # log the submodule in the relevant scope
-            moduleScope.setPermanent(None, submoduleName)
+            moduleScope.setPermanent(submoduleWithMetadata.module, submoduleName)
             moduleScope.set(submoduleWithMetadata.module, submoduleName)
 
         moduleMethodsWithArguments: 'dict[str, build.MinispecPythonParser.MinispecPythonParser.MethodDefContext]' = {}
@@ -1197,43 +1197,54 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         When we synthesize a methodDef with args, we should return the output to the synthesized method.
         When there are no args, there is no need to return anything.
         '''
-        
+
+        methodType = self.visit(ctx.typeName())
+        methodName = ctx.name.getText()
+        methodOutputNode = Node(methodName, methodType)  # set up the output node
+        if not ctx.argFormals():
+            # if there are no method arguments, synthesize the method here and add it to the module.
+            self.globalsHandler.currentComponent.addMethod(methodOutputNode, methodName)
+        previousOutputNode = self.globalsHandler.outputNode
+        self.globalsHandler.outputNode = methodOutputNode
+        methodScope = ctx.scope
+        self.globalsHandler.enterScope(methodScope)
+
         if ctx.argFormals():
-            # module methods with arguments are not implemented
-            raise Exception("Not implemented")
-            # a function with no arguments is still meaningful--if it is defined in a
-            # module, it still has access to the module registers/inputs.
+            # we have a method with args. We create a component for it which we return at the end.
+            # We also set up its arguments.
+            # construct the input nodes
+            inputNodes = []
             for arg in ctx.argFormals().argFormal():
                 argType = self.visit(arg.typeName()) # typeName parse tree node
                 argName = arg.argName.getText() # name of the variable
                 argNode = Node(argName, argType)
-                functionScope.set(argNode, argName)
+                methodScope.set(argNode, argName)
                 inputNodes.append(argNode)
+            # set up and log the method component
+            methodComponent = Function(methodName, [], inputNodes, methodOutputNode)
+            previousComponent = self.globalsHandler.currentComponent
+            self.globalsHandler.currentComponent = methodComponent
 
-        methodType = self.visit(ctx.typeName())
         # there are no arguments, so we synthesize the method inside the current module.
         if ctx.expression():
             # the method is a single-line expression.
-            methodName = ctx.name.getText()
-            methodNode = Node(methodName, methodType)
             value = self.visit(ctx.expression())
             if isMLiteral(value):  # convert value to hardware before linking to output node
                 value = value.getHardware(self.globalsHandler)
-            setWire = Wire(value, methodNode)
+            setWire = Wire(value, methodOutputNode)
             self.globalsHandler.currentComponent.addChild(setWire)
-            self.globalsHandler.currentComponent.addMethod(methodNode, methodName)
         else:
             # the method is a multi-line sequence of statements with a return statement at the end.
-            methodName = ctx.name.getText()
-            methodOutput = Node(methodName, methodType)  # set up the output node
-            self.globalsHandler.outputNode = methodOutput
-            self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
-            methodScope = ctx.scope
-            self.globalsHandler.enterScope(methodScope)
             for stmt in ctx.stmt():  # evaluate the method
                 self.visit(stmt)
-            self.globalsHandler.exitScope()
-            self.globalsHandler.outputNode = None  # methods can't occur inside a function, so there is no need to remember any previous output node.
+        
+        if ctx.argFormals():
+            self.globalsHandler.currentComponent = previousComponent #reset the current component
+        self.globalsHandler.exitScope()
+        self.globalsHandler.outputNode = previousOutputNode
+        if ctx.argFormals():
+            # if we have a method with arguments, we return the corresponding component.
+            return methodComponent
 
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]', sharedSubmodules: 'dict[str, ModuleWithMetadata]'):
         ''' Synthesize the update rule. registers is a dictionary mapping register names to the corresponding register hardware. '''
@@ -1876,6 +1887,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             return sliceComponent.output
         else: # we are slicing into a submodule
             if msb.__class__ != IntegerLiteral:
+                print(toSliceFrom.__class__)
                 raise Exception("Variable slicing into modules is not implemented")
             return toSliceFrom.getNumberedSubmodule(msb.value)
             raise Exception(f"Not implemented {toSliceFrom.__class__} {toSliceFrom}")  #TODO implement this, work in progress
@@ -1976,7 +1988,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
                 print(moduleWithMetadata.__class__)
                 methodDef = moduleWithMetadata.methodsWithArguments[fieldToAccess]
-                self.visitMethodDef(methodDef, functionArgs)
+                methodComponent = self.visitMethodDef(methodDef, functionArgs)
+                for i in range(len(functionArgs)):
+                    exprValue = functionArgs[i]
+                    if isMLiteral(exprValue):
+                        exprNode = exprValue.getHardware(self.globalsHandler)
+                    else:
+                        exprNode = exprValue
+                    funcInputNode = methodComponent.inputs[i]
+                    wireIn = Wire(exprNode, funcInputNode)
+                    self.globalsHandler.currentComponent.addChild(wireIn)
+                self.globalsHandler.currentComponent.addChild(methodComponent)
+                return methodComponent.output
                 raise Exception("Not implemented")
         else:
             raise Exception(f"Unexpected lhs of function call {ctx.fcn.__class__}")
