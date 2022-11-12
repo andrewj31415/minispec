@@ -754,6 +754,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     nodes of type exprPrimary return the node corresponding to their value.
     stmt do not return anything; they mutate the current scope and the current hardware.'''
 
+    def visitModuleForSynth(self, moduleCtx, params: 'list[MLiteral|MType]', args: 'list[MLiteral|Module]') -> 'ModuleWithMetadata':
+        ''' Redirects to one of visitModuleDef, visitRegister, or visitVectorSubmodule as apporpriate.
+        Passes params and args as necessary. Returns the corresponding output. '''
+        if moduleCtx.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
+            return self.visitModuleDef(moduleCtx, args, params)
+        elif moduleCtx.__class__ == BuiltinRegisterCtx:
+            return self.visitRegister(params[0])
+        elif moduleCtx.__class__ == Vector:
+            return self.visitVectorSubmodule(moduleCtx)
+        else:
+            raise Exception(f"Unexpected class {moduleCtx.__class__} of object {moduleCtx}")
+
     def visitRegister(self, mtype: 'MType'):
         ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
         registerComponent = Register('Reg#(' + str(mtype) + ')')
@@ -774,7 +786,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         numCopies = vectorType._k.value
         assert numCopies >= 1, "It does not make sense to have a vector of no submodules."
         for i in range(numCopies):
-            submoduleWithMetadata = self.visit(vectorizedSubmodule)
+            # submoduleWithMetadata = self.visit(vectorizedSubmodule)
+            submoduleWithMetadata = self.visitModuleForSynth(vectorizedSubmodule, vectorType._typeValue._params, [])
             submodule = submoduleWithMetadata.module
             self.globalsHandler.currentComponent.addChild(submodule)
             vectorComp.addNumberedSubmodule(submodule)
@@ -973,7 +986,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitVarInit(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarInitContext):
         raise Exception("Not visited--handled under varBinding to access typeName.")
 
-    def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext, arguments: 'list[MLiteral|Module]' = None):
+    def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext, arguments: 'list[MLiteral|Module]', params: 'list[MLiteral|MType]'):
         ''' arguments is a list of arguments to the module.
         
         returns a tuple containing the module hardware and a dictionary moduleInputsWithDefaults of default inputs. '''
@@ -981,7 +994,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             arguments = []
         
         moduleName = ctx.moduleId().name.getText()
-        params = self.globalsHandler.lastParameterLookup
+        # params = self.globalsHandler.lastParameterLookup
         print('got params', params, 'for module', moduleName)
         if len(params) > 0:  #attach parameters to the function name if present
             moduleName += "#(" + ",".join(str(i) for i in params) + ")"
@@ -1110,7 +1123,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # submoduleInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
 
         try:
-            submoduleDef = self.visit(ctx.typeName())._moduleCtx  # get the moduleDef ctx. Automatically extracts params.
+            submoduleType = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
+            submoduleDef = submoduleType._moduleCtx
+            submoduleParams = submoduleType._params
         except MissingVariableException as e:
             # we have an unknown bluespec built-in module
             moduleName = ctx.typeName().getText()
@@ -1138,9 +1153,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         arguments.append(value.metadata)
                     else:
                         arguments.append(value)
-            moduleWithMetadata = self.visitModuleDef(submoduleDef, arguments)
+            moduleWithMetadata = self.visitModuleDef(submoduleDef, arguments, submoduleParams)
             moduleComponent = moduleWithMetadata.module
-        elif submoduleDef.__class__ == MType:
+        elif submoduleDef.__class__ == BuiltinVectorCtx:
             # Redirect to vector of modules
             # TODO handle arguments for vectors of submodules
             moduleWithMetadata = self.visit(submoduleDef)  # redirects to visitVectorSubmodule via VectorType class. If the type is not a vector type, will fail since no other type implements the "accept" method to accept the parse tree visitor.
@@ -1804,6 +1819,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         topLevel is true if this is the outermost slice in a nested slice (such as m[a][b][c]).'''
         print('slicing into', ctx.getText())
         toSliceFrom = self.visit(ctx.array)
+        if toSliceFrom.__class__ == Register:
+            toSliceFrom = toSliceFrom.value
         msb = self.visit(ctx.msb) #most significant bit
         if toSliceFrom.__class__ == VectorModule:
             # slicing into a vector of modules
@@ -1854,7 +1871,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(wire)
             return sliceComponent.output
         else: # we are slicing into a submodule
-            raise Exception("Not implemented")  #TODO implement this, work in progress
+            raise Exception(f"Not implemented {toSliceFrom.__class__} {toSliceFrom}")  #TODO implement this, work in progress
             ctx.parentCtx.slicingIntoSubmodule = True  # pass the information outward
             # print('dealing with slice', ctx.array.getText(), ctx.msb.getText())
             assert not ctx.lsb, f"Can't slice {ctx.getText()} into a vector of submodules"
@@ -2343,7 +2360,9 @@ endfunction
     ctxOfNote = topLevelParseTree.packageStmt(0).functionDef().stmt(0).exprPrimary().expression().binopExpr().unopExpr().exprPrimary()
     outputDef = synthesizer.visit(ctxOfNote)  # follow the call to the function and get back the functionDef/moduleDef.
     if outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
-        output = synthesizer.visit(outputDef).module  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+        moduleArgs = []
+        moduleParams = globalsHandler.lastParameterLookup  # TODO refactor to handle multiple layers of parameters
+        output = synthesizer.visitModuleDef(outputDef, moduleArgs, moduleParams).module  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
     elif outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext:
         output = synthesizer.visit(outputDef)  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
     else:

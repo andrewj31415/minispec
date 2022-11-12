@@ -648,9 +648,16 @@ def Vector(k: 'int', typeValue: 'MType'):
             raise Exception("Not implemented")
         def neg(self):
             raise Exception("Not implemented")
-    VectorType._moduleCtx = VectorType  # since this is also a ModuleType object
+    VectorType._moduleCtx = BuiltinVectorCtx(typeValue)  # since this is also a ModuleType object
+    VectorType._params = [k, typeValue]
     # TODO refactor the vector type into a separate type object and ctx parse node object
     return VectorType
+
+class BuiltinVectorCtx:
+    def __init__(self, vectorType: 'MType'):
+        self.vectorType = vectorType
+    def accept(self, visitor):
+        return visitor.visitVectorSubmodule(self.vectorType)
 
 # TODO should ModuleType only be a class, no wrapper needed?
 def ModuleType(moduleCtx, params: 'list[MLiteral|MType]'):
