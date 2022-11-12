@@ -762,7 +762,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         elif moduleCtx.__class__ == BuiltinRegisterCtx:
             return self.visitRegister(params[0])
         elif moduleCtx.__class__ == BuiltinVectorCtx:
-            return self.visitVectorSubmodule(moduleCtx.vectorType, params)
+            return self.visitVectorSubmodule(moduleCtx, params)
         else:
             raise Exception(f"Unexpected class {moduleCtx.__class__} of object {moduleCtx}")
 
@@ -781,18 +781,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = vectorComp
         # TODO consider entering/exiting the builtin scope here?
 
-        vectorizedSubmodule = vectorType._typeValue._moduleCtx  # the module context of the submodule
-        print('vectorizedSubmodule', vectorizedSubmodule.__class__, vectorizedSubmodule)
-        numCopies = params[0].value
+        numCopies: 'int' = params[0].value
+        submoduleType: 'ModuleType' = params[1]
+
+        vectorizedSubmodule = submoduleType._moduleCtx  # the module context of the submodule
         assert numCopies >= 1, "It does not make sense to have a vector of no submodules."
         for i in range(numCopies):
             # submoduleWithMetadata = self.visit(vectorizedSubmodule)
-            submoduleWithMetadata = self.visitModuleForSynth(vectorizedSubmodule, vectorType._typeValue._params, [])
+            submoduleWithMetadata = self.visitModuleForSynth(vectorizedSubmodule, submoduleType._params, [])
             submodule = submoduleWithMetadata.module
             self.globalsHandler.currentComponent.addChild(submodule)
             vectorComp.addNumberedSubmodule(submodule)
 
-        print('working with submodule name', submodule.name)
         vectorComp.name = "Vector#(" + str(numCopies) + "," + str(submodule.name) + ")"
         self.globalsHandler.currentComponent = previousComp
 
@@ -858,16 +858,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 # TODO create a separate type for module types ("module type", takes a module and parameter info?)
                 # create this separate type when looking up module types as parameters.
                 paramValue = self.visit(param)
-                print('param:', paramValue.__class__)
                 # if param.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
                 #     param = ModuleType()
                 params.append(paramValue)
         typeName = ctx.name.getText()
         typeObject = self.globalsHandler.currentScope.get(self, typeName, params)
         assert typeObject != None, f"Failed to find type {typeName} with parameters {params}"
-        print("type object:", typeObject.__class__)
         if typeObject.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext or typeObject.__class__ == BuiltinRegisterCtx:
-            print('using params', params)
             return ModuleType(typeObject, self.globalsHandler.lastParameterLookup)
         if typeObject.__class__ == MType:
             # we have a type
@@ -995,10 +992,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         
         moduleName = ctx.moduleId().name.getText()
         # params = self.globalsHandler.lastParameterLookup
-        print('got params', params, 'for module', moduleName)
         if len(params) > 0:  #attach parameters to the function name if present
             moduleName += "#(" + ",".join(str(i) for i in params) + ")"
-        print('                 created module name', moduleName)
 
         moduleScope: Scope = ctx.scope
         self.globalsHandler.enterScope(moduleScope)
@@ -1017,7 +1012,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         
         #bind any parameters in the module scope
         bindings = self.globalsHandler.parameterBindings
-        for var in bindings:  
+        for var in bindings:
             val = bindings[var]
             moduleScope.set(val, var)
 
@@ -1090,7 +1085,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
 
-        print('creating module with metadata', moduleComponent.name)
         moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, moduleInputsWithDefaults)
         moduleComponent.metadata = moduleWithMetadata
 
@@ -1143,14 +1137,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # TODO handle arguments for vectors of submodules
         # TODO registers currently ignore their arguments since reset circuitry is not currently generated.
         submoduleArguments = []
-        if submoduleDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
-            if ctx.args():
-                for arg in ctx.args().arg():
-                    value = self.visit(arg.expression())
-                    if value.__class__ == Module or value.__class__ == Register:
-                        submoduleArguments.append(value.metadata)
-                    else:
-                        submoduleArguments.append(value)
+        if ctx.args():
+            for arg in ctx.args().arg():
+                value = self.visit(arg.expression())
+                if isinstance(value, Module):
+                    submoduleArguments.append(value.metadata)
+                else:
+                    submoduleArguments.append(value)
 
         moduleWithMetadata = self.visitModuleForSynth(submoduleDef, submoduleParams, submoduleArguments)
         moduleComponent = moduleWithMetadata.module
@@ -1862,6 +1855,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(wire)
             return sliceComponent.output
         else: # we are slicing into a submodule
+            if msb.__class__ != IntegerLiteral:
+                raise Exception("Variable slicing into modules is not implemented")
+            return toSliceFrom.getNumberedSubmodule(msb.value)
             raise Exception(f"Not implemented {toSliceFrom.__class__} {toSliceFrom}")  #TODO implement this, work in progress
             ctx.parentCtx.slicingIntoSubmodule = True  # pass the information outward
             # print('dealing with slice', ctx.array.getText(), ctx.msb.getText())
@@ -1967,9 +1963,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
                 return toAccess.metadata.getMethod(fieldToAccess)
             return toAccess.methods[fieldToAccess]
-        if toAccess.__class__ == Register:
-            # accessing a field of a register containing a struct
-            toAccess = toAccess.value
         field = ctx.field.getText()
         if isMLiteral(toAccess):
             return toAccess.fieldBinds[field]
