@@ -761,8 +761,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             return self.visitModuleDef(moduleCtx, args, params)
         elif moduleCtx.__class__ == BuiltinRegisterCtx:
             return self.visitRegister(params[0])
-        elif moduleCtx.__class__ == Vector:
-            return self.visitVectorSubmodule(moduleCtx)
+        elif moduleCtx.__class__ == BuiltinVectorCtx:
+            return self.visitVectorSubmodule(moduleCtx.vectorType, params)
         else:
             raise Exception(f"Unexpected class {moduleCtx.__class__} of object {moduleCtx}")
 
@@ -774,7 +774,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         registerComponent.metadata = moduleWithMetadata
         return moduleWithMetadata
 
-    def visitVectorSubmodule(self, vectorType):
+    def visitVectorSubmodule(self, vectorType, params):
         ''' We have a vector submodule. We create the relevant hardware and return the corresponding vector module. '''
         vectorComp = VectorModule([], "", [], {}, {})  # the name can't be determined until we visit the inner modules and get their name
         previousComp = self.globalsHandler.currentComponent
@@ -783,7 +783,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         vectorizedSubmodule = vectorType._typeValue._moduleCtx  # the module context of the submodule
         print('vectorizedSubmodule', vectorizedSubmodule.__class__, vectorizedSubmodule)
-        numCopies = vectorType._k.value
+        numCopies = params[0].value
         assert numCopies >= 1, "It does not make sense to have a vector of no submodules."
         for i in range(numCopies):
             # submoduleWithMetadata = self.visit(vectorizedSubmodule)
@@ -1139,30 +1139,21 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 # functionName += "#(" + ",".join(str(i) for i in params) + ")"
             # funcComponent = Function(functionName, [], [Node() for i in range(len(ctx.expression()))])
 
-        # registers currently ignore their arguments since reset circuitry is not currently generated.
-        if submoduleDef.__class__ == BuiltinRegisterCtx:
-            # synthesize a register
-            moduleWithMetadata = self.visit(submoduleDef)  # synthesize the module, redirects to visitRegister via BuiltinRegisterCtx.
-            moduleComponent = moduleWithMetadata.module
-        elif submoduleDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
-            arguments = []
+
+        # TODO handle arguments for vectors of submodules
+        # TODO registers currently ignore their arguments since reset circuitry is not currently generated.
+        submoduleArguments = []
+        if submoduleDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
             if ctx.args():
                 for arg in ctx.args().arg():
                     value = self.visit(arg.expression())
                     if value.__class__ == Module or value.__class__ == Register:
-                        arguments.append(value.metadata)
+                        submoduleArguments.append(value.metadata)
                     else:
-                        arguments.append(value)
-            moduleWithMetadata = self.visitModuleDef(submoduleDef, arguments, submoduleParams)
-            moduleComponent = moduleWithMetadata.module
-        elif submoduleDef.__class__ == BuiltinVectorCtx:
-            # Redirect to vector of modules
-            # TODO handle arguments for vectors of submodules
-            moduleWithMetadata = self.visit(submoduleDef)  # redirects to visitVectorSubmodule via VectorType class. If the type is not a vector type, will fail since no other type implements the "accept" method to accept the parse tree visitor.
-            moduleComponent = moduleWithMetadata.module
-            # raise Exception("Not implemented")
-        else:
-            raise Exception(f"Unrecognized context for module creation {submoduleDef.__class__}")
+                        submoduleArguments.append(value)
+
+        moduleWithMetadata = self.visitModuleForSynth(submoduleDef, submoduleParams, submoduleArguments)
+        moduleComponent = moduleWithMetadata.module
 
         self.globalsHandler.currentComponent.addChild(moduleComponent)
         submoduleName = ctx.name.getText()
