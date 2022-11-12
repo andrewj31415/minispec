@@ -299,6 +299,9 @@ class BuiltInScope(Scope):
         then prefers temporary values to permanent values. Returns whatever is found,
         probably a ctx object (functionDef).
         Returns a ctx object or a typeName.'''
+        if parameters == None:
+            parameters = []
+        visitor.globalsHandler.lastParameterLookup = parameters
         if varName == 'Integer':
             assert len(parameters) == 0, "integer takes no parameters"
             return IntegerLiteral
@@ -401,6 +404,11 @@ class ModuleWithMetadata:
                 inputNode = self.module.inputs[inputName]
             wireIn = Wire(value, inputNode)
             globalsHandler.currentComponent.addChild(wireIn)
+
+        if self.module.__class__ == VectorModule:
+            # synthesize inputs for vectors of submodules, too
+            for module in self.module.numberedSubmodules:
+                module.metadata.syntheiszeInputs(globalsHandler)
 
 
 class BluespecModuleWithMetadata():
@@ -762,17 +770,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # TODO consider entering/exiting the builtin scope here?
 
         vectorizedSubmodule = vectorType._typeValue
+        print('vectorizedSubmodule', vectorizedSubmodule.__class__, vectorizedSubmodule)
         numCopies = vectorType._k.value
         assert numCopies >= 1, "It does not make sense to have a vector of no submodules."
         for i in range(numCopies):
             submoduleWithMetadata = self.visit(vectorizedSubmodule)
             submodule = submoduleWithMetadata.module
-            print("Got a submodule!\n\n\n")
-            print(vectorizedSubmodule.__class__)
-            print(submodule)
             self.globalsHandler.currentComponent.addChild(submodule)
             vectorComp.addNumberedSubmodule(submodule)
 
+        print('working with submodule name', submodule.name)
         vectorComp.name = "Vector#(" + str(numCopies) + "," + str(submodule.name) + ")"
         self.globalsHandler.currentComponent = previousComp
 
@@ -835,6 +842,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         params = []
         if ctx.params():  #evaluate the type parameters, if any
             for param in ctx.params().param():
+                # TODO create a separate type for module types ("module type", takes a module and parameter info?)
+                # create this separate type when looking up module types as parameters.
                 params.append(self.visit(param))
         typeName = ctx.name.getText()
         typeObject = self.globalsHandler.currentScope.get(self, typeName, params)
@@ -965,8 +974,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         
         moduleName = ctx.moduleId().name.getText()
         params = self.globalsHandler.lastParameterLookup
+        print('got params', params, 'for module', moduleName)
         if len(params) > 0:  #attach parameters to the function name if present
             moduleName += "#(" + ",".join(str(i) for i in params) + ")"
+        print('                 created module name', moduleName)
 
         moduleScope: Scope = ctx.scope
         self.globalsHandler.enterScope(moduleScope)
@@ -1058,6 +1069,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
 
+        print('creating module with metadata', moduleComponent.name)
         moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, moduleInputsWithDefaults)
         moduleComponent.metadata = moduleWithMetadata
 
@@ -1127,7 +1139,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleComponent = moduleWithMetadata.module
             # raise Exception("Not implemented")
         else:
-            print('module class', submoduleDef.__class__)
             raise Exception(f"Unrecognized context for module creation {submoduleDef.__class__}")
 
         self.globalsHandler.currentComponent.addChild(moduleComponent)
@@ -1336,6 +1347,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         raise Exception("Not implemented")  #TODO implement this
                 elif settingOverall.__class__ == VectorModule:
                     if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
+                        return
                         raise Exception("Not implemented")  #TODO implement this, work in progress
                         inputName = lvalue.lowerCaseIdentifier().getText()
                         indexValues: 'list[MLiteral|Node]' = []
@@ -1784,15 +1796,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         topLevel is true if this is the outermost slice in a nested slice (such as m[a][b][c]).'''
         print('slicing into', ctx.getText())
         toSliceFrom = self.visit(ctx.array)
-        print('sliced')
-        print(toSliceFrom.__class__)
-        print(toSliceFrom)
         msb = self.visit(ctx.msb) #most significant bit
         if toSliceFrom.__class__ == VectorModule:
             # slicing into a vector of modules
             if not isMLiteral(msb):
                 raise Exception("Variable indexing into vector of submodules is not yet implemented")
-            print('picked up numbered submodule')
             return toSliceFrom.getNumberedSubmodule(msb.value)
             raise Exception("Not implemented")
         if ctx.lsb:

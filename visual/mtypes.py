@@ -611,14 +611,14 @@ class Bool(MLiteral):
         raise Exception("Not implemented")
 BooleanLiteral = Bool  #useful alias
         
-def Vector(k: 'int', typeValue: 'MLiteral'):
+def Vector(k: 'int', typeValue: 'MType'):
     class VectorType(MLiteral):
         '''The Vector(k, tt) type'''
         _name = f"Vector#({k},{typeValue})"
         _constructor = Vector
         _k = k
         _typeValue = typeValue
-        def __init__(self, k: 'int', typeValue: 'MLiteral'):
+        def __init__(self):
             self.k = k
             self.typeValue = typeValue
         def numLiterals(self) -> 'int|float':
@@ -648,6 +648,26 @@ def Vector(k: 'int', typeValue: 'MLiteral'):
         def neg(self):
             raise Exception("Not implemented")
     return VectorType
+
+# TODO should ModuleType only be a class, no wrapper needed?
+def ModuleType(moduleCtx, params: 'list[MLiteral|MType]'):
+    ''' Returns the type corresponding to the given module context (parse node) with the
+    given parameters (params is a list of module parameters). '''
+    if (moduleCtx.moduleId().paramFormals()):
+        assert len(params) == len(moduleCtx.moduleId().paramFormals()), "Module must have the correct number of parameters"
+    else:
+        assert len(params) == 0, "Module with no parameters must have no parameters"
+    class ModuleType(MLiteral):
+        ''' The type of the given module. There should be no instances of this type--the actual instances
+        are really instances of the corresponding hardware module class, which are not literal values.
+        The two types (ModuleType and Module) are kept separate to keep the type representation and the hardware
+        representation seperate, despite representing the same object. TODO decide whether or not to merge them?
+        TODO should we pass around a module's ModuleType with its metadata? '''
+        _name = f"{moduleCtx.moduleId().name.getText()}" if len(params) == 0 else f"{moduleCtx.moduleId().name.getText()}#({','.join([str(param) for param in params])})"
+        def __init__(self):
+            self.moduleCtx = moduleCtx
+            self.params = params
+    return ModuleType
 
 def Maybe(mtype: 'MType'):
     ''' mtype is the type of the Maybe minispec type '''
