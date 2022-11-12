@@ -769,7 +769,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = vectorComp
         # TODO consider entering/exiting the builtin scope here?
 
-        vectorizedSubmodule = vectorType._typeValue
+        vectorizedSubmodule = vectorType._typeValue._moduleCtx  # the module context of the submodule
         print('vectorizedSubmodule', vectorizedSubmodule.__class__, vectorizedSubmodule)
         numCopies = vectorType._k.value
         assert numCopies >= 1, "It does not make sense to have a vector of no submodules."
@@ -844,10 +844,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for param in ctx.params().param():
                 # TODO create a separate type for module types ("module type", takes a module and parameter info?)
                 # create this separate type when looking up module types as parameters.
-                params.append(self.visit(param))
+                paramValue = self.visit(param)
+                print('param:', paramValue.__class__)
+                # if param.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
+                #     param = ModuleType()
+                params.append(paramValue)
         typeName = ctx.name.getText()
         typeObject = self.globalsHandler.currentScope.get(self, typeName, params)
         assert typeObject != None, f"Failed to find type {typeName} with parameters {params}"
+        print("type object:", typeObject.__class__)
+        if typeObject.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext or typeObject.__class__ == BuiltinRegisterCtx:
+            print('using params', params)
+            return ModuleType(typeObject, self.globalsHandler.lastParameterLookup)
         if typeObject.__class__ == MType:
             # we have a type
             return typeObject
@@ -1102,7 +1110,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # submoduleInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
 
         try:
-            submoduleDef = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
+            submoduleDef = self.visit(ctx.typeName())._moduleCtx  # get the moduleDef ctx. Automatically extracts params.
         except MissingVariableException as e:
             # we have an unknown bluespec built-in module
             moduleName = ctx.typeName().getText()

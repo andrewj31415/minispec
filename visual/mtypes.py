@@ -1,5 +1,6 @@
 
 import hardware
+import build
 import math # for math.inf in .numLiterals()
 
 # A minispec type is a python classes; instances thereof represent literal values.
@@ -647,26 +648,37 @@ def Vector(k: 'int', typeValue: 'MType'):
             raise Exception("Not implemented")
         def neg(self):
             raise Exception("Not implemented")
+    VectorType._moduleCtx = VectorType  # since this is also a ModuleType object
+    # TODO refactor the vector type into a separate type object and ctx parse node object
     return VectorType
 
 # TODO should ModuleType only be a class, no wrapper needed?
 def ModuleType(moduleCtx, params: 'list[MLiteral|MType]'):
     ''' Returns the type corresponding to the given module context (parse node) with the
     given parameters (params is a list of module parameters). '''
-    if (moduleCtx.moduleId().paramFormals()):
-        assert len(params) == len(moduleCtx.moduleId().paramFormals()), "Module must have the correct number of parameters"
+    if moduleCtx.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
+        if moduleCtx.moduleId().paramFormals():
+            assert len(params) == len(moduleCtx.moduleId().paramFormals().paramFormal()), "Module must have the correct number of parameters"
+        else:
+            assert len(params) == 0, "Module with no parameters must have no parameters"
+    # elif moduleCtx.__class__ == synth.BuiltinRegisterCtx:
+    #TODO work out importing synth
+    #     assert len(params) == 1, "Registers take one parameter"
+    if moduleCtx.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
+        name = f"{moduleCtx.moduleId().name.getText()}" if len(params) == 0 else f"{moduleCtx.moduleId().name.getText()}#({','.join([str(param) for param in params])})"
     else:
-        assert len(params) == 0, "Module with no parameters must have no parameters"
+        name = f"Register#({str(params[0])})"
     class ModuleType(MLiteral):
         ''' The type of the given module. There should be no instances of this type--the actual instances
         are really instances of the corresponding hardware module class, which are not literal values.
         The two types (ModuleType and Module) are kept separate to keep the type representation and the hardware
         representation seperate, despite representing the same object. TODO decide whether or not to merge them?
         TODO should we pass around a module's ModuleType with its metadata? '''
-        _name = f"{moduleCtx.moduleId().name.getText()}" if len(params) == 0 else f"{moduleCtx.moduleId().name.getText()}#({','.join([str(param) for param in params])})"
+        _name = name
+        _moduleCtx = moduleCtx
+        _params = params
         def __init__(self):
-            self.moduleCtx = moduleCtx
-            self.params = params
+            pass
     return ModuleType
 
 def Maybe(mtype: 'MType'):
