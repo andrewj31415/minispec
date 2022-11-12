@@ -987,8 +987,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' arguments is a list of arguments to the module.
         
         returns a tuple containing the module hardware and a dictionary moduleInputsWithDefaults of default inputs. '''
-        if arguments == None:
-            arguments = []
         
         moduleName = ctx.moduleId().name.getText()
         # params = self.globalsHandler.lastParameterLookup
@@ -1350,7 +1348,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
                         return
                     else:
-                        # we are slicing into a module. we create the appropriate hardware. TODO I think this can only occur in the == VectorModule case.
+                        # we are slicing into a module, which must be a bluespec built-in (since otherwise it would be a VectorModule)
                         raise Exception("Not implemented")  #TODO implement this
                 elif settingOverall.__class__ == VectorModule:
                     if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
@@ -1379,7 +1377,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         for index in indexValues:
                             indexValue = index.value
                             vectorOfSubmodules = vectorOfSubmodules.getNumberedSubmodule(indexValue)
-                        print("innermost submodule:", vectorOfSubmodules)
+                        innermostSubmodule = vectorOfSubmodules
+                        print("innermost submodule:", innermostSubmodule)
                         # self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
                         # TODO do this in an if-statement friendly way, with a set and later wiring these in, at the end of the corresponding moduleDef
                         # submoduleComponent: 'Module' = vectorOfSubmodules

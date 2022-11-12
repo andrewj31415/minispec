@@ -720,11 +720,6 @@ def _():
     expected = None
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-@it('''Handles module methods with arguments''')
-def _():
-    pass
-    # TODO
-
 @it('''Handles shared modules''')
 def _():
     text = pull('moduleShared')
@@ -758,6 +753,13 @@ def _():
     expected = top
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
   
+@it('''Handles module methods with arguments''')
+def _():
+    text = pull('moduleArgument')
+
+    output = synth.parseAndSynth(text, 'TopLevel')
+    pass
+    # TODO
 
 #run all the tests
 import time
