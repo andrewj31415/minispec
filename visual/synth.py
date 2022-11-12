@@ -369,10 +369,9 @@ class BuiltinRegisterCtx:
 class ModuleWithMetadata:
     ''' During synthesis, a module has extra data that needs to be carried around.
     This includes its input values, any default input values, and any methods with arguments. '''
-    def __init__(self, visitor: 'SynthesizerVisitor', module: 'Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]'):
+    def __init__(self, visitor: 'SynthesizerVisitor', module: 'Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]', methodsWithArguments: 'dict[str, build.MinispecPythonParser.MinispecPythonParser.MethodDefContext]'):
         '''hey'''
         self.module: 'Module' = module
-        # self.inputsWithDefaults = inputsWithDefaults
         self.inputValues: 'dict[str, Node|MLiteral|None]' = {}
 
         # save submodule inputs with default values
@@ -386,6 +385,8 @@ class ModuleWithMetadata:
                 self.inputValues[inputName] = self.module.value
             else:
                 self.inputValues[inputName] = None
+
+        self.methodsWithArguments = methodsWithArguments
 
     def syntheiszeInputs(self, globalsHandler: 'GlobalsHandler'):
         ''' Synthesizes the connections between the input values to the module (in inputsWithDefaults)
@@ -411,7 +412,7 @@ class ModuleWithMetadata:
                 module.metadata.syntheiszeInputs(globalsHandler)
 
 
-class BluespecModuleWithMetadata():
+class BluespecModuleWithMetadata:
     ''' An imported bluespec module must be recognizable, with methods for creating inputs/methods dynamically
     as they are encountered. A bluespec module's default inputs are functions labeled with a ? (not don't care
     symbols). '''
@@ -770,7 +771,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
         registerComponent = Register('Reg#(' + str(mtype) + ')')
         registerInputsWithDefault = {'input': None}  # the register default input will actually be its own value, but there is no corresponding ctx node so we put None here.
-        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, registerComponent, registerInputsWithDefault)
+        registerMethodsWithArguments = {}  # registers have no methods with arguments
+        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, registerComponent, registerInputsWithDefault, registerMethodsWithArguments)
         registerComponent.metadata = moduleWithMetadata
         return moduleWithMetadata
 
@@ -803,8 +805,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # also, any assignment M[i][j] etc. must end with .input for some named input, or it is a register
         # and the relevant .input is implicitly ._input.
 
-        submoduleInputsWithDefault = {}
-        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, vectorComp, submoduleInputsWithDefault)
+        vectorInputsWithDefault = {}
+        vectorMethodsWithArguments = {}
+        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, vectorComp, vectorInputsWithDefault, vectorMethodsWithArguments)
         vectorComp.metadata = moduleWithMetadata
 
         return moduleWithMetadata
@@ -1067,9 +1070,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleScope.setPermanent(None, submoduleName)
             moduleScope.set(submoduleWithMetadata.module, submoduleName)
 
+        moduleMethodsWithArguments: 'dict[str, build.MinispecPythonParser.MinispecPythonParser.MethodDefContext]' = {}
         for methodDef in methodDefs:
-            if not methodDef.argFormals(): # only methodDefs with no arguments are synthesized in the module
-                self.visitMethodDef(methodDef, registers)
+            methodName = methodDef.name.getText()
+            if methodDef.argFormals():
+                # only methodDefs with no arguments are synthesized in the module
+                pass
+                moduleMethodsWithArguments[methodName] = methodDef
+            else:
+                methodArgs = []
+                self.visitMethodDef(methodDef, methodArgs)
 
         for ruleDef in ruleDefs:
             self.visitRuleDef(ruleDef, registers, submodules, sharedSubmodules)
@@ -1083,7 +1093,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
 
-        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, moduleInputsWithDefaults)
+        moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, moduleInputsWithDefaults, moduleMethodsWithArguments)
         moduleComponent.metadata = moduleWithMetadata
 
         return moduleWithMetadata
@@ -1168,7 +1178,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addInput(inputNode, inputName)
         return (inputName, ctx.defaultVal)
 
-    def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, registers: 'dict[str, Register]' = None):
+    def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, args):
         '''
         registers is a dictionary mapping register names to the corresponding register hardware.
 
@@ -1187,32 +1197,43 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         When we synthesize a methodDef with args, we should return the output to the synthesized method.
         When there are no args, there is no need to return anything.
         '''
-        methodType = self.visit(ctx.typeName())
-        if not ctx.argFormals(): # there are no arguments, so we synthesize the method inside the current module.
-            if ctx.expression():
-                # the method is a single-line expression.
-                methodName = ctx.name.getText()
-                methodNode = Node(methodName, methodType)
-                value = self.visit(ctx.expression())
-                if isMLiteral(value):  # convert value to hardware before linking to output node
-                    value = value.getHardware(self.globalsHandler)
-                setWire = Wire(value, methodNode)
-                self.globalsHandler.currentComponent.addChild(setWire)
-                self.globalsHandler.currentComponent.addMethod(methodNode, methodName)
-            else:
-                # the method is a multi-line sequence of statements with a return statement at the end.
-                methodName = ctx.name.getText()
-                methodOutput = Node(methodName, methodType)  # set up the output node
-                self.globalsHandler.outputNode = methodOutput
-                self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
-                methodScope = ctx.scope
-                self.globalsHandler.enterScope(methodScope)
-                for stmt in ctx.stmt():  # evaluate the method
-                    self.visit(stmt)
-                self.globalsHandler.exitScope()
-                self.globalsHandler.outputNode = None  # methods can't occur inside a function, so there is no need to remember any previous output node.
-        else:
+        
+        if ctx.argFormals():
+            # module methods with arguments are not implemented
             raise Exception("Not implemented")
+            # a function with no arguments is still meaningful--if it is defined in a
+            # module, it still has access to the module registers/inputs.
+            for arg in ctx.argFormals().argFormal():
+                argType = self.visit(arg.typeName()) # typeName parse tree node
+                argName = arg.argName.getText() # name of the variable
+                argNode = Node(argName, argType)
+                functionScope.set(argNode, argName)
+                inputNodes.append(argNode)
+
+        methodType = self.visit(ctx.typeName())
+        # there are no arguments, so we synthesize the method inside the current module.
+        if ctx.expression():
+            # the method is a single-line expression.
+            methodName = ctx.name.getText()
+            methodNode = Node(methodName, methodType)
+            value = self.visit(ctx.expression())
+            if isMLiteral(value):  # convert value to hardware before linking to output node
+                value = value.getHardware(self.globalsHandler)
+            setWire = Wire(value, methodNode)
+            self.globalsHandler.currentComponent.addChild(setWire)
+            self.globalsHandler.currentComponent.addMethod(methodNode, methodName)
+        else:
+            # the method is a multi-line sequence of statements with a return statement at the end.
+            methodName = ctx.name.getText()
+            methodOutput = Node(methodName, methodType)  # set up the output node
+            self.globalsHandler.outputNode = methodOutput
+            self.globalsHandler.currentComponent.addMethod(methodOutput, methodName)
+            methodScope = ctx.scope
+            self.globalsHandler.enterScope(methodScope)
+            for stmt in ctx.stmt():  # evaluate the method
+                self.visit(stmt)
+            self.globalsHandler.exitScope()
+            self.globalsHandler.outputNode = None  # methods can't occur inside a function, so there is no need to remember any previous output node.
 
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]', sharedSubmodules: 'dict[str, ModuleWithMetadata]'):
         ''' Synthesize the update rule. registers is a dictionary mapping register names to the corresponding register hardware. '''
@@ -1273,7 +1294,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # extract arguments to function and set up the input nodes
         inputNodes = []
         if ctx.argFormals():
-            # a function with no arguments may still be meaningful--if it is defined in a
+            # a function with no arguments is still meaningful--if it is defined in a
             # module, it still has access to the module registers/inputs.
             for arg in ctx.argFormals().argFormal():
                 argType = self.visit(arg.typeName()) # typeName parse tree node
@@ -1945,11 +1966,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         elif ctx.fcn.__class__ == build.MinispecPythonParser.MinispecPythonParser.FieldExprContext:
             # module method with arguments
             toAccess = self.visit(ctx.fcn.exprPrimary())
+            print(toAccess.__class__)
+            print(toAccess)
             fieldToAccess = ctx.fcn.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
                 return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs)
             else:
                 # TODO implement module methods with arguments on minispec modules
+                moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
+                print(moduleWithMetadata.__class__)
+                methodDef = moduleWithMetadata.methodsWithArguments[fieldToAccess]
+                self.visitMethodDef(methodDef, functionArgs)
                 raise Exception("Not implemented")
         else:
             raise Exception(f"Unexpected lhs of function call {ctx.fcn.__class__}")
