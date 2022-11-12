@@ -34,11 +34,13 @@ def describe(categoryName: 'str'):
 def compare(output: 'Function|Module', expected: 'Function|Module'):
     ''' Prints a comparison of two pieces of hardware. Helpful for debugging. '''
     print()
+    # print(output.__repr__())
     print('output')
     for child in output.children:
         print(child.__repr__())
     print(len(output.children), len(output.getNodeListRecursive()))
     print()
+    # print(expected.__repr__())
     print('expected')
     for child in expected.children:
         print(child.__repr__())
@@ -757,9 +759,33 @@ def _():
 def _():
     text = pull('moduleArgument')
 
+    m = Register('Reg#(Vector#(4,Bit#(4)))')
+    mData = Node()
+    mIndx = Node()
+    sliceIndx = Function('[_]', [], [Node(), Node(), Node()])
+    mem = Module('Mem', [m, sliceIndx, Wire(sliceIndx.output, m.input), Wire(m.value, sliceIndx.inputs[0]), Wire(mIndx, sliceIndx.inputs[1]), Wire(mData, sliceIndx.inputs[2])], {'data': mData, 'indx': mIndx}, {})
+
+    output = synth.parseAndSynth(text, 'Mem')
+    expected = mem
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+    s1 = Register('Reg#(Bit#(4))')
+    s2 = Register('Reg#(Bit#(4))')
+    sl1, sl2 = Node(), Node()
+    tData, tIndx = Node(), Node()
+    o1, o2 = Node(), Node()
+    sInd1 = Function('[_]', [], [Node(), Node()])
+    sInd2 = Function('[_]', [], [Node(), Node()])
+    gd1o, gd2o = Node(), Node()
+    gd1i, gd2i = Node(), Node()
+    gd1 = Function('getData', [sInd1, Wire(gd1i, sInd1.inputs[1]), Wire(m.value, sInd1.inputs[0]), Wire(sInd1.output, gd1o)], [gd1i], gd1o)
+    gd2 = Function('getData', [sInd2, Wire(gd2i, sInd2.inputs[1]), Wire(m.value, sInd2.inputs[0]), Wire(sInd2.output, gd2o)], [gd2i], gd2o)
+    top = Module('TopLevel', [mem, s1, s2, gd1, gd2, Wire(s1.value, o1), Wire(s2.value, o2), Wire(sl1, gd1.inputs[0]), Wire(sl2, gd2.inputs[0]), Wire(gd1.output, s1.input), Wire(gd2.output, s2.input), Wire(tData, mData), Wire(tIndx, mIndx)], {'selector1': sl1, 'selector2': sl2, 'dataTop': tData, 'indxTop': tIndx}, {'out1': o1, 'out2': o2})
+
     output = synth.parseAndSynth(text, 'TopLevel')
-    pass
-    # TODO
+    expected = top
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 #run all the tests
 import time

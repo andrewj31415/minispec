@@ -1978,17 +1978,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         elif ctx.fcn.__class__ == build.MinispecPythonParser.MinispecPythonParser.FieldExprContext:
             # module method with arguments
             toAccess = self.visit(ctx.fcn.exprPrimary())
-            print(toAccess.__class__)
-            print(toAccess)
             fieldToAccess = ctx.fcn.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
                 return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs)
             else:
-                # TODO implement module methods with arguments on minispec modules
                 moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
-                print(moduleWithMetadata.__class__)
                 methodDef = moduleWithMetadata.methodsWithArguments[fieldToAccess]
                 methodComponent = self.visitMethodDef(methodDef, functionArgs)
+                # hook up the methodComponent to the arguments passed in.
                 for i in range(len(functionArgs)):
                     exprValue = functionArgs[i]
                     if isMLiteral(exprValue):
@@ -2000,7 +1997,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     self.globalsHandler.currentComponent.addChild(wireIn)
                 self.globalsHandler.currentComponent.addChild(methodComponent)
                 return methodComponent.output
-                raise Exception("Not implemented")
         else:
             raise Exception(f"Unexpected lhs of function call {ctx.fcn.__class__}")
 
