@@ -714,6 +714,24 @@ describe('''Advanced Modules''')
 def _():
     text = pull('moduleVector')
 
+    r00, r01, r10, r11 = Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))')
+    v0, v1 = VectorModule([r00, r01], "Vector#(2,Reg#(Bit#(1)))", [r00, r01], {}, {}), VectorModule([r10, r11], "Vector#(2,Reg#(Bit#(1)))", [r10, r11], {}, {})
+    v = VectorModule([v0, v1], "Vector#(2,Vector#(2,Reg#(Bit#(1))))", [v0, v1], {}, {})
+    n0, n1, n2, n3 = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('~', [], [Node()]), Function('~', [], [Node()])
+    s0, s1, s2, s3 = Function('[0]', [], [Node()]), Function('[1]', [], [Node()]), Function('[2]', [], [Node()]), Function('[3]', [], [Node()])
+    c = Function('{}', [], [Node(), Node(), Node(), Node()])
+    i, o = Node(), Node()
+    sWires = [Wire(i, s0.inputs[0]), Wire(i, s1.inputs[0]), Wire(i, s2.inputs[0]), Wire(i, s3.inputs[0])]
+    nWires = [Wire(s0.output, n0.inputs[0]), Wire(s1.output, n1.inputs[0]), Wire(s2.output, n2.inputs[0]), Wire(s3.output, n3.inputs[0])]
+    rWires = [Wire(n0.output, r00.input), Wire(n1.output, r01.input), Wire(n2.output, r10.input), Wire(n3.output, r11.input)]
+    cWires = [Wire(r00.value, c.inputs[0]), Wire(r01.value, c.inputs[1]), Wire(r10.value, c.inputs[2]), Wire(r11.value, c.inputs[3])]
+    rev = Module('Reverse#(1)', [v, n0, n1, n2, n3, s0, s1, s2, s3, c, Wire(c.output, o)] + sWires + nWires + rWires + cWires, {'in': i}, {'out': o})
+
+    output = synth.parseAndSynth(text, 'Reverse#(1)')
+    expected = rev
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
     output = synth.parseAndSynth(text, 'Reverse#(2)')
 
     expected = None
