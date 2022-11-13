@@ -1433,7 +1433,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
                         nameToSet = currentLvalue.getText() + "."
                         for indexValue in indexValues[::-1]:
-                            #TODO are these backward?
                             nameToSet += f'[{indexValue.value}]'
                         nameToSet += inputName
                         self.globalsHandler.currentScope.set(value, nameToSet)
@@ -2048,7 +2047,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext, "Unrecognized format for assignment to vector of registers"
         regName = currentlvalue.getText() + "."
         for indexValue in indexes[::-1]:
-            # TODO these might be backward?
             regName += f'[{indexValue.value}]'
         self.globalsHandler.currentScope.set(value, regName + "input")
 
