@@ -411,6 +411,38 @@ class ModuleWithMetadata:
             for module in self.module.numberedSubmodules:
                 module.metadata.syntheiszeInputs(globalsHandler)
 
+    def setInput(self, inputName: 'str', newValue: 'MLiteral|Node|None'):
+        ''' Given the name of an input and the value to assign, assigns that value. '''
+        if self.module.__class__ == VectorModule:
+            if inputName[0] == "[":
+                inputIndex = int(inputName.split(']')[0][1:])
+                restOfName = "]".join(inputName.split(']')[1:])
+                self.module.numberedSubmodules[inputIndex].metadata.setInput(restOfName, newValue)
+                return
+
+        self.inputValues[inputName] = newValue
+
+    def getInput(self, inputName: 'str') -> 'MLiteral|Node|None':
+        ''' Given the name of an input, returns the corresponding value. '''
+        if self.module.__class__ == VectorModule:
+            if inputName[0] == "[":
+                inputIndex = int(inputName.split(']')[0][1:])
+                restOfName = "]".join(inputName.split(']')[1:])
+                return self.module.numberedSubmodules[inputIndex].metadata.getInput(restOfName)
+
+        return self.inputValues[inputName]
+
+    def getAllInputs(self) -> 'set[str]':
+        ''' Returns the set of all names of all inputs to this module.
+        The elements of the set returned by this function are precisely the strings
+        which may be used as 'inputName' for getInput and setInput. '''
+        allInputs = set(self.inputValues)
+        if self.module.__class__ == VectorModule:
+            for i in range(len(self.module.numberedSubmodules)):
+                for inputName in self.module.numberedSubmodules[i].metadata.getAllInputs():
+                    allInputs.add(f"[{i}]{inputName}")
+        return allInputs
+
 
 class BluespecModuleWithMetadata:
     ''' An imported bluespec module must be recognizable, with methods for creating inputs/methods dynamically
@@ -1258,16 +1290,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             ruleScope.set(register.value, registerName)
         # bind any default inputs, including registers (which default to their own value)
         for submoduleName in submodules:
-            for inputName in submodules[submoduleName].inputValues:
+            for inputName in submodules[submoduleName].getAllInputs():
                 fullInputName = submoduleName + '.' + inputName
-                value = submodules[submoduleName].inputValues[inputName]
+                value = submodules[submoduleName].getInput(inputName)
                 # if value != None:  # don't need this since none values should never by referenced
                 ruleScope.setPermanent(None, fullInputName)
                 ruleScope.set(value, fullInputName)
         for submoduleName in sharedSubmodules:
-            for inputName in sharedSubmodules[submoduleName].inputValues:
+            for inputName in sharedSubmodules[submoduleName].getAllInputs():
                 fullInputName = submoduleName + '.' + inputName
-                value = sharedSubmodules[submoduleName].inputValues[inputName]
+                value = sharedSubmodules[submoduleName].getInput(inputName)
                 # if value != None:  # don't need this since none values should never by referenced
                 ruleScope.setPermanent(None, fullInputName)
                 ruleScope.set(value, fullInputName)
@@ -1275,15 +1307,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.visit(stmt)
         # find any submodule input assignments, including register writes
         for submoduleName in submodules:
-            for inputName in submodules[submoduleName].inputValues:
+            for inputName in submodules[submoduleName].getAllInputs():
                 fullInputName = submoduleName + '.' + inputName
                 newValue = ruleScope.get(self, fullInputName)
-                submodules[submoduleName].inputValues[inputName] = newValue
+                submodules[submoduleName].setInput(inputName, newValue)
         for submoduleName in sharedSubmodules:
-            for inputName in sharedSubmodules[submoduleName].inputValues:
+            for inputName in sharedSubmodules[submoduleName].getAllInputs():
                 fullInputName = submoduleName + '.' + inputName
                 newValue = ruleScope.get(self, fullInputName)
-                sharedSubmodules[submoduleName].inputValues[inputName] = newValue
+                sharedSubmodules[submoduleName].setInput(inputName, newValue)
         self.globalsHandler.exitScope()
 
     def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
