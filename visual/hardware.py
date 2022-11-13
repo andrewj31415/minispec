@@ -382,13 +382,23 @@ class Register(Module):
 class VectorModule(Module):
     def __init__(self, numberedSubmodules: 'list[Module]', *args):
         ''' Same as initializing a module, just with an extra numberedSubmodules field at the beginning '''
-        self.numberedSubmodules = numberedSubmodules
+        self.numberedSubmodules: 'list[Module]' = numberedSubmodules
         super().__init__(*args)
     def addNumberedSubmodule(self, submodule: 'Module'):
         self.numberedSubmodules.append(submodule)
     def getNumberedSubmodule(self, num: 'int'):
         ''' Returns the nth submodule of a vector of submodules (possibly a register) '''
         return self.numberedSubmodules[num]
+    def depth(self) -> int:
+        ''' Returns the number of layers of vectors of submodules. '''
+        if self.numberedSubmodules[0].__class__ == VectorModule:
+            return 1 + self.numberedSubmodules[0].depth()
+        return 1
+    def isVectorOfRegisters(self) -> bool:
+        ''' Returns true if the innermost modules of this vector of modules are registers. '''
+        if self.numberedSubmodules[0].__class__ == VectorModule:
+            return self.numberedSubmodules[0].isVectorOfRegisters
+        return self.numberedSubmodules[0].isRegister()
 
 class Function(Component):
     ''' children is a list of components.

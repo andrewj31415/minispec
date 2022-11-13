@@ -444,6 +444,43 @@ class ModuleWithMetadata:
                     allInputs.add(f"[{i}]{inputName}")
         return allInputs
 
+class PartiallyIndexedModule:
+    ''' A module that has been indexed into. If M is a vector of modules, then
+    if we feed M[a][b].in into the interpreter, the interpreter will turn M[a] into
+    PartiallyIndexedModule(M, (a,)) and will recursively turn M[a][b] into PartiallyIndexedModule(M, (a,b)).
+    Finally, accessing .in will generate the relevant hardware components. '''
+    def __init__(self, module: 'VectorModule', indexes: 'tuple[Node|MLiteral]' = tuple()):
+        assert module.__class__ == VectorModule, "Can only index into a vector of submodules"
+        self.module = module
+        self.indexes = indexes
+    def indexFurther(self, globalsHandler: 'GlobalsHandler', indx: 'Node|MLiteral') -> 'PartiallyIndexedModule|Node':
+        ''' Returns the result of indexing further into the module. May be another PartiallyIndexedModule
+        or a Node (if we have indexed far enough to select a register from a vector of registers). '''
+        # TODO case of indexing further into a vector of registers should generate circuitry
+        if self.module.isVectorOfRegisters() and len(self.indexes) + 1 == self.module.depth():
+            print(self.indexes, indx)
+            muxInputs = []
+            for submodule in self.module.numberedSubmodules:
+                if submodule.__class__ == Register:
+                    # self is a vector of registers
+                    muxInputs.append(submodule.value)
+                else:
+                    # self is a vector of vectors
+                    currentLevel = PartiallyIndexedModule(submodule)
+                    for tempIndex in self.indexes:
+                        currentLevel = currentLevel.indexFurther(globalsHandler, tempIndex)
+                    muxInputs.append(currentLevel)
+            print('mux inputs:', muxInputs)
+            mux = Mux([Node() for i in muxInputs])
+            for i in range(len(muxInputs)):
+                wireIn = Wire(muxInputs[i], mux.inputs[i])
+                globalsHandler.currentComponent.addChild(wireIn)
+            globalsHandler.currentComponent.addChild(mux)
+            return mux.output
+        return PartiallyIndexedModule(self.module, self.indexes + (indx,))
+    def getInput(self, inputName: 'str') -> 'Node|MLiteral':
+        ''' Returns the corresponding input. '''
+        pass
 
 class BluespecModuleWithMetadata:
     ''' An imported bluespec module must be recognizable, with methods for creating inputs/methods dynamically
@@ -1848,16 +1885,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
         Returns the result of slicing (the output of the slicing function).
         topLevel is true if this is the outermost slice in a nested slice (such as m[a][b][c]).'''
+        print('slicing', ctx.getText())
         toSliceFrom = self.visit(ctx.array)
         if toSliceFrom.__class__ == Register:
             toSliceFrom = toSliceFrom.value
         msb = self.visit(ctx.msb) #most significant bit
+        if toSliceFrom.__class__ == PartiallyIndexedModule:
+            # slicing further into a vector of module
+            return toSliceFrom.indexFurther(self.globalsHandler, msb)
         if toSliceFrom.__class__ == VectorModule:
             # slicing into a vector of modules
             if not isMLiteral(msb):
-                raise Exception("Variable indexing into vector of submodules is not yet implemented")
+                return PartiallyIndexedModule(toSliceFrom).indexFurther(self.globalsHandler, msb)
             return toSliceFrom.getNumberedSubmodule(msb.value)
-            raise Exception("Not implemented")
         if ctx.lsb:
             lsb = self.visit(ctx.lsb) #least significant bit
         if isMLiteral(toSliceFrom) and isMLiteral(msb) and ( (not (ctx.lsb)) or (ctx.lsb and isMLiteral(lsb)) ):  # perform the slice directly
@@ -1901,6 +1941,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(wire)
             return sliceComponent.output
         else: # we are slicing into a submodule
+            #TODO this code never runs?
             if msb.__class__ != IntegerLiteral:
                 print(toSliceFrom.__class__)
                 raise Exception("Variable slicing into modules is not implemented")
@@ -2037,12 +2078,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         currentlvalue = ctx.lhs
         while currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext:
             indexValue = self.visit(currentlvalue.index)
-            if not isMLiteral(indexValue):
-                raise Exception("Variable indexing to assign to registers is not implemented yet")
             indexes.append(indexValue)
             currentlvalue = currentlvalue.lvalue()
         assert currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext, "Unrecognized format for assignment to vector of registers"
-        regName = currentlvalue.getText() + "."
+        regName = currentlvalue.getText()
+        print('reg:', regName)
+        outermostVector = self.globalsHandler.currentScope.get(self, regName)
+        print(outermostVector)
+        regName += "."
         for indexValue in indexes[::-1]:
             regName += f'[{indexValue.value}]'
         self.globalsHandler.currentScope.set(value, regName + "input")

@@ -830,9 +830,9 @@ def _():
 def _():
     text = pull('moduleVector2')
 
-    assert False, "Finish writing test"
-
     output = synth.parseAndSynth(text, 'Test')
+    
+    assert False, "Finish writing test"
     expected = None
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
