@@ -703,9 +703,6 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
     def enterForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
         self.globalsHandler.currentScope.setPermanent(None, ctx.initVar.getText())
 
-    def enterSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
-        ctx.slicingIntoSubmodule = False
-
 '''
 Documentation for SynthesizerVisitor visit method return types:
 
@@ -1871,7 +1868,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if isMLiteral(toSliceFrom):
             toSliceFrom = toSliceFrom.getHardware(self.globalsHandler)
         # TODO refactor assert we have a node at this point
-        if isNode(toSliceFrom) and not ctx.slicingIntoSubmodule:  # we are slicing into an ordinary variable
+        if isNode(toSliceFrom):  # we are slicing into an ordinary variable
             text = "["
             inNode = Node()
             inputs = [inNode]

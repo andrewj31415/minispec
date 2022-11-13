@@ -826,6 +826,16 @@ def _():
     expected = top
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Handles variable indexing into submodules''')
+def _():
+    text = pull('moduleVector2')
+
+    assert False, "Finish writing test"
+
+    output = synth.parseAndSynth(text, 'Test')
+    expected = None
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 #run all the tests
 import time
