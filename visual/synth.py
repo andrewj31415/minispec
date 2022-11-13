@@ -420,6 +420,7 @@ class ModuleWithMetadata:
                 self.module.numberedSubmodules[inputIndex].metadata.setInput(restOfName, newValue)
                 return
 
+        assert inputName in self.inputValues, "All inputs should be known at initialization."
         self.inputValues[inputName] = newValue
 
     def getInput(self, inputName: 'str') -> 'MLiteral|Node|None':
@@ -1366,7 +1367,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
         ''' Assign the given variable to the given expression. No returns, mutates existing hardware. '''
-        print('assigning var', ctx.getText())
         varList = ctx.lvalue()  #list of lhs vars
         #TODO "varList" in the Minispec grammar points to a curly brace '{', not a list of variables.
         #   This is confusing and not useful--should 'varList=' be removed from the grammar?
@@ -1416,8 +1416,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         raise Exception("Not implemented")  #TODO implement this
                 elif settingOverall.__class__ == VectorModule:
                     if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
-                        return
-                        raise Exception("Not implemented")  #TODO implement this, work in progress
                         inputName = lvalue.lowerCaseIdentifier().getText()
                         indexValues: 'list[MLiteral|Node]' = []
                         # iterate through the indices and visit them
@@ -1432,26 +1430,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         for indexValue in indexValues:
                             if indexValue.__class__ != IntegerLiteral:
                                 raise Exception("Variable indexing into submodules is not implemented")
-                        # TODO: create wires across the relevant modules, picking out submodules by feeding the values from indexValues into .getNumberedSubmodule methods.
-                        print("got inputName:", inputName)
-                        print("got indices:", indexValues)
-                        currentLvalue.getText()
-                        vectorOfSubmodules: 'VectorModule' = settingOverall
-                        print("got submodule:", vectorOfSubmodules)
-                        for index in indexValues:
-                            indexValue = index.value
-                            vectorOfSubmodules = vectorOfSubmodules.getNumberedSubmodule(indexValue)
-                        innermostSubmodule = vectorOfSubmodules
-                        print("innermost submodule:", innermostSubmodule)
-                        # self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
-                        # TODO do this in an if-statement friendly way, with a set and later wiring these in, at the end of the corresponding moduleDef
-                        # submoduleComponent: 'Module' = vectorOfSubmodules
-                        # inputNode = submoduleComponent.inputs[inputName]
-                        # wireIn = Wire(value, inputNode)
-                        # self.globalsHandler.currentComponent.addChild(wireIn)
+
+                        nameToSet = currentLvalue.getText() + "."
+                        for indexValue in indexValues:
+                            #TODO are these backward?
+                            nameToSet += f'[{indexValue.value}]'
+                        nameToSet += inputName
+                        self.globalsHandler.currentScope.set(value, nameToSet)
                         return
                     else:
-                        raise Exception("Not implemented")  #TODO implement this
+                        raise Exception("Not implemented")  #TODO implement this TODO Can this case ever occur?
                 else:
                     pass  # not a module, move on
             except MissingVariableException:
@@ -1864,7 +1852,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
         Returns the result of slicing (the output of the slicing function).
         topLevel is true if this is the outermost slice in a nested slice (such as m[a][b][c]).'''
-        print('slicing into', ctx.getText())
         toSliceFrom = self.visit(ctx.array)
         if toSliceFrom.__class__ == Register:
             toSliceFrom = toSliceFrom.value
@@ -1922,34 +1909,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 print(toSliceFrom.__class__)
                 raise Exception("Variable slicing into modules is not implemented")
             return toSliceFrom.getNumberedSubmodule(msb.value)
-            raise Exception(f"Not implemented {toSliceFrom.__class__} {toSliceFrom}")  #TODO implement this, work in progress
-            ctx.parentCtx.slicingIntoSubmodule = True  # pass the information outward
-            # print('dealing with slice', ctx.array.getText(), ctx.msb.getText())
-            assert not ctx.lsb, f"Can't slice {ctx.getText()} into a vector of submodules"
-            if not ctx.slicingIntoSubmodule:
-                assert toSliceFrom.__class__ == VectorModule, "Must be vector of submodules"
-            if isNode(toSliceFrom):
-                # construct the next step in going inward
-                print('construct next slice', ctx.getText())
-                return toSliceFrom
-            else:
-                # innermost slice, outermost module
-                print('innermost slice, outermost module', ctx.getText())
-                methodValue = Node()
-                import random
-                toSliceFrom.addMethod(methodValue, ctx.getText()+str(random.random()))
-                print('msb', msb, msb.__class__)
-                if msb.__class__ == Integer:
-                    targetInnerSubmodule = toSliceFrom.getNumberedSubmodule(msb.value)
-                    targetNode = Node()
-                    targetInnerSubmodule.addMethod(targetNode, ctx.getText()+str(random.random()))
-                    print('targetting', targetInnerSubmodule.name, 'from', toSliceFrom.name)
-                    wireIn = Wire(targetNode, methodValue)
-                    toSliceFrom.addChild(wireIn)
-                else:
-                    raise Exception("Variable slicing into a vector of submodules is not implemented yet")
-                return methodValue
-
 
     def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
         '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
@@ -2033,7 +1992,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             raise Exception(f"Unexpected lhs of function call {ctx.fcn.__class__}")
 
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
-        print('accessing field', ctx.getText())
         toAccess = self.visit(ctx.exprPrimary())
         if toAccess.__class__ == Module:
             fieldToAccess = ctx.field.getText()
@@ -2079,30 +2037,20 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentScope.set(value, regName + ".input")
             return
         # writing to a vector of registers
-        print('assigning to vector of registers', ctx.getText())
-        print(ctx.lhs.__class__)
         indexes = []
         currentlvalue = ctx.lhs
-        print(currentlvalue.__class__)
         while currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext:
             indexValue = self.visit(currentlvalue.index)
             if not isMLiteral(indexValue):
                 raise Exception("Variable indexing to assign to registers is not implemented yet")
             indexes.append(indexValue)
             currentlvalue = currentlvalue.lvalue()
-        print('got indexes', indexes)
         assert currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext, "Unrecognized format for assignment to vector of registers"
-        regName = currentlvalue.getText()
+        regName = currentlvalue.getText() + "."
         for indexValue in indexes:
             # TODO these might be backward?
             regName += f'[{indexValue.value}]'
-        print(regName)
-        #TODO finish assigning value to register
-        return
-        self.globalsHandler.currentScope.set(value, regName + ".input")
-        raise Exception("Not implemented") # this is for vectors of registers
-        regName = ctx.lhs.getText()
-        self.globalsHandler.currentScope.setPermanent(value, regName + ".input")
+        self.globalsHandler.currentScope.set(value, regName + "input")
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
         ''' Each variety of statement is handled separately. '''
