@@ -741,7 +741,10 @@
                     rect.setAttribute("width", component.width);
                     rect.setAttribute("height", component.height);
                     rect.setAttribute("stroke", "black");
-                    rect.setAttribute("stroke-width", Math.sqrt(component.height / 50)); //make the thickness proportional to the height so that it does not cover the under text
+                    rect.setAttribute("stroke-width", Math.sqrt((component.height + component.width) / 1000)); //make the thickness proportional to the height so that it does not cover the under text
+                    rect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
+                    // rect.setAttribute("stroke", "blue");
+                    // rect.setAttribute("stroke-width", 0.2);
                     rect.setAttribute("fill", "transparent");
                 }
                 svgDisplay.appendChild(overRect);
@@ -754,6 +757,7 @@
                         height: (component.children && component.children.length > 0 ) ? componentData.weight : component.height,
                     });
                     overName.setAttribute("pointer-events", "none");
+                    // overName.setAttribute("fill", "blue");
                 }
 
                 // //recursive placement of children on click
@@ -830,7 +834,8 @@
                     line.setAttribute("y1", parentPos.y + segment.start.y);
                     line.setAttribute("x2", parentPos.x + segment.end.x);
                     line.setAttribute("y2", parentPos.y + segment.end.y);
-                    line.setAttribute("stroke", "black");
+                    // line.setAttribute("stroke", "black");
+                    line.setAttribute("stroke", "blue");
                     line.setAttribute("stroke-width", 1);
                     svgDisplay.appendChild(line);
                 }
