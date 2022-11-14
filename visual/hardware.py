@@ -19,6 +19,7 @@ def getELK(component: 'Component') -> str:
     return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered', 'hierarchyHandling': 'INCLUDE_CHILDREN' }, 'children': [ toELK(component) ], 'edges': [] } )
 
 def weightAdjust(weight):
+    ''' Given the 'weight' of a component, returns the amount of space to reserve for the label of the element. '''
     return 10*weight**0.6
 
 def elkID(item: 'Component|Node') -> str:
@@ -38,7 +39,9 @@ def elkID(item: 'Component|Node') -> str:
 def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
     ''' Converts the node or component into the ELK JSON format as a python object. 
     See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html 
-    See https://github.com/kieler/elkjs/issues/27 for some examples.'''
+    See https://github.com/kieler/elkjs/issues/27 for some examples.
+    See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/coordinatesystem.html
+    for information about the ELK coordinate system. '''
     if not properties:
         properties = {}
     if item.__class__ == Node:
@@ -58,7 +61,7 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
                     'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
                     'properties': { 'portConstraints': 'FIXED_ORDER',  # info on layout options: https://www.eclipse.org/elk/reference/options.html
-                                    'elk.padding': f'[top={weightAdjust(item.weight())},left=0,bottom=0,right=0]' } }  # info on padding: https://github.com/kieler/elkjs/issues/27
+                                    'elk.padding': f'[top={weightAdjust(item.weight())+12},left=12,bottom=12,right=12]' } }  # the default padding is 12, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-padding.html. info on padding: https://github.com/kieler/elkjs/issues/27
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
             jsonObj['width'] = 15
             jsonObj['height'] = 15

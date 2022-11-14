@@ -723,6 +723,17 @@
             }
             pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
 
+            let currentHighlightedToken = undefined;
+            highlightToken = (filenameOfOrigin, tokenIndex) => {
+                if (currentHighlightedToken) {
+                    currentHighlightedToken.style.backgroundColor = "white"
+                }
+                let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
+                tokenSpan.setAttribute('background-color', 'yellow');
+                tokenSpan.style.backgroundColor = "yellow";
+                currentHighlightedToken = tokenSpan;
+            };
+
             elementsToPlace = {};
             /* Python data goes here */
 
@@ -799,6 +810,12 @@
                         tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
                         tokenSpan.addEventListener("click", () => {
                             jumpToComponent(component, parentPos);
+                            // highlight the linked token
+                            highlightToken(filenameOfOrigin, tokenIndex);
+                        });
+                        // highlight the token upon entering the box
+                        overRect.addEventListener("mouseenter", () => {
+                            highlightToken(filenameOfOrigin, tokenIndex);
                         });
                         // tokenSpan.style.backgroundColor = "yellow";
                         tokenSpan.style.border = "1.5px solid black";
