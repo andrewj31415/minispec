@@ -2086,9 +2086,29 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         outermostVector = self.globalsHandler.currentScope.get(self, regName)
         print(outermostVector)
         regName += "."
+        regsToWrite = [regName]
+        valsToWrite = [value]
+        # collect the values to write
         for indexValue in indexes[::-1]:
-            regName += f'[{indexValue.value}]'
-        self.globalsHandler.currentScope.set(value, regName + "input")
+            if indexValue.__class__ == IntegerLiteral:
+                # fixed index value
+                oldRegsToWrite = regsToWrite
+                oldValsToWrite = valsToWrite
+                regsToWrite = []
+                valsToWrite = []
+                for i in range(len(oldRegsToWrite)):
+                    regName = oldRegsToWrite[i] + f'[{indexValue.value}]'
+                    regsToWrite.append(regName)
+                    val = oldValsToWrite[i]
+                    valsToWrite.append(val)
+            else:
+                # variable index value
+                raise Exception("Not implemented")
+        # assign the correct values
+        for i in range(len(oldRegsToWrite)):
+            regName = regsToWrite[i]
+            val = valsToWrite[i]
+            self.globalsHandler.currentScope.set(val, regName + "input")
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
         ''' Each variety of statement is handled separately. '''
