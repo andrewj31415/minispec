@@ -18,6 +18,9 @@ def getELK(component: 'Component') -> str:
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
     return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered', 'hierarchyHandling': 'INCLUDE_CHILDREN' }, 'children': [ toELK(component) ], 'edges': [] } )
 
+def weightAdjust(weight):
+    return 10*weight**0.6
+
 def elkID(item: 'Component|Node') -> str:
     ''' Returns a unique id for the node or component for use in ELK '''
     if item.__class__ == Node:
@@ -28,13 +31,14 @@ def elkID(item: 'Component|Node') -> str:
         if item.__class__ == Wire:
             return f"component{item._id}|{json.dumps({'name':''})}"
         if item.__class__ == Function:
-            return f"component{item._id}|{json.dumps({'name':item.name,'tokensSourcedFrom':item.tokensSourcedFrom})}"
+            return f"component{item._id}|{json.dumps({'name':item.name,'weight':weightAdjust(item.weight()),'tokensSourcedFrom':item.tokensSourcedFrom})}"
         return f"component{item._id}|{json.dumps({'name':item.name})}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
 def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
     ''' Converts the node or component into the ELK JSON format as a python object. 
-    See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html '''
+    See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html 
+    See https://github.com/kieler/elkjs/issues/27 for some examples.'''
     if not properties:
         properties = {}
     if item.__class__ == Node:
@@ -53,7 +57,8 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'ports': ports,
                     'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
                     'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
-                    'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+                    'properties': { 'portConstraints': 'FIXED_ORDER',  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+                                    'elk.padding': f'[top={weightAdjust(item.weight())},left=0,bottom=0,right=0]' } }  # info on padding: https://github.com/kieler/elkjs/issues/27
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
             jsonObj['width'] = 15
             jsonObj['height'] = 15
@@ -203,6 +208,11 @@ class Component:
     def isComponent(self) -> Bool:
         '''Used by assert statements'''
         return True
+    def weight(self):
+        ''' Returns an estimate of how large a component is. '''
+        if hasattr(self, 'children'):
+            return 1 + sum([c.weight() for c in self.children])
+        return 0
 
 
 class Module(Component):

@@ -751,7 +751,7 @@
                         x: absolutePos.x,
                         y: absolutePos.y,
                         width: component.width,
-                        height: component.height,
+                        height: (component.children && component.children.length > 0 ) ? componentData.weight : component.height,
                     });
                     overName.setAttribute("pointer-events", "none");
                 }
