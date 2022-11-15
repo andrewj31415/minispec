@@ -1461,6 +1461,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                 print(currentLvalue.__class__)
                                 raise Exception("Not implemented")  # I don't think this case can occur.
                             currentLvalue = currentLvalue.lvalue()
+                        for indexValue in indexValues:
+                            if indexValue.__class__ != IntegerLiteral:
+                                raise Exception("Variable indexing into submodules is not implemented")
                         nameToSet = currentLvalue.getText() + "."
                         for indexValue in indexValues[::-1]:
                             nameToSet += f'[{indexValue.value}]'

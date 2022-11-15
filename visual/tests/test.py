@@ -828,17 +828,7 @@ def _():
 
 @it('''Handles variable indexing into registers''')
 def _():
-    text = pull('moduleVector2')
-
-    output = synth.parseAndSynth(text, 'Test')
-    
-    assert False, "Finish writing test"
-    expected = None
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
-
-@it('''Handles variable indexing into registers''')
-def _():
-    text = pull('moduleVectorReg')
+    text = pull('moduleVectorVarReg')
 
     output = synth.parseAndSynth(text, 'Regs')
     
@@ -848,11 +838,11 @@ def _():
 
 @it('''Handles variable indexing into submodules''')
 def _():
-    text = pull('moduleVector3')
+    text = pull('moduleVectorVarSub')
 
     output = synth.parseAndSynth(text, 'Regs')
     assert False, "Finish writing test"
-    
+
     output = synth.parseAndSynth(text, 'MoreRegs')
     
     expected = None
