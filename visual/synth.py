@@ -1461,9 +1461,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                 print(currentLvalue.__class__)
                                 raise Exception("Not implemented")  # I don't think this case can occur.
                             currentLvalue = currentLvalue.lvalue()
-                        for indexValue in indexValues:
-                            if indexValue.__class__ != IntegerLiteral:
-                                raise Exception("Variable indexing into submodules is not implemented")
                         nameToSet = currentLvalue.getText() + "."
                         for indexValue in indexValues[::-1]:
                             nameToSet += f'[{indexValue.value}]'
@@ -2089,21 +2086,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         print(outermostVector)
         regName += "."
         regsToWrite = [regName]
-        valsToWrite = [value]
-        # collect the values to write
+        # collect the register names to write to
         for k in range(len(indexes)):
             indexValue = indexes[len(indexes) - 1 - k]
             oldRegsToWrite = regsToWrite
-            oldValsToWrite = valsToWrite
             regsToWrite = []
-            valsToWrite = []
             if indexValue.__class__ == IntegerLiteral:
                 # fixed index value
                 for i in range(len(oldRegsToWrite)):
                     regName = oldRegsToWrite[i] + f'[{indexValue.value}]'
                     regsToWrite.append(regName)
-                    val = oldValsToWrite[i]
-                    valsToWrite.append(val)
             else:
                 # variable index value
                 currentVector = outermostVector
@@ -2116,13 +2108,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     for i in range(len(oldRegsToWrite)):
                         regName = oldRegsToWrite[i] + f'[{j}]'
                         regsToWrite.append(regName)
-                        val = oldValsToWrite[i]
-                        valsToWrite.append(val)
-                # raise Exception("Not implemented")
         # assign the correct values
         for i in range(len(regsToWrite)):
             regName = regsToWrite[i]
-            val = valsToWrite[i]
+            val = value
             oldVal = self.globalsHandler.currentScope.get(self, regName + "input")
             # create the relevant hardware
             for k in range(len(indexes)):
