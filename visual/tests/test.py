@@ -831,9 +831,39 @@ def _():
     text = pull('moduleVectorVarReg')
 
     output = synth.parseAndSynth(text, 'Regs')
+
+    # nodes and registers
+    r = [Register('Reg#(Bit#(4))') for i in range(6)]
+    v0 = VectorModule([r[0],r[1],r[2]], 'Vector#(3, Reg#(Bit#(4)))', [r[0],r[1],r[2]], {}, {})
+    v1 = VectorModule([r[3],r[4],r[5]], 'Vector#(3, Reg#(Bit#(4)))', [r[3],r[4],r[5]], {}, {})
+    v = VectorModule([v0,v1], 'Vector#(2, Vector#(3, Reg#(Bit#(4))))', [v0,v1], {}, {})
+    d = Node()
+    s1, s2 = Node(), Node()
+    o = Node()
+
+    # hardware for output
+    mo, mo1, mo2 = Mux([Node(), Node()]), Mux([Node(), Node(), Node()]), Mux([Node(), Node(), Node()])
+    oWires1 = [Wire(s2, mo1.control), Wire(s2, mo2.control), Wire(s1, mo.control)]
+    oWires2 = [Wire(mo.output, o), Wire(mo1.output, mo.inputs[0]), Wire(mo2.output, mo.inputs[1])]
+    oWires3 = [Wire(r[i].value, mo1.inputs[i]) for i in (0,1,2)] + [Wire(r[3+i].value, mo2.inputs[i]) for i in (0,1,2)]
+    oWires = oWires1 + oWires2 + oWires3
+    oComp = [mo, mo1, mo2]
+
+    #hardware for inputs
+    mi1, mi2 = Mux([Node(), Node()]), Mux([Node(), Node()])
+    eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
+    zero, one = Function('0'), Function('1')
+    iWires1 = [Wire(r[0].value, mi1.inputs[0]), Wire(d, mi1.inputs[1]), Wire(r[3].value, mi2.inputs[0]), Wire(d, mi1.inputs[1])]
+    iWires2 = [Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control), Wire(mi1.output, r[0].input), Wire(mi2.output, r[3].input)]
+    iWires3 = [Wire(s1, eq1.inputs[0]), Wire(s1, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
+    iWires4 = [Wire(r[i].value, r[i].input) for i in (1,2,4,5)]
+    iWires = iWires1 + iWires2 + iWires3 + iWires4
+    iComp = [mi1, mi2, eq1, eq2, zero, one]
+
+    regs = Module('Regs', [v] + oWires + oComp + iWires + iComp, {'data': d, 'sel1': s1, 'sel2': s2}, {'out': o})
     
-    assert False, "Finish writing test"
-    expected = None
+    expected = regs
+    compare(output, expected)
     assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Handles variable indexing into submodules''')

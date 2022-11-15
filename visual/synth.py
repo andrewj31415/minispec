@@ -475,6 +475,8 @@ class PartiallyIndexedModule:
             for i in range(len(muxInputs)):
                 wireIn = Wire(muxInputs[i], mux.inputs[i])
                 globalsHandler.currentComponent.addChild(wireIn)
+            wireC = Wire(indx, mux.control)
+            globalsHandler.currentComponent.addChild(wireC)
             globalsHandler.currentComponent.addChild(mux)
             return mux.output
         return PartiallyIndexedModule(self.module, self.indexes + (indx,))
