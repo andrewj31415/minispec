@@ -32,7 +32,9 @@ def elkID(item: 'Component|Node') -> str:
         if item.__class__ == Wire:
             return f"component{item._id}|{json.dumps({'name':''})}"
         if item.__class__ == Function:
-            return f"component{item._id}|{json.dumps({'name':item.name,'weight':weightAdjust(item.weight()),'tokensSourcedFrom':item.tokensSourcedFrom})}"
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'tokensSourcedFrom':item.tokensSourcedFrom})}"
+        if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight())})}"
         return f"component{item._id}|{json.dumps({'name':item.name})}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
@@ -92,7 +94,8 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'ports': ports,
                     'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
                     'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
-                    'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+                    'properties': { 'portConstraints': 'FIXED_SIDE',
+                                    'elk.padding': f'[top={weightAdjust(item.weight())+12},left=12,bottom=12,right=12]' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         if len(item.children) == 0:
             jsonObj['width'] = 15
             jsonObj['height'] = 15
