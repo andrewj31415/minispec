@@ -456,7 +456,7 @@ class PartiallyIndexedModule:
     def indexFurther(self, globalsHandler: 'GlobalsHandler', indx: 'Node|MLiteral') -> 'PartiallyIndexedModule|Node':
         ''' Returns the result of indexing further into the module. May be another PartiallyIndexedModule
         or a Node (if we have indexed far enough to select a register from a vector of registers). '''
-        # TODO case of indexing further into a vector of registers should generate circuitry
+        # TODO case of indexing further into a vector of registers should generate circuitry--make sure this works.
         if self.module.isVectorOfRegisters() and len(self.indexes) + 1 == self.module.depth():
             print(self.indexes, indx)
             muxInputs = []
@@ -480,7 +480,7 @@ class PartiallyIndexedModule:
         return PartiallyIndexedModule(self.module, self.indexes + (indx,))
     def getInput(self, inputName: 'str') -> 'Node|MLiteral':
         ''' Returns the corresponding input. '''
-        pass
+        raise Exception("Not implemented")
 
 class BluespecModuleWithMetadata:
     ''' An imported bluespec module must be recognizable, with methods for creating inputs/methods dynamically
@@ -2029,6 +2029,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
         toAccess = self.visit(ctx.exprPrimary())
+        if toAccess.__class__ == PartiallyIndexedModule:
+            raise Exception("Not implemented")
         if toAccess.__class__ == Module:
             fieldToAccess = ctx.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
@@ -2073,6 +2075,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentScope.set(value, regName + ".input")
             return
         # writing to a vector of registers
+        # TODO test this more thoroughly and make sure it works
         indexes = []
         currentlvalue = ctx.lhs
         while currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext:
