@@ -1464,7 +1464,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         for indexValue in indexValues:
                             if indexValue.__class__ != IntegerLiteral:
                                 raise Exception("Variable indexing into submodules is not implemented")
-
                         nameToSet = currentLvalue.getText() + "."
                         for indexValue in indexValues[::-1]:
                             nameToSet += f'[{indexValue.value}]'
@@ -2089,13 +2088,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         regsToWrite = [regName]
         valsToWrite = [value]
         # collect the values to write
-        for indexValue in indexes[::-1]:
+        for k in range(len(indexes)):
+            indexValue = indexes[len(indexes) - 1 - k]
+            oldRegsToWrite = regsToWrite
+            oldValsToWrite = valsToWrite
+            regsToWrite = []
+            valsToWrite = []
             if indexValue.__class__ == IntegerLiteral:
                 # fixed index value
-                oldRegsToWrite = regsToWrite
-                oldValsToWrite = valsToWrite
-                regsToWrite = []
-                valsToWrite = []
                 for i in range(len(oldRegsToWrite)):
                     regName = oldRegsToWrite[i] + f'[{indexValue.value}]'
                     regsToWrite.append(regName)
@@ -2103,11 +2103,44 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     valsToWrite.append(val)
             else:
                 # variable index value
-                raise Exception("Not implemented")
+                currentVector = outermostVector
+                for j in range(k):
+                    currentVector = currentVector.numberedSubmodules[0]
+                print(currentVector)
+                numSubmodules = len(currentVector.numberedSubmodules)
+                print(numSubmodules)
+                for j in range(numSubmodules):
+                    for i in range(len(oldRegsToWrite)):
+                        regName = oldRegsToWrite[i] + f'[{j}]'
+                        regsToWrite.append(regName)
+                        val = oldValsToWrite[i]
+                        valsToWrite.append(val)
+                # raise Exception("Not implemented")
         # assign the correct values
-        for i in range(len(oldRegsToWrite)):
+        for i in range(len(regsToWrite)):
             regName = regsToWrite[i]
             val = valsToWrite[i]
+            oldVal = self.globalsHandler.currentScope.get(self, regName + "input")
+            # create the relevant hardware
+            for k in range(len(indexes)):
+                indexValue = indexes[len(indexes) - 1 - k]
+                if indexValue.__class__ == IntegerLiteral:
+                    # fixed index value
+                    pass
+                else:
+                    # variable index value, create a mux
+                    mux = Mux([Node(), Node()])
+                    eq = Function('=', [], [Node(), Node()])
+                    regIndex = regName.split(']')[k].split('[')[1]
+                    const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
+                    w1 = Wire(eq.output, mux.control)
+                    w2 = Wire(indexValue, eq.inputs[0])
+                    w3 = Wire(const, eq.inputs[1])
+                    w4 = Wire(val, mux.inputs[0])
+                    w5 = Wire(oldVal, mux.inputs[1])
+                    for component in [mux, eq, w1, w2, w3, w4, w5]:
+                        self.globalsHandler.currentComponent.addChild(component)
+                    val = mux.output
             self.globalsHandler.currentScope.set(val, regName + "input")
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
