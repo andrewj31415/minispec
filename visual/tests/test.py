@@ -834,9 +834,9 @@ def _():
 
     # nodes and registers
     r = [Register('Reg#(Bit#(4))') for i in range(6)]
-    v0 = VectorModule([r[0],r[1],r[2]], 'Vector#(3, Reg#(Bit#(4)))', [r[0],r[1],r[2]], {}, {})
-    v1 = VectorModule([r[3],r[4],r[5]], 'Vector#(3, Reg#(Bit#(4)))', [r[3],r[4],r[5]], {}, {})
-    v = VectorModule([v0,v1], 'Vector#(2, Vector#(3, Reg#(Bit#(4))))', [v0,v1], {}, {})
+    v0 = VectorModule([r[0],r[1],r[2]], 'Vector#(3,Reg#(Bit#(4)))', [r[0],r[1],r[2]], {}, {})
+    v1 = VectorModule([r[3],r[4],r[5]], 'Vector#(3,Reg#(Bit#(4)))', [r[3],r[4],r[5]], {}, {})
+    v = VectorModule([v0,v1], 'Vector#(2,Vector#(3,Reg#(Bit#(4))))', [v0,v1], {}, {})
     d = Node()
     s1, s2 = Node(), Node()
     o = Node()
@@ -853,7 +853,7 @@ def _():
     mi1, mi2 = Mux([Node(), Node()]), Mux([Node(), Node()])
     eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
     zero, one = Function('0'), Function('1')
-    iWires1 = [Wire(r[0].value, mi1.inputs[0]), Wire(d, mi1.inputs[1]), Wire(r[3].value, mi2.inputs[0]), Wire(d, mi1.inputs[1])]
+    iWires1 = [Wire(r[0].value, mi1.inputs[0]), Wire(d, mi1.inputs[1]), Wire(r[3].value, mi2.inputs[0]), Wire(d, mi2.inputs[1])]
     iWires2 = [Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control), Wire(mi1.output, r[0].input), Wire(mi2.output, r[3].input)]
     iWires3 = [Wire(s1, eq1.inputs[0]), Wire(s1, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
     iWires4 = [Wire(r[i].value, r[i].input) for i in (1,2,4,5)]

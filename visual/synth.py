@@ -458,6 +458,8 @@ class PartiallyIndexedModule:
         or a Node (if we have indexed far enough to select a register from a vector of registers). '''
         # TODO case of indexing further into a vector of registers should generate circuitry--make sure this works.
         if self.module.isVectorOfRegisters() and len(self.indexes) + 1 == self.module.depth():
+            allIndices = self.indexes + (indx,)
+            # we have picked out a register value; generate the corresponding hardware.
             print(self.indexes, indx)
             muxInputs = []
             for submodule in self.module.numberedSubmodules:
@@ -467,7 +469,7 @@ class PartiallyIndexedModule:
                 else:
                     # self is a vector of vectors
                     currentLevel = PartiallyIndexedModule(submodule)
-                    for tempIndex in self.indexes:
+                    for tempIndex in allIndices[1:]:
                         currentLevel = currentLevel.indexFurther(globalsHandler, tempIndex)
                     muxInputs.append(currentLevel)
             print('mux inputs:', muxInputs)
@@ -475,7 +477,7 @@ class PartiallyIndexedModule:
             for i in range(len(muxInputs)):
                 wireIn = Wire(muxInputs[i], mux.inputs[i])
                 globalsHandler.currentComponent.addChild(wireIn)
-            wireC = Wire(indx, mux.control)
+            wireC = Wire(allIndices[0], mux.control)
             globalsHandler.currentComponent.addChild(wireC)
             globalsHandler.currentComponent.addChild(mux)
             return mux.output
