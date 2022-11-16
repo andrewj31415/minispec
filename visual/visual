@@ -8,6 +8,7 @@ import argparse, os, pathlib
 
 import synth
 import hardware
+from hardware import *
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -45,7 +46,7 @@ if __name__ == '__main__':
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
     print('synthed!!!')
     print(synthesizedComponent)
-    
+
     # input/output files for elk
     pythonToJSFile = visualDir.joinpath("elkInput.txt")
     JSToPythonFile = visualDir.joinpath("elkOutput.txt")

@@ -853,7 +853,7 @@ def _():
     mi1, mi2 = Mux([Node(), Node()]), Mux([Node(), Node()])
     eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
     zero, one = Function('0'), Function('1')
-    iWires1 = [Wire(r[0].value, mi1.inputs[0]), Wire(d, mi1.inputs[1]), Wire(r[3].value, mi2.inputs[0]), Wire(d, mi2.inputs[1])]
+    iWires1 = [Wire(r[0].value, mi1.inputs[1]), Wire(d, mi1.inputs[0]), Wire(r[3].value, mi2.inputs[1]), Wire(d, mi2.inputs[0])]
     iWires2 = [Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control), Wire(mi1.output, r[0].input), Wire(mi2.output, r[3].input)]
     iWires3 = [Wire(s1, eq1.inputs[0]), Wire(s1, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
     iWires4 = [Wire(r[i].value, r[i].input) for i in (1,2,4,5)]
@@ -863,8 +863,7 @@ def _():
     regs = Module('Regs', [v] + oWires + oComp + iWires + iComp, {'data': d, 'sel1': s1, 'sel2': s2}, {'out': o})
     
     expected = regs
-    compare(output, expected)
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Handles variable indexing into submodules''')
 def _():
