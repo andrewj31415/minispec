@@ -22,9 +22,9 @@ newline = '\n' #used to format f-strings such as "Hi{newline}there" since backsl
 Implementation Agenda:
 
     - Fixing parametric lookups
-    - Module methods with arguments
     - Vectors of submodules (and more generally, indexing into a submodule)--use a demultiplexer
     - BSV imports of modules
+    - Multiple return statements
 
 Implemented:
 
@@ -43,6 +43,7 @@ Implemented:
     - parameterized typedefs
     - imports of other files
     - Shared modules/Modules with arguments
+    - Module methods with arguments
 
 '''
 
