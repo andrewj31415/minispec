@@ -620,6 +620,9 @@
             /* Put the sources into the document */
             sourceDivs = new Map(); //each of these maps filenames to DOM elements.
             sourceTitleDivs = new Map();
+            /* Both of the below have type Map<filename: string, { tokens: Array<HTMLSpanElement> }> 
+            The span elements of each array also have an additional attribute, .components: Array<[{},{}]>
+            which contains the objects with the data of the associated components and the parent positions. */
             sourceTokenAndWhitespaceSpanArrays = new Map(); //these map filenames to an array of DOM elements.
             sourceTokenSpanArrays = new Map(); //the ith span in this array represents the ith ANTLR4 token.
 
@@ -695,6 +698,13 @@
                     let tokenSpan = document.createElement("span");
                     tokenSpan.textContent = token;
                     tokenSpan.style.color = getTokenColor(token);
+                    tokenSpan.components = [];  // The arrays of component objects that have source including this token.
+                    // set up token to jump to source on click
+                    tokenSpan.addEventListener("click", () => {
+                        updateComponentJump(tokenSpan);
+                        // highlight the linked token
+                        highlightToken(sourceFileName, index);
+                    });
                     sourceTokens.push(tokenSpan);
                 }
                 for (let tokenSpan of sourceTokens) {
@@ -723,6 +733,7 @@
             }
             pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
 
+            /* Highlights the given source token. */
             let currentHighlightedToken = undefined;
             highlightToken = (filenameOfOrigin, tokenIndex) => {
                 if (currentHighlightedToken) {
@@ -732,6 +743,20 @@
                 tokenSpan.setAttribute('background-color', 'yellow');
                 tokenSpan.style.backgroundColor = "yellow";
                 currentHighlightedToken = tokenSpan;
+            };
+
+            /* Pulls up the given source and scrolls to the location. Places the location vertically centered
+            and horizontally as far right as possible (but still on screen). */
+            goToLocation = (filename, location) => {
+                assert(isString(filename));
+                assert(isNumber(location));
+                pullGivenSource(filename);
+                highlighterSpan = sourceTokenAndWhitespaceSpanArrays.get(filename)[location];
+                highlighterSpanWidth = highlighterSpan.offsetWidth; //offsetWidth is for inline elements
+                sourceDivHeight = sourceDivs.get(filename).clientHeight; //clientHeight excludes scrollbar
+                sourceDivWidth = sourceDivs.get(filename).clientWidth;
+                sourceDivs.get(filename).scrollTop = highlighterSpan.offsetTop - sourceDivHeight / 2;
+                sourceDivs.get(filename).scrollLeft = highlighterSpan.offsetLeft - sourceDivWidth + highlighterSpanWidth;
             };
 
             elementsToPlace = {};
@@ -771,11 +796,11 @@
                     // overName.setAttribute("fill", "blue");
                 }
 
-                // //recursive placement of children on click
+                //recursive placement of children on click
                 // overRect.addEventListener('dblclick', () => {
-                //     if (overName !== undefined) {
-                //         overName.remove();
-                //     }
+                //     // if (overName !== undefined) {
+                //     //     overName.remove();
+                //     // }
                 //     //place children and edges
                 //     if (component.children) {
                 //         for (child of component.children) {
@@ -807,15 +832,21 @@
                     for (filenameAndToken of tokensToLink) {
                         let filenameOfOrigin = filenameAndToken[0];
                         let tokenIndex = filenameAndToken[1];
-                        tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
-                        tokenSpan.addEventListener("click", () => {
-                            jumpToComponent(component, parentPos);
-                            // highlight the linked token
-                            highlightToken(filenameOfOrigin, tokenIndex);
-                        });
+                        let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
+                        tokenSpan.components.push([component, parentPos]);
+                        // tokenSpan.addEventListener("click", () => {
+                        //     updateComponentJump(tokenSpan);
+                        //     // highlight the linked token
+                        //     highlightToken(filenameOfOrigin, tokenIndex);
+                        // });
                         // highlight the token upon entering the box
                         overRect.addEventListener("mouseenter", () => {
                             highlightToken(filenameOfOrigin, tokenIndex);
+                        });
+                        // jump to the corresponding text on click 
+                        overRect.addEventListener("click", () => {
+                            console.log("click!");
+                            goToLocation(filenameOfOrigin, tokenIndex);
                         });
                         // tokenSpan.style.backgroundColor = "yellow";
                         tokenSpan.style.border = "1.5px solid black";
@@ -861,7 +892,8 @@
             //place the top level component
             placeComponent(topLevel, { x: 0, y: 0 });
 
-            //set up the reset zoom button
+            /* Given a component and its parent component's position,
+            moves the svg view window to focus on the component. */
             jumpToComponent = (component, parentPos) => {
                 let marginPercent = 10;
                 let margin = (component.width * marginPercent) / 100;
@@ -873,10 +905,31 @@
                 ];
                 svgDisplay.setAttribute("viewBox", destinationViewBox.join(" "));
             };
+            //set up the reset zoom button
             jumpToComponent(topLevel, { x: 0, y: 0 });
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
                 jumpToComponent(topLevel, { x: 0, y: 0 });
             });
+
+            /* Called by a token on click. Cycles through the token's corresponding components. */
+            currentToken = undefined;
+            currentIndex = 0;
+            updateComponentJump = (tokenSpan) => {
+                if (tokenSpan.components.length == 0) {
+                    // no tokens corresponding to this component
+                    return;
+                }
+                if (currentToken && currentToken == tokenSpan) {
+                    currentIndex = (currentIndex + 1) % currentToken.components.length;
+                } else {
+                    currentIndex = 0;
+                }
+                currentToken = tokenSpan;
+                component = tokenSpan.components[currentIndex][0];
+                parentPos = tokenSpan.components[currentIndex][1];
+                console.log('jumping to', component, parentPos);
+                jumpToComponent(component, parentPos);
+            };
 
             //shrink any components' text boxes so that they fit inside the component
             fitAllText();
