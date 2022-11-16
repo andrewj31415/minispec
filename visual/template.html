@@ -707,6 +707,9 @@
                             highlightToken(sourceFileName, index);
                         }
                     });
+                    tokenSpan.addEventListener("mouseenter", () => {
+                        highlightAssociatedComponents(tokenSpan);
+                    })
                     sourceTokens.push(tokenSpan);
                 }
                 for (let tokenSpan of sourceTokens) {
@@ -735,11 +738,13 @@
             }
             pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
 
+            /* Start of code for highlighting tokens and components */
+
             /* Highlights the given source token. */
             let currentHighlightedTokens = new Set();
             highlightToken = (filenameOfOrigin, tokenIndex) => {
                 for (let token of currentHighlightedTokens) {
-                    token.style.backgroundColor = "white"
+                    token.style.backgroundColor = "white";
                 }
                 currentHighlightedTokens = new Set();
                 let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
@@ -749,7 +754,7 @@
             /* Highlights the tokens associated to the given component. */
             highlightAssociatedTokens = (component) => {
                 for (let token of currentHighlightedTokens) {
-                    token.style.backgroundColor = "white"
+                    token.style.backgroundColor = "white";
                 }
                 currentHighlightedTokens = new Set();
                 let componentData = component.componentData;
@@ -798,6 +803,56 @@
                 goToLocation(filenameOfOrigin, tokenIndex);
             }
 
+            /* Called by a token on click. Cycles through the token's corresponding components.
+            Returns false if there are no associated components and true otherwise. */
+            currentTokenToJumpTo = undefined;
+            currentIndexTokenToJumpTo = 0;
+            updateComponentJump = (tokenSpan) => {
+                if (tokenSpan.components.length == 0) {
+                    // no tokens corresponding to this component
+                    return false;
+                }
+                if (currentTokenToJumpTo && currentTokenToJumpTo == tokenSpan) {
+                    currentIndexTokenToJumpTo = (currentIndexTokenToJumpTo + 1) % currentTokenToJumpTo.components.length;
+                } else {
+                    currentIndexTokenToJumpTo = 0;
+                }
+                currentTokenToJumpTo = tokenSpan;
+                component = tokenSpan.components[currentIndexTokenToJumpTo][0];
+                parentPos = tokenSpan.components[currentIndexTokenToJumpTo][1];
+                jumpToComponent(component, parentPos);
+                return true;
+            };
+
+            let currentHighlightedComponents = new Set();  // Stores the components currently being highlighted.
+            /* Highlights the given component. Called by a component on mouse enter. */
+            highlightComponent = (component) => {
+                for (let component of currentHighlightedComponents) {
+                    component.overRect.setAttribute("fill", "white");
+                }
+                currentHighlightedComponents = new Set();
+                component.overRect.setAttribute("fill", "yellow");
+                currentHighlightedComponents.add(component)
+            }
+            /* Called by a token on mouse enter. Highlights the corresponding components. */
+            highlightAssociatedComponents = (tokenSpan) => {
+                for (let component of currentHighlightedComponents) {
+                    component.overRect.setAttribute("fill", "white");
+                }
+                currentHighlightedComponents = new Set();
+                if (tokenSpan.components.length == 0) {
+                    // no tokens corresponding to this component
+                    return;
+                }
+                for (let componentAndParentPos of tokenSpan.components) {
+                    let component = componentAndParentPos[0];
+                    component.overRect.setAttribute("fill", "yellow");
+                    currentHighlightedComponents.add(component)
+                }
+            }
+
+            /* End of code for highlighting tokens and components */
+
             elementsToPlace = {};
             /* Python data goes here */
 
@@ -821,8 +876,9 @@
                     rect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
                     // rect.setAttribute("stroke", "blue");
                     // rect.setAttribute("stroke-width", 0.2);
-                    rect.setAttribute("fill", "transparent");
+                    rect.setAttribute("fill", "white");
                 }
+                component.overRect = overRect;
                 svgDisplay.appendChild(overRect);
                 let overName = undefined;
                 if (componentName.length > 0) {
@@ -887,6 +943,7 @@
                     // highlight the associated tokens upon entering the box
                     overRect.addEventListener("mouseenter", () => {
                         highlightAssociatedTokens(component);
+                        highlightComponent(component);
                     });
                 }
             };
@@ -945,27 +1002,6 @@
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
                 jumpToComponent(topLevel, { x: 0, y: 0 });
             });
-
-            /* Called by a token on click. Cycles through the token's corresponding components.
-            Returns false if there are no associated components and true otherwise. */
-            currentToken = undefined;
-            currentIndex = 0;
-            updateComponentJump = (tokenSpan) => {
-                if (tokenSpan.components.length == 0) {
-                    // no tokens corresponding to this component
-                    return false;
-                }
-                if (currentToken && currentToken == tokenSpan) {
-                    currentIndex = (currentIndex + 1) % currentToken.components.length;
-                } else {
-                    currentIndex = 0;
-                }
-                currentToken = tokenSpan;
-                component = tokenSpan.components[currentIndex][0];
-                parentPos = tokenSpan.components[currentIndex][1];
-                jumpToComponent(component, parentPos);
-                return true;
-            };
 
             //shrink any components' text boxes so that they fit inside the component
             fitAllText();
