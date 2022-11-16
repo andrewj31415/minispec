@@ -1419,6 +1419,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 functionScope.set(argNode, argName)
                 inputNodes.append(argNode)
         funcComponent = Function(functionName, [], inputNodes)
+        funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.functionId().getSourceInterval()[0]))
         previousOutputNode = self.globalsHandler.outputNode
         self.globalsHandler.outputNode = funcComponent.output
         # log the current component

@@ -758,6 +758,27 @@
                 sourceDivs.get(filename).scrollTop = highlighterSpan.offsetTop - sourceDivHeight / 2;
                 sourceDivs.get(filename).scrollLeft = highlighterSpan.offsetLeft - sourceDivWidth + highlighterSpanWidth;
             };
+            /* Called by a component on click. Cycles through the component's source tokens. */
+            currentComponentInFocus = undefined;
+            currentComponentSourceIndex = 0;
+            jumpThroughSource = (component) => {
+                let componentData = component.componentData;
+                if (componentData.tokensSourcedFrom == undefined) {
+                    // no source tokens
+                    console.log('early exit');
+                    return;
+                }
+                let tokensToLink = componentData.tokensSourcedFrom;
+                if (currentComponentInFocus && currentComponentInFocus == component) {
+                    currentComponentSourceIndex = (currentComponentSourceIndex + 1) % tokensToLink.length;
+                } else {
+                    currentComponentSourceIndex = 0;
+                }
+                currentComponentInFocus = component;
+                let filenameOfOrigin = tokensToLink[currentComponentSourceIndex][0];
+                let tokenIndex = tokensToLink[currentComponentSourceIndex][1];
+                goToLocation(filenameOfOrigin, tokenIndex);
+            }
 
             elementsToPlace = {};
             /* Python data goes here */
@@ -768,6 +789,7 @@
             placeComponent = (component, parentPos) => {
                 let absolutePos = { x: parentPos.x + component.x, y: parentPos.y + component.y }; // The absolute position of the componenet in the svg
                 let componentData = JSON.parse(component.id.slice(component.id.indexOf("|") + 1));
+                component.componentData = componentData;
                 let componentName = componentData.name;
 
                 let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -795,6 +817,11 @@
                     overName.setAttribute("pointer-events", "none");
                     // overName.setAttribute("fill", "blue");
                 }
+
+                // jump to the corresponding text on click 
+                overRect.addEventListener("click", () => {
+                    jumpThroughSource(component);
+                });
 
                 //recursive placement of children on click
                 // overRect.addEventListener('dblclick', () => {
@@ -826,7 +853,7 @@
                     }
                 }
 
-                //allow clicking on source to jump to component
+                // link component to source tokens
                 if (componentData.tokensSourcedFrom) {
                     let tokensToLink = componentData.tokensSourcedFrom;
                     for (filenameAndToken of tokensToLink) {
@@ -834,19 +861,9 @@
                         let tokenIndex = filenameAndToken[1];
                         let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
                         tokenSpan.components.push([component, parentPos]);
-                        // tokenSpan.addEventListener("click", () => {
-                        //     updateComponentJump(tokenSpan);
-                        //     // highlight the linked token
-                        //     highlightToken(filenameOfOrigin, tokenIndex);
-                        // });
                         // highlight the token upon entering the box
                         overRect.addEventListener("mouseenter", () => {
                             highlightToken(filenameOfOrigin, tokenIndex);
-                        });
-                        // jump to the corresponding text on click 
-                        overRect.addEventListener("click", () => {
-                            console.log("click!");
-                            goToLocation(filenameOfOrigin, tokenIndex);
                         });
                         // tokenSpan.style.backgroundColor = "yellow";
                         tokenSpan.style.border = "1.5px solid black";
@@ -927,7 +944,6 @@
                 currentToken = tokenSpan;
                 component = tokenSpan.components[currentIndex][0];
                 parentPos = tokenSpan.components[currentIndex][1];
-                console.log('jumping to', component, parentPos);
                 jumpToComponent(component, parentPos);
             };
 
