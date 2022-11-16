@@ -911,11 +911,33 @@ def _():
         regs = Module('Regs', [v] + oWires + oComp + iComp + iWires, {'data': d, 'sel': s}, {'getData': gd})
         r.append(regs)
     
+    r1, r2 = r
     v = VectorModule(r, 'Vector#(2,Regs)', r, {}, {})
-    mr = Module('MoreRegs', [v], {}, {})
+    d, s1, s2, gd = Node(), Node(), Node(), Node()
+    zero1d, zero2d = Function('0'), Function('0')
+    zero1s, zero2s = Function('0'), Function('0')
+    zero1, zero2, one1, one2 = Function('0'), Function('0'), Function('1'), Function('1')
+    muxr1s, muxr1d = Mux([Node(), Node()]), Mux([Node(), Node()])
+    muxr2s, muxr2d = Mux([Node(), Node()]), Mux([Node(), Node()])
+    eq1s, eq1d = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()]),
+    eq2s, eq2d = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
+    iWires1 = [Wire(d, muxr1d.inputs[0]), Wire(d, muxr2d.inputs[0]), Wire(zero1d.output, muxr1d.inputs[1]), Wire(zero2d.output, muxr2d.inputs[1])]
+    iWires2 = [Wire(s2, muxr1s.inputs[0]), Wire(s2, muxr2s.inputs[0]), Wire(zero1s.output, muxr1s.inputs[1]), Wire(zero2s.output, muxr2s.inputs[1])]
+    iWires3 = [Wire(muxr1d.output, r1.inputs['data']), Wire(muxr2d.output, r2.inputs['data']), Wire(muxr1s.output, r1.inputs['sel']), Wire(muxr2s.output, r2.inputs['sel'])]
+    iWires4 = [Wire(eq1d.output, muxr1d.control), Wire(eq2d.output, muxr2d.control), Wire(eq1s.output, muxr1s.control),Wire(eq2s.output, muxr2s.control)]
+    iWires5 = [Wire(s1, eq1d.inputs[0]), Wire(s1, eq2d.inputs[0]), Wire(s1, eq1s.inputs[0]), Wire(s1, eq2s.inputs[0])]
+    iWires6 = [Wire(zero1.output, eq1d.inputs[1]), Wire(one1.output, eq2d.inputs[1]), Wire(zero2.output, eq1s.inputs[1]), Wire(one2.output, eq2s.inputs[1])]
+    iWires = iWires1 + iWires2 + iWires3 + iWires4 + iWires5 + iWires6
+    iComp = [zero1d, zero2d, zero1s, zero2s, muxr1s, muxr2s, muxr1d, muxr2d, eq1s, eq1d, eq2s, eq2d, zero1, zero2, one1, one2]
+    muxo = Mux([Node(), Node()])
+    oWires = [Wire(muxo.output, gd), Wire(r1.methods['getData'], muxo.inputs[0]),
+                Wire(r2.methods['getData'], muxo.inputs[1]), Wire(s1, muxo.control)]
+    oComp = [muxo]
+    mr = Module('MoreRegs', [v] + iComp + oComp + iWires + oWires, {'data': d, 'sel1': s1, 'sel2': s2}, {'getData': gd})
 
-    expected = None
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    expected = mr
+    compare(output, expected)
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
 #run all the tests
