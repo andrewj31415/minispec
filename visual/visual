@@ -4,6 +4,11 @@
 
 # example call: ./../minispec/visual/visual eightbitcounter.ms EightBitCounter
 
+# Run
+#  export NODE_OPTIONS=--max_old_space_size=8192
+# in case of a JavaScript heap out-of-memory error.
+# See https://stackoverflow.com/questions/38558989/node-js-heap-out-of-memory for more info.
+
 import argparse, os, pathlib
 
 import synth

@@ -354,6 +354,9 @@ class BuiltInScope(Scope):
                 assert n.__class__ == IntegerLiteral, "Can only take log of integer"
                 return IntegerLiteral(n.value.bit_length())
             raise BluespecBuiltinFunction(functionComp, log2)
+        if varName == '$format' or varName == "$write" or varName == "$finish":
+            return UnsynthesizableComponent()
+        print(f"Warning: assuming {varName} is a Bluespec built-in or import")
         raise MissingVariableException(f"Couldn't find variable {varName} with parameters {parameters}.")
 
 #type annotation for context objects.
@@ -546,6 +549,8 @@ class UnsynthesizableComponent:
     UnsynthesizableComponent should stop and return another UnsynthesizableComponent. '''
     def __init__(self):
         pass
+    def accept(self, visitor):
+        return self
 
 '''
 Functions/modules/components will have nodes. Wires will be attached to nodes.
@@ -1047,7 +1052,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         raise Exception("Handled in typeDefStruct, not visited")
 
     def visitVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
-        typeValue = self.visit(ctx.typeName())
+        try:
+            typeValue = self.visit(ctx.typeName())
+        except MissingVariableException:
+            typeValue = Any
         for varInit in ctx.varInit():
             varName = varInit.var.getText()
             if (varInit.rhs):
@@ -1289,8 +1297,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         When we synthesize a methodDef with args, we should return the output to the synthesized method.
         When there are no args, there is no need to return anything.
         '''
+        #TODO remove extraneous argument args to visitMethodDef
 
-        methodType = self.visit(ctx.typeName())
+        try:
+            methodType = self.visit(ctx.typeName())
+        except MissingVariableException:
+            methodType = Any
         methodName = ctx.name.getText()
         methodOutputNode = Node(methodName, methodType)  # set up the output node
         if not ctx.argFormals():
@@ -1310,6 +1322,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 argType = self.visit(arg.typeName()) # typeName parse tree node
                 argName = arg.argName.getText() # name of the variable
                 argNode = Node(argName, argType)
+                methodScope.setPermanent(None, argName) # TODO consider should this line be done in the walker before synthesis?
                 methodScope.set(argNode, argName)
                 inputNodes.append(argNode)
             # set up and log the method component
@@ -1434,6 +1447,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             raise Exception("Not Implemented")
         lvalue = varList[0]
         value = self.visit(ctx.expression())
+        if value.__class__ == UnsynthesizableComponent:
+            return UnsynthesizableComponent()
         assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
         # We have one of:
         #   1. An ordinary variable -- assign with .set to the relevant node.
@@ -1638,6 +1653,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
         condition = self.visit(ctx.expression(0))
+        if condition.__class__ == UnsynthesizableComponent:
+            return UnsynthesizableComponent()
         if isMLiteral(condition):
             # we select the appropriate branch
             if condition == BooleanLiteral(True):
@@ -1648,6 +1665,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             value1 = self.visit(ctx.expression(1))
             value2 = self.visit(ctx.expression(2))
+            if value1.__class__ == UnsynthesizableComponent:
+                return UnsynthesizableComponent()
+            if value2.__class__ == UnsynthesizableComponent:
+                return UnsynthesizableComponent()
             # since the control signal is hardware, we convert the values to hardware as well (if needed)
             if isMLiteral(value1):
                 value1 = value1.getHardware(self.globalsHandler)
@@ -1789,10 +1810,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         right = self.visit(ctx.right)
         if not isNodeOrMLiteral(left): #we have received a ctx from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
             left = self.visit(left)
+            if left.__class__ == UnsynthesizableComponent:
+                return UnsynthesizableComponent()
         if not isNodeOrMLiteral(right):
             right = self.visit(right)
-        assert isNodeOrMLiteral(left), "left side must be literal or node"
-        assert isNodeOrMLiteral(right), "right side must be literal or node"
+            if right.__class__ == UnsynthesizableComponent:
+                return UnsynthesizableComponent()
+        assert isNodeOrMLiteral(left), f"left side must be literal or node, not {left} which is {left.__class__}"
+        assert isNodeOrMLiteral(right), f"right side must be literal or node, not {right} which is {right.__class__}"
         op = ctx.op.text
         '''Combining literals'''
         if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
@@ -1915,13 +1940,26 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''We have an integer literal, so we parse it and return it.
         Note that integer literals may be either integers or bit values. '''
         text = ctx.getText()
+        if text[0] == "'":
+            # unsized literal, integer
+            if 'b' in text: #binary
+                raise Exception("Not implemented")
+            if 'h' in text: #hex value
+                return IntegerLiteral(int("0x"+text[2:], 0))
+                raise Exception("Not implemented")
+            if 'd' in text: #decimal value
+                raise Exception("Not implemented")
         if 'b' in text: #binary
             width, binValue = text.split("'b")
             assert len(width) > 0 and len(binValue) > 0, f"something went wrong with parsing {text} into width {width} and value {binValue}"
             return Bit(IntegerLiteral(int(width)))(int("0b"+binValue, 0))
         if 'h' in text: #hex value
-            raise Exception("Not implemented")
-        if 'd' in text: #not sure, decimal?
+            raise Exception("Not implemented") # TODO test this
+            print(text)
+            width, binValue = text.split("'h")
+            assert len(width) > 0 and len(binValue) > 0, f"something went wrong with parsing {text} into width {width} and value {binValue}"
+            return Bit(IntegerLiteral(int(width)))(int("0x"+binValue, 0))
+        if 'd' in text: #decimal value
             raise Exception("Not implemented")
         # else we have an integer
         return IntegerLiteral(int(text))
@@ -1930,6 +1968,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''This is the return expression in a function. We need to put the correct wire
         attaching the right hand side to the output of the function.'''
         rhs = self.visit(ctx.expression())  # the node with the value to return
+        if rhs.__class__ == UnsynthesizableComponent:
+            return
         if isMLiteral(rhs):
             rhs = rhs.getHardware(self.globalsHandler)
         outputNode = self.globalsHandler.outputNode
@@ -1968,7 +2008,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
         Returns the result of slicing (the output of the slicing function).
         topLevel is true if this is the outermost slice in a nested slice (such as m[a][b][c]).'''
-        print('slicing', ctx.getText())
         toSliceFrom = self.visit(ctx.array)
         if toSliceFrom.__class__ == Register:
             toSliceFrom = toSliceFrom.value
@@ -2121,6 +2160,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
                 return toAccess.metadata.getMethod(field)
             return toAccess.methods[field]
+        if toAccess.__class__ == Register:
+            # we have a register containing a struct, extract its value.
+            toAccess = toAccess.value
         if isMLiteral(toAccess):
             return toAccess.fieldBinds[field]
         fieldExtractComp = Function('.'+field, [], [Node()])
