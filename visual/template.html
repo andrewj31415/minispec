@@ -701,9 +701,11 @@
                     tokenSpan.components = [];  // The arrays of component objects that have source including this token.
                     // set up token to jump to source on click
                     tokenSpan.addEventListener("click", () => {
-                        updateComponentJump(tokenSpan);
+                        let hasComponentsToHighlight = updateComponentJump(tokenSpan);
                         // highlight the linked token
-                        highlightToken(sourceFileName, index);
+                        if (hasComponentsToHighlight) {
+                            highlightToken(sourceFileName, index);
+                        }
                     });
                     sourceTokens.push(tokenSpan);
                 }
@@ -734,16 +736,32 @@
             pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
 
             /* Highlights the given source token. */
-            let currentHighlightedToken = undefined;
+            let currentHighlightedTokens = new Set();
             highlightToken = (filenameOfOrigin, tokenIndex) => {
-                if (currentHighlightedToken) {
-                    currentHighlightedToken.style.backgroundColor = "white"
+                for (let token of currentHighlightedTokens) {
+                    token.style.backgroundColor = "white"
                 }
+                currentHighlightedTokens = new Set();
                 let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
-                tokenSpan.setAttribute('background-color', 'yellow');
                 tokenSpan.style.backgroundColor = "yellow";
-                currentHighlightedToken = tokenSpan;
+                currentHighlightedTokens.add(tokenSpan);
             };
+            /* Highlights the tokens associated to the given component. */
+            highlightAssociatedTokens = (component) => {
+                for (let token of currentHighlightedTokens) {
+                    token.style.backgroundColor = "white"
+                }
+                currentHighlightedTokens = new Set();
+                let componentData = component.componentData;
+                let tokensToLink = componentData.tokensSourcedFrom;
+                for (filenameAndToken of tokensToLink) {
+                    let filenameOfOrigin = filenameAndToken[0];
+                    let tokenIndex = filenameAndToken[1];
+                    let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
+                    tokenSpan.style.backgroundColor = "yellow";
+                    currentHighlightedTokens.add(tokenSpan);
+                }
+            }
 
             /* Pulls up the given source and scrolls to the location. Places the location vertically centered
             and horizontally as far right as possible (but still on screen). */
@@ -861,15 +879,15 @@
                         let tokenIndex = filenameAndToken[1];
                         let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
                         tokenSpan.components.push([component, parentPos]);
-                        // highlight the token upon entering the box
-                        overRect.addEventListener("mouseenter", () => {
-                            highlightToken(filenameOfOrigin, tokenIndex);
-                        });
                         // tokenSpan.style.backgroundColor = "yellow";
                         tokenSpan.style.border = "1.5px solid black";
                         tokenSpan.style.borderRadius = "5px";
                         tokenSpan.style.cursor = "pointer";
                     }
+                    // highlight the associated tokens upon entering the box
+                    overRect.addEventListener("mouseenter", () => {
+                        highlightAssociatedTokens(component);
+                    });
                 }
             };
 
@@ -928,13 +946,14 @@
                 jumpToComponent(topLevel, { x: 0, y: 0 });
             });
 
-            /* Called by a token on click. Cycles through the token's corresponding components. */
+            /* Called by a token on click. Cycles through the token's corresponding components.
+            Returns false if there are no associated components and true otherwise. */
             currentToken = undefined;
             currentIndex = 0;
             updateComponentJump = (tokenSpan) => {
                 if (tokenSpan.components.length == 0) {
                     // no tokens corresponding to this component
-                    return;
+                    return false;
                 }
                 if (currentToken && currentToken == tokenSpan) {
                     currentIndex = (currentIndex + 1) % currentToken.components.length;
@@ -945,6 +964,7 @@
                 component = tokenSpan.components[currentIndex][0];
                 parentPos = tokenSpan.components[currentIndex][1];
                 jumpToComponent(component, parentPos);
+                return true;
             };
 
             //shrink any components' text boxes so that they fit inside the component
