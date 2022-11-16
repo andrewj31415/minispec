@@ -483,9 +483,29 @@ class PartiallyIndexedModule:
             globalsHandler.currentComponent.addChild(mux)
             return mux.output
         return PartiallyIndexedModule(self.module, self.indexes + (indx,))
-    def getInput(self, inputName: 'str') -> 'Node|MLiteral':
+    def getInput(self, globalsHandler: 'GlobalsHandler', inputName: 'str') -> 'Node|MLiteral':
         ''' Returns the corresponding input. '''
-        raise Exception("Not implemented")
+        assert len(self.indexes) == self.module.depth(), "Must have enough indices to select a nonvector submodule"
+        muxInputs = []
+        for submodule in self.module.numberedSubmodules:
+            if submodule.__class__ == Module:
+                # self is a vector of ordinary modules
+                muxInputs.append(submodule.methods[inputName])
+            else:
+                # self is a vector of vectors
+                currentLevel = PartiallyIndexedModule(submodule)
+                for tempIndex in self.indexes:
+                    currentLevel = currentLevel.indexFurther(globalsHandler, tempIndex)
+                muxInputs.append(currentLevel)
+        print('mux inputs:', muxInputs)
+        mux = Mux([Node() for i in muxInputs])
+        for i in range(len(muxInputs)):
+            wireIn = Wire(muxInputs[i], mux.inputs[i])
+            globalsHandler.currentComponent.addChild(wireIn)
+        wireC = Wire(self.indexes[0], mux.control)
+        globalsHandler.currentComponent.addChild(wireC)
+        globalsHandler.currentComponent.addChild(mux)
+        return mux.output
 
 class BluespecModuleWithMetadata:
     ''' An imported bluespec module must be recognizable, with methods for creating inputs/methods dynamically
@@ -1466,14 +1486,73 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                 print(currentLvalue.__class__)
                                 raise Exception("Not implemented")  # I don't think this case can occur.
                             currentLvalue = currentLvalue.lvalue()
-                        for indexValue in indexValues:
-                            if indexValue.__class__ != IntegerLiteral:
-                                raise Exception("Variable indexing into submodules is not implemented")
-                        nameToSet = currentLvalue.getText() + "."
-                        for indexValue in indexValues[::-1]:
-                            nameToSet += f'[{indexValue.value}]'
-                        nameToSet += inputName
-                        self.globalsHandler.currentScope.set(value, nameToSet)
+                        # for indexValue in indexValues:
+                        #     if indexValue.__class__ != IntegerLiteral:
+                        #         raise Exception("Variable indexing into submodules is not implemented")
+                        # nameToSet = currentLvalue.getText() + "."
+                        # for indexValue in indexValues[::-1]:
+                        #     nameToSet += f'[{indexValue.value}]'
+                        # nameToSet += inputName
+                        # self.globalsHandler.currentScope.set(value, nameToSet)
+                        '''Start of variable assignment'''
+                        regName = currentLvalue.getText()
+                        print('reg:', regName)
+                        outermostVector = self.globalsHandler.currentScope.get(self, regName)
+                        print(outermostVector)
+                        regName += "."
+                        regsToWrite = [regName]
+                        # collect the register names to write to
+                        for k in range(len(indexValues)):
+                            indexValue = indexValues[len(indexValues) - 1 - k]
+                            oldRegsToWrite = regsToWrite
+                            regsToWrite = []
+                            if indexValue.__class__ == IntegerLiteral:
+                                # fixed index value
+                                for i in range(len(oldRegsToWrite)):
+                                    regName = oldRegsToWrite[i] + f'[{indexValue.value}]'
+                                    regsToWrite.append(regName)
+                            else:
+                                # variable index value
+                                currentVector = outermostVector
+                                for j in range(k):
+                                    currentVector = currentVector.numberedSubmodules[0]
+                                print(currentVector)
+                                numSubmodules = len(currentVector.numberedSubmodules)
+                                print(numSubmodules)
+                                for j in range(numSubmodules):
+                                    for i in range(len(oldRegsToWrite)):
+                                        regName = oldRegsToWrite[i] + f'[{j}]'
+                                        regsToWrite.append(regName)
+                        # assign the correct values
+                        for i in range(len(regsToWrite)):
+                            regName = regsToWrite[i]
+                            val = value
+                            oldVal = self.globalsHandler.currentScope.get(self, regName + inputName)
+                            if isMLiteral(oldVal):
+                                oldVal = oldVal.getHardware(self.globalsHandler)
+                            # create the relevant hardware
+                            for k in range(len(indexValues)):
+                                indexValue = indexValues[len(indexValues) - 1 - k]
+                                if indexValue.__class__ == IntegerLiteral:
+                                    # fixed index value
+                                    pass
+                                else:
+                                    # variable index value, create a mux
+                                    mux = Mux([Node(), Node()])
+                                    eq = Function('=', [], [Node(), Node()])
+                                    regIndex = regName.split(']')[k].split('[')[1]
+                                    const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
+                                    w1 = Wire(eq.output, mux.control)
+                                    w2 = Wire(indexValue, eq.inputs[0])
+                                    w3 = Wire(const, eq.inputs[1])
+                                    w4 = Wire(val, mux.inputs[0])
+                                    w5 = Wire(oldVal, mux.inputs[1])
+                                    for component in [mux, eq, w1, w2, w3, w4, w5]:
+                                        self.globalsHandler.currentComponent.addChild(component)
+                                    val = mux.output
+                            self.globalsHandler.currentScope.set(val, regName + inputName)
+
+                        '''End of variable assignment'''
                         return
                     else:
                         raise Exception("Not implemented")  #TODO implement this TODO Can this case ever occur?
@@ -2034,14 +2113,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
         toAccess = self.visit(ctx.exprPrimary())
-        if toAccess.__class__ == PartiallyIndexedModule:
-            raise Exception("Not implemented")
-        if toAccess.__class__ == Module:
-            fieldToAccess = ctx.field.getText()
-            if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
-                return toAccess.metadata.getMethod(fieldToAccess)
-            return toAccess.methods[fieldToAccess]
         field = ctx.field.getText()
+        if toAccess.__class__ == PartiallyIndexedModule:
+            return toAccess.getInput(self.globalsHandler, field)
+        if toAccess.__class__ == Module:
+            field = ctx.field.getText()
+            if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
+                return toAccess.metadata.getMethod(field)
+            return toAccess.methods[field]
         if isMLiteral(toAccess):
             return toAccess.fieldBinds[field]
         fieldExtractComp = Function('.'+field, [], [Node()])

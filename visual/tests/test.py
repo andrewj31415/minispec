@@ -911,7 +911,7 @@ def _():
         regs = Module('Regs', [v] + oWires + oComp + iComp + iWires, {'data': d, 'sel': s}, {'getData': gd})
         r.append(regs)
     
-    v = VectorModule(r, 'Vector#(2,Regs)', r, [], {}, {})
+    v = VectorModule(r, 'Vector#(2,Regs)', r, {}, {})
     mr = Module('MoreRegs', [v], {}, {})
 
     expected = None
