@@ -870,7 +870,25 @@ def _():
     text = pull('moduleVectorVarSub')
 
     output = synth.parseAndSynth(text, 'Regs')
-    assert False, "Finish writing test"
+
+    r1, r2 = Register('Reg#(Bit#(4))'), Register('Reg#(Bit#(4))')
+    v = VectorModule([r1, r2], 'Vector#(2,Reg#(Bit#(4)))', [r1, r2], {}, {})
+    d, s, gd = Node(), Node(), Node()
+
+    mi1, mi2, mo = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
+    oWires = [Wire(r1.value, mo.inputs[0]), Wire(r2.value, mo.inputs[1]), Wire(s, mo.control), Wire(mo.output, gd)]
+    oComp = [mo]
+    eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
+    zero, one = Function('0'), Function('1')
+    iComp = [mi1, mi2, eq1, eq2, zero, one]
+    iWires1 = [Wire(d, mi1.inputs[0]), Wire(d, mi2.inputs[0]), Wire(r1.value, mi1.inputs[1]), Wire(r2.value, mi2.inputs[1])]
+    iWires2 = [Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)]
+    iWires3 = [Wire(s, eq1.inputs[0]), Wire(s, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
+    iWires = iWires1 + iWires2 + iWires3
+    regs = Module('Regs', [v] + oWires + oComp + iComp + iWires, {'data': d, 'sel': s}, {'getData': gd})
+
+    expected = regs
+    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
     output = synth.parseAndSynth(text, 'MoreRegs')
     
