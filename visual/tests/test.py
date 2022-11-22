@@ -493,15 +493,15 @@ def _():
 
     enable1, getCount1 = Node(), Node()
     and1, eq1, concat1, one1 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
-    lower3 = Module('Counter#(1)', [and1, eq1, concat1, one1, upper1, lower1, Wire(enable1, lower1.inputs['enable']), Wire(lower1.methods['getCount'], eq1.inputs[0]), Wire(one1.output, eq1.inputs[1]), Wire(eq1.output, and1.inputs[1]), Wire(enable1, and1.inputs[0]), Wire(and1.output, upper1.inputs['enable']), Wire(upper1.methods['getCount'], concat1.inputs[0]), Wire(lower1.methods['getCount'], concat1.inputs[1]), Wire(concat1.output, getCount1)], {'enable': enable1}, {'getCount': getCount1})
+    lower3 = Module('Counter#(1)', [lower1, upper1, and1, eq1, concat1, one1, Wire(enable1, lower1.inputs['enable']), Wire(lower1.methods['getCount'], eq1.inputs[0]), Wire(one1.output, eq1.inputs[1]), Wire(eq1.output, and1.inputs[1]), Wire(enable1, and1.inputs[0]), Wire(and1.output, upper1.inputs['enable']), Wire(upper1.methods['getCount'], concat1.inputs[0]), Wire(lower1.methods['getCount'], concat1.inputs[1]), Wire(concat1.output, getCount1)], {'enable': enable1}, {'getCount': getCount1})
 
     enable2, getCount2 = Node(), Node()
     and2, eq2, concat2, one2 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
-    upper3 = Module('Counter#(1)', [and2, eq2, concat2, one2, upper2, lower2, Wire(enable2, lower2.inputs['enable']), Wire(lower2.methods['getCount'], eq2.inputs[0]), Wire(one2.output, eq2.inputs[1]), Wire(eq2.output, and2.inputs[1]), Wire(enable2, and2.inputs[0]), Wire(and2.output, upper2.inputs['enable']), Wire(upper2.methods['getCount'], concat2.inputs[0]), Wire(lower2.methods['getCount'], concat2.inputs[1]), Wire(concat2.output, getCount2)], {'enable': enable2}, {'getCount': getCount2})
+    upper3 = Module('Counter#(1)', [lower2, upper2, and2, eq2, concat2, one2, Wire(enable2, lower2.inputs['enable']), Wire(lower2.methods['getCount'], eq2.inputs[0]), Wire(one2.output, eq2.inputs[1]), Wire(eq2.output, and2.inputs[1]), Wire(enable2, and2.inputs[0]), Wire(and2.output, upper2.inputs['enable']), Wire(upper2.methods['getCount'], concat2.inputs[0]), Wire(lower2.methods['getCount'], concat2.inputs[1]), Wire(concat2.output, getCount2)], {'enable': enable2}, {'getCount': getCount2})
 
     enable3, getCount3 = Node(), Node()
     and3, eq3, concat3, three = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('3')
-    counter2 = Module('Counter#(2)', [and3, eq3, concat3, three, upper3, lower3, Wire(enable3, lower3.inputs['enable']), Wire(lower3.methods['getCount'], eq3.inputs[0]), Wire(three.output, eq3.inputs[1]), Wire(eq3.output, and3.inputs[1]), Wire(enable3, and3.inputs[0]), Wire(and3.output, upper3.inputs['enable']), Wire(upper3.methods['getCount'], concat3.inputs[0]), Wire(lower3.methods['getCount'], concat3.inputs[1]), Wire(concat3.output, getCount3)], {'enable': enable3}, {'getCount': getCount3})
+    counter2 = Module('Counter#(2)', [lower3, upper3, and3, eq3, concat3, three, Wire(enable3, lower3.inputs['enable']), Wire(lower3.methods['getCount'], eq3.inputs[0]), Wire(three.output, eq3.inputs[1]), Wire(eq3.output, and3.inputs[1]), Wire(enable3, and3.inputs[0]), Wire(and3.output, upper3.inputs['enable']), Wire(upper3.methods['getCount'], concat3.inputs[0]), Wire(lower3.methods['getCount'], concat3.inputs[1]), Wire(concat3.output, getCount3)], {'enable': enable3}, {'getCount': getCount3})
 
     output = synth.parseAndSynth(text, 'Counter#(2)')
     expected = counter2
@@ -566,7 +566,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'f')
     expected = f
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Correctly handles variable indices and slice assignment''')
 def _():
@@ -584,7 +584,7 @@ def _():
     
     output = synth.parseAndSynth(text, 'f')
     expected = f
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 describe('''For Loops''')
 
@@ -600,7 +600,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'parity#(4)')
     expected = f
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 describe('''Types''')
 
@@ -613,7 +613,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'f')
     expected = Function('f', [n1, n2, n3, Wire(fa, n1.inputs[0]), Wire(n1.output, n2.inputs[0]), Wire(n2.output, n3.inputs[0]), Wire(n3.output, fo)], [fa], fo)
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 #TODO test synonyms in a module register
 
@@ -643,7 +643,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'combine#(1, 1, 1, 1)')
     expected = Function('combine#(1,1,1,1)', [de, Wire(de.output, o)], [a, b], o)
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Handles struct types''')
 def _():
@@ -658,7 +658,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'combine#(1, 1, 1, 2)')
     expected = Function('combine#(1,1,1,2)', [inp1, ind, inp2, inp3, inpset, r, pack, Wire(a, inp1.inputs[0]), Wire(b, ind.inputs[0]), Wire(inp1.output, pack.inputs[0]), Wire(ind.output, pack.inputs[1]), Wire(pack.output, inpset.inputs[0]), Wire(pack.output, inp2.inputs[0]), Wire(b, inp3.inputs[0]), Wire(inp2.output, r.inputs[0]), Wire(inp3.output, r.inputs[1]), Wire(r.output, inpset.inputs[1]), Wire(inpset.output, o)], [a, b], o)
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Handles parameterized typedef synonyms''')
 def _():
@@ -705,7 +705,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'SettableCounter')
     expected = m
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
   
 
 describe('''Advanced Modules''')
@@ -744,7 +744,7 @@ def _():
         nWires = [Wire(s0.output, n0.inputs[0]), Wire(s1.output, n1.inputs[0]), Wire(s2.output, n2.inputs[0]), Wire(s3.output, n3.inputs[0])]
         rWires = [Wire(n0.output, r00.input), Wire(n1.output, r01.input), Wire(n2.output, r10.input), Wire(n3.output, r11.input)]
         cWires = [Wire(r00.value, c.inputs[0]), Wire(r01.value, c.inputs[1]), Wire(r10.value, c.inputs[2]), Wire(r11.value, c.inputs[3])]
-        rev = Module('Reverse#(1)', [v, n0, n1, n2, n3, s0, s1, s2, s3, c, Wire(c.output, o)] + sWires + nWires + rWires + cWires, {'in': i}, {'out': o})
+        rev = Module('Reverse#(1)', [v, s0, s1, s2, s3, c, n0, n1, n2, n3, Wire(c.output, o)] + sWires + nWires + rWires + cWires, {'in': i}, {'out': o})
         revs.append(rev)
 
     r00, r01, r10, r11 = revs
@@ -756,7 +756,7 @@ def _():
     sWires = [Wire(i, s0.inputs[0]), Wire(i, s1.inputs[0]), Wire(i, s2.inputs[0]), Wire(i, s3.inputs[0])]
     rWires = [Wire(s0.output, r00.inputs['in']), Wire(s1.output, r01.inputs['in']), Wire(s2.output, r10.inputs['in']), Wire(s3.output, r11.inputs['in'])]
     cWires = [Wire(r00.methods['out'], c.inputs[0]), Wire(r01.methods['out'], c.inputs[1]), Wire(r10.methods['out'], c.inputs[2]), Wire(r11.methods['out'], c.inputs[3])]
-    rev2 = Module('Reverse#(2)', [v, s0, s1, s2, s3, c, Wire(c.output, o)] + sWires + rWires + cWires, {'in': i}, {'out': o})
+    rev2 = Module('Reverse#(2)', [v, s0, s1, s2, s3, c, Wire(c.output, o)] + cWires + sWires + rWires, {'in': i}, {'out': o})
 
     output = synth.parseAndSynth(text, 'Reverse#(2)')
     expected = rev2
@@ -773,7 +773,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'FIFO')
     expected = fifo
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
     count = Register('Reg#(Bit#(4))')
     mux = Mux([Node(), Node()])
@@ -793,7 +793,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'TopLevel')
     expected = top
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
   
 @it('''Handles module methods with arguments''')
 def _():
@@ -807,7 +807,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'Mem')
     expected = mem
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
     s1 = Register('Reg#(Bit#(4))')
     s2 = Register('Reg#(Bit#(4))')
@@ -824,7 +824,7 @@ def _():
 
     output = synth.parseAndSynth(text, 'TopLevel')
     expected = top
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Handles variable indexing into registers''')
 def _():
@@ -885,11 +885,10 @@ def _():
     iWires2 = [Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)]
     iWires3 = [Wire(s, eq1.inputs[0]), Wire(s, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
     iWires = iWires1 + iWires2 + iWires3
-    regs = Module('Regs', [v] + oWires + oComp + iComp + iWires, {'data': d, 'sel': s}, {'getData': gd})
+    regs = Module('Regs', [v] + oComp + iComp + oWires + iWires, {'data': d, 'sel': s}, {'getData': gd})
 
     expected = regs
-    assert expected.match(output), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
-
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
     output = synth.parseAndSynth(text, 'MoreRegs')
 
     r = []
@@ -907,36 +906,34 @@ def _():
         iWires1 = [Wire(d, mi1.inputs[0]), Wire(d, mi2.inputs[0]), Wire(r1.value, mi1.inputs[1]), Wire(r2.value, mi2.inputs[1])]
         iWires2 = [Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)]
         iWires3 = [Wire(s, eq1.inputs[0]), Wire(s, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
-        iWires = iWires1 + iWires2 + iWires3
-        regs = Module('Regs', [v] + oWires + oComp + iComp + iWires, {'data': d, 'sel': s}, {'getData': gd})
+        iWires = iWires1 + iWires3 + iWires2
+        regs = Module('Regs', [v] + oComp + iComp + oWires + iWires, {'data': d, 'sel': s}, {'getData': gd})
         r.append(regs)
     
     r1, r2 = r
     v = VectorModule(r, 'Vector#(2,Regs)', r, {}, {})
     d, s1, s2, gd = Node(), Node(), Node(), Node()
-    zero1d, zero2d = Function('0'), Function('0')
-    zero1s, zero2s = Function('0'), Function('0')
+    two1d, two2d = Function('2'), Function('2')
+    one1s, one2s = Function('1'), Function('1')
     zero1, zero2, one1, one2 = Function('0'), Function('0'), Function('1'), Function('1')
     muxr1s, muxr1d = Mux([Node(), Node()]), Mux([Node(), Node()])
     muxr2s, muxr2d = Mux([Node(), Node()]), Mux([Node(), Node()])
     eq1s, eq1d = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()]),
     eq2s, eq2d = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
-    iWires1 = [Wire(d, muxr1d.inputs[0]), Wire(d, muxr2d.inputs[0]), Wire(zero1d.output, muxr1d.inputs[1]), Wire(zero2d.output, muxr2d.inputs[1])]
-    iWires2 = [Wire(s2, muxr1s.inputs[0]), Wire(s2, muxr2s.inputs[0]), Wire(zero1s.output, muxr1s.inputs[1]), Wire(zero2s.output, muxr2s.inputs[1])]
+    iWires1 = [Wire(d, muxr1d.inputs[0]), Wire(d, muxr2d.inputs[0]), Wire(two1d.output, muxr1d.inputs[1]), Wire(two2d.output, muxr2d.inputs[1])]
+    iWires2 = [Wire(s2, muxr1s.inputs[0]), Wire(s2, muxr2s.inputs[0]), Wire(one1s.output, muxr1s.inputs[1]), Wire(one2s.output, muxr2s.inputs[1])]
     iWires3 = [Wire(muxr1d.output, r1.inputs['data']), Wire(muxr2d.output, r2.inputs['data']), Wire(muxr1s.output, r1.inputs['sel']), Wire(muxr2s.output, r2.inputs['sel'])]
     iWires4 = [Wire(eq1d.output, muxr1d.control), Wire(eq2d.output, muxr2d.control), Wire(eq1s.output, muxr1s.control),Wire(eq2s.output, muxr2s.control)]
     iWires5 = [Wire(s1, eq1d.inputs[0]), Wire(s1, eq2d.inputs[0]), Wire(s1, eq1s.inputs[0]), Wire(s1, eq2s.inputs[0])]
     iWires6 = [Wire(zero1.output, eq1d.inputs[1]), Wire(one1.output, eq2d.inputs[1]), Wire(zero2.output, eq1s.inputs[1]), Wire(one2.output, eq2s.inputs[1])]
-    iWires = iWires1 + iWires2 + iWires3 + iWires4 + iWires5 + iWires6
-    iComp = [zero1d, zero2d, zero1s, zero2s, muxr1s, muxr2s, muxr1d, muxr2d, eq1s, eq1d, eq2s, eq2d, zero1, zero2, one1, one2]
+    iWires = iWires6 + iWires1 + iWires2 + iWires3 + iWires4 + iWires5
     muxo = Mux([Node(), Node()])
     oWires = [Wire(muxo.output, gd), Wire(r1.methods['getData'], muxo.inputs[0]),
                 Wire(r2.methods['getData'], muxo.inputs[1]), Wire(s1, muxo.control)]
-    oComp = [muxo]
-    mr = Module('MoreRegs', [v] + iComp + oComp + iWires + oWires, {'data': d, 'sel1': s1, 'sel2': s2}, {'getData': gd})
+    comp = [muxo, one1, two2d, one2, two1d, one1s, one2s, muxr1s, muxr2s, muxr1d, muxr2d, eq1s, eq1d, eq2s, eq2d, zero1, zero2]
+    mr = Module('MoreRegs', [v] + comp + oWires + iWires, {'data': d, 'sel1': s1, 'sel2': s2}, {'getData': gd})
 
     expected = mr
-    compare(output, expected)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
@@ -1017,3 +1014,5 @@ for i in range(len(failedTests)):
     print(errorMessage)
     print()
 
+print(msElapsed, msElapsedTotal)
+print(msElapsed/msElapsedTotal)

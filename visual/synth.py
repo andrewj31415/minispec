@@ -464,7 +464,6 @@ class PartiallyIndexedModule:
         if self.module.isVectorOfRegisters() and len(self.indexes) + 1 == self.module.depth():
             allIndices = self.indexes + (indx,)
             # we have picked out a register value; generate the corresponding hardware.
-            print(self.indexes, indx)
             muxInputs = []
             for submodule in self.module.numberedSubmodules:
                 if submodule.__class__ == Register:
@@ -476,7 +475,6 @@ class PartiallyIndexedModule:
                     for tempIndex in allIndices[1:]:
                         currentLevel = currentLevel.indexFurther(globalsHandler, tempIndex)
                     muxInputs.append(currentLevel)
-            print('mux inputs:', muxInputs)
             mux = Mux([Node() for i in muxInputs])
             for i in range(len(muxInputs)):
                 wireIn = Wire(muxInputs[i], mux.inputs[i])
@@ -500,7 +498,6 @@ class PartiallyIndexedModule:
                 for tempIndex in self.indexes:
                     currentLevel = currentLevel.indexFurther(globalsHandler, tempIndex)
                 muxInputs.append(currentLevel)
-        print('mux inputs:', muxInputs)
         mux = Mux([Node() for i in muxInputs])
         for i in range(len(muxInputs)):
             wireIn = Wire(muxInputs[i], mux.inputs[i])
@@ -1512,9 +1509,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         # self.globalsHandler.currentScope.set(value, nameToSet)
                         '''Start of variable assignment'''
                         regName = currentLvalue.getText()
-                        print('reg:', regName)
                         outermostVector = self.globalsHandler.currentScope.get(self, regName)
-                        print(outermostVector)
                         regName += "."
                         regsToWrite = [regName]
                         # collect the register names to write to
@@ -1532,9 +1527,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                 currentVector = outermostVector
                                 for j in range(k):
                                     currentVector = currentVector.numberedSubmodules[0]
-                                print(currentVector)
                                 numSubmodules = len(currentVector.numberedSubmodules)
-                                print(numSubmodules)
                                 for j in range(numSubmodules):
                                     for i in range(len(oldRegsToWrite)):
                                         regName = oldRegsToWrite[i] + f'[{j}]'
@@ -2103,7 +2096,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 funcComponent = self.visit(functionDef)  #synthesize the function internals
             except MissingVariableException as e:
                 # we have an unknown bluespec built-in function
-                print("missing variable exception", functionToCall)
                 functionName = functionToCall
                 if len(params) > 0:  #attach parameters to the function name if present
                     functionName += "#(" + ",".join(str(i) for i in params) + ")"
@@ -2211,9 +2203,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             currentlvalue = currentlvalue.lvalue()
         assert currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext, "Unrecognized format for assignment to vector of registers"
         regName = currentlvalue.getText()
-        print('reg:', regName)
         outermostVector = self.globalsHandler.currentScope.get(self, regName)
-        print(outermostVector)
         regName += "."
         regsToWrite = [regName]
         # collect the register names to write to
@@ -2231,9 +2221,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 currentVector = outermostVector
                 for j in range(k):
                     currentVector = currentVector.numberedSubmodules[0]
-                print(currentVector)
                 numSubmodules = len(currentVector.numberedSubmodules)
-                print(numSubmodules)
                 for j in range(numSubmodules):
                     for i in range(len(oldRegsToWrite)):
                         regName = oldRegsToWrite[i] + f'[{j}]'

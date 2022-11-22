@@ -3,8 +3,8 @@
 
 module Regs;
     Vector#(2, Reg#(Bit#(4))) regs(0);
-    input Bit#(4) data default = 0;
-    input Bit#(1) sel default = 0;
+    input Bit#(4) data default = 2;
+    input Bit#(1) sel default = 1;
     method Bit#(4) getData = regs[sel];
     rule tick;
         regs[sel] <= data;
