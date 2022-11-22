@@ -17,10 +17,13 @@ msc
 
 synth/yosys
 
+# Visual
 visual/antlr4
 visual/sample.html
 visual/elk/elkInput.txt
 visual/elk/elkOutput.txt
+# Coverage testing
+.coverage
 
 # Documentation
 *.aux

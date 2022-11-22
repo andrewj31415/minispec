@@ -1013,6 +1013,3 @@ for i in range(len(failedTests)):
     print()
     print(errorMessage)
     print()
-
-print(msElapsed, msElapsedTotal)
-print(msElapsed/msElapsedTotal)

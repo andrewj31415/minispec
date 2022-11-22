@@ -197,9 +197,6 @@ class Scope:
         for varName in self.temporaryScope.temporaryValues:
             output += "\n  " + varName + ": " + str(self.temporaryScope.temporaryValues[varName])
         return output
-    def clearTemporaryValues(self):
-        '''clears temporary values used in synthesis. should be called after synthesizing a function/module.'''
-        self.temporaryScope.temporaryValues = {}
     def matchParams(visitor, intValues: 'list[int]', storedParams: 'list[ctxType|str]'):
         '''returns a dictionary mapping str -> int if intValues can fit storedParams.
         returns None otherwise.'''
