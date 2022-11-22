@@ -1,5 +1,16 @@
 
-# needed to import parsesynth.py
+'''
+This file tests that the minispec interpreter in synth.py correctly interprets minispec
+code to the hardware representation in hardware.py.
+
+To run the tests, call `python3 test.py`.
+
+To perform coverage testing, first install coverage with `pip install coverage`. Then
+run `coverage run test.py` and `coverage html`, which generates an html webpage
+which may be accessed from htmlcov/index.html.
+'''
+
+# needed to import synth.py and hardware.py since they are in a different folder
 import os, sys  # see https://stackoverflow.com/questions/16780014/import-file-from-parent-directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -7,8 +18,8 @@ from hardware import *
 import synth
 
 import pathlib
-def pull(name):
-    '''reads the text of the given file and returns it'''
+def pull(name: 'str') -> 'str':
+    ''' reads the text of the given file and returns it '''
     textFile = pathlib.Path(__file__).with_name(name + ".ms")
     text = textFile.read_text()
     return text
@@ -26,7 +37,6 @@ def skip(name: 'str'):
     return skipLogger
 
 it.skip = skip
-
 
 def describe(categoryName: 'str'):
     tests.append(categoryName)
