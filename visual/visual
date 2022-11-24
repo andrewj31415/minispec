@@ -20,6 +20,7 @@ if __name__ == '__main__':
     parser.add_argument("file", help="Minispec(.ms) file containing the function or module to view")
     parser.add_argument("target", help="Name of the function or module to synthesize")
     parser.add_argument("--visualdir", "-s", default="visualDir", help="Folder for intermediate visual files")
+    parser.add_argument("--all", "-a", default=False, action="store_true", help="Layout all components recursively")
     args = parser.parse_args()
 
     if not os.path.exists(args.visualdir):
@@ -52,42 +53,68 @@ if __name__ == '__main__':
     print('synthed!!!')
     print(synthesizedComponent)
 
-    # input/output files for elk
-    pythonToJSFile = visualDir.joinpath("elkInput.txt")
-    JSToPythonFile = visualDir.joinpath("elkOutput.txt")
-    absoluteFilePath = pathlib.Path(__file__).resolve()
-    ELKcaller = absoluteFilePath.with_name("elk").joinpath("place.js")
+    if args.all:
+        # Hardcode locations of all components recursively via ELKJS at compile time.
+
+        # input/output files for elk
+        pythonToJSFile = visualDir.joinpath("elkInput.txt")
+        JSToPythonFile = visualDir.joinpath("elkOutput.txt")
+        absoluteFilePath = pathlib.Path(__file__).resolve()
+        ELKcaller = absoluteFilePath.with_name("elk").joinpath("place.js")
 
 
-    # if not os.path.exists(JSToPythonFile):
-    #     with JSToPythonFile.open('w') as fp: # create the output file if it does not exist
-    #         pass
+        # if not os.path.exists(JSToPythonFile):
+        #     with JSToPythonFile.open('w') as fp: # create the output file if it does not exist
+        #         pass
 
-    with pythonToJSFile.open('w') as fp: # write to a file to give to elk
-        fp.write(hardware.getELK(synthesizedComponent))
+        with pythonToJSFile.open('w') as fp: # write to a file to give to elk
+            fp.write(hardware.getELK(synthesizedComponent))
 
-    print("elkcaller", ELKcaller)
-    os.system(f"cd {visualDir} && node {ELKcaller}")
+        print("elkcaller", ELKcaller)
+        os.system(f"cd {visualDir} && node {ELKcaller}")
 
-    elkOutput = JSToPythonFile.read_text() # the output from elk
+        elkOutput = JSToPythonFile.read_text() # the output from elk
 
-    templateFile = pathlib.Path(__file__).with_name('template.html')
-    template = templateFile.read_text()
+        templateFile = pathlib.Path(__file__).with_name('template.html')
+        template = templateFile.read_text()
 
-    templateParts = template.split("/* Python data goes here */")
-    numInsertionPoints = 2
-    assert len(templateParts) == numInsertionPoints + 1, f"Expected {numInsertionPoints+1} segments from {numInsertionPoints} insertion points but found {len(templateParts)} segments instead."
+        templateParts = template.split("/* Python data goes here */")
+        numInsertionPoints = 2
+        assert len(templateParts) == numInsertionPoints + 1, f"Expected {numInsertionPoints+1} segments from {numInsertionPoints} insertion points but found {len(templateParts)} segments instead."
 
-    sourcesInfo = ''
-    for sourceInfo in sourceFilesCollect:
-        filename, text = sourceInfo
-        sourcesInfo += f'''sources.set("{filename}", {{
-        tokens: {synth.tokensAndWhitespace(text)}
-    }});\n'''
+        sourcesInfo = ''
+        for sourceInfo in sourceFilesCollect:
+            filename, text = sourceInfo
+            sourcesInfo += f'''sources.set("{filename}", {{
+            tokens: {synth.tokensAndWhitespace(text)}
+        }});\n'''
 
-    elementsToPlace = f'''elementsToPlace = {elkOutput}'''
+        elementsToPlace = f'''elementsToPlace = {elkOutput}'''
 
-    template = templateParts[0] + sourcesInfo + templateParts[1] + elementsToPlace + templateParts[2]
+        template = templateParts[0] + sourcesInfo + templateParts[1] + elementsToPlace + templateParts[2]
+
+    else:
+        # Layout components at page load.
+
+        elkInput = hardware.getELK(synthesizedComponent) # the components to feed in
+
+        templateFile = pathlib.Path(__file__).with_name('auto-place-template.html')
+        template = templateFile.read_text()
+
+        templateParts = template.split("/* Python data goes here */")
+        numInsertionPoints = 2
+        assert len(templateParts) == numInsertionPoints + 1, f"Expected {numInsertionPoints+1} segments from {numInsertionPoints} insertion points but found {len(templateParts)} segments instead."
+
+        sourcesInfo = ''
+        for sourceInfo in sourceFilesCollect:
+            filename, text = sourceInfo
+            sourcesInfo += f'''sources.set("{filename}", {{
+            tokens: {synth.tokensAndWhitespace(text)}
+        }});\n'''
+
+        elementsToPlace = f'''elkInput = {elkInput}'''
+
+        template = templateParts[0] + sourcesInfo + templateParts[1] + elementsToPlace + templateParts[2]
 
     # the equivalent of synths's sanitizeParametric
     outputFilename = topLevel.replace("#", "_").replace(",", "_").replace("(", "").replace(")", "").replace(" ", "").replace("\t", "")
