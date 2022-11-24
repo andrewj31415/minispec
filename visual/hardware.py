@@ -14,6 +14,32 @@ Here is another adjacent subnode link:
 https://github.com/kieler/elkjs/issues/111
 '''
 
+''' The ELK JSON format.
+A JSON object is an acyclic nested system of dictionaries with string keys:
+    JSON = dict[str, JSON|str|int]
+There is a standard encoding of JSON objects into strings.
+Both python and javascript have methods for converting JSON strings back into the corresponding system of (in
+python) dictionaries or (in javascript) objects. In python, the `json.dumps` method (from `import json`) converts
+a JSON dictionary into the corrseponding string; in javascript, the corresponding method is `JSON.stringify` and
+the reverse method is `JSON.parse`. Furthermore, as used in template.html, the output of javascript's JSON.stringify
+method is legitimate javascript code, which is placed into the html output directly and when run, recreates the
+original JSON system of objects.
+    ELKJS accepts as input a JSON object which describes the nodes and edges of a graph. ELKJS then returns the same
+JSON object (not sure if copied or mutated) annotated with layouting info--in the case of a node/port, coordinates and size
+information, and in the case of an edge, a collection of start/end coordinates of segments.
+    In ELKJS, every node and every edge must have a unique id, so that they may be identified by the library.
+We also use the ids to store additional information not used by the layouter, such as source map information.
+This is to avoid possible collisions between the layouter's object attributes and our object attributes, and
+uses the fact that ELKJS is known to preserve id information.
+The id of an object is then:
+    <unique id created as component/wire creation> + '|' + <stringified json object with additional info>
+The unique id created for each component/wire does not contain a '|' and is guaranteed to be unique via a
+class variable counter that is incremented each time an instance is created. It has not been tested whether
+or not longer node names may possibly slow down layout generation.
+    In the html template, the portion of the id past the '|' is parsed into a JSON object to read off any
+properties that go beyond ELK's layouting data.
+'''
+
 def getELK(component: 'Component') -> str:
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
     return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered', 'hierarchyHandling': 'INCLUDE_CHILDREN' }, 'children': [ toELK(component) ], 'edges': [] } )
