@@ -84,6 +84,17 @@ Names for methods in code:
 Note: only boolean unary operations return booleans. Reduction operators return Bit#(1)'s.
 '''
 
+arithmetic_binary = set(['**','*', '/', '%', '+', '-', '<<', '>>'])
+relational_binary = set(['<', '>', '<=', '>='])
+equality_binary = set(['==', '!='])
+logical_binary = set(['&', '^', '^~', '~^', '|'])
+boolean_binary = set(['&&', '||'])
+
+boolean_unary = set(['!'])
+logical_unary = set(['~'])
+arithmetic_unary = set(['+', '-'])
+reduction_unary = set(['&', '|', '^'])
+
 class MType(type):
     ''' The type of a minispec type. Instances are minispec types. '''
     def __str__(self):
