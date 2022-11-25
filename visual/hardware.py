@@ -106,7 +106,7 @@ def elkID(item: 'Component|Node') -> str:
         return f'node{item._id}'
     elif issubclass(item.__class__, Component):
         if item.__class__ == Mux:
-            return f"component{item._id}|{json.dumps({'name':''})}"
+            return f"component{item._id}|{json.dumps({'name':'', 'weight':weightAdjust(item.weight())})}"
         if item.__class__ == Wire:
             return f"component{item._id}|{json.dumps({'name':''})}"
         if item.__class__ == Function:
