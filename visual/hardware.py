@@ -98,7 +98,7 @@ def getELK(component: 'Component') -> str:
 
 def weightAdjust(weight):
     ''' Given the 'weight' of a component, returns the amount of space to reserve for the label of the element. '''
-    return 10*weight**0.6
+    return 30*weight**0.25
 
 def elkID(item: 'Component|Node') -> str:
     ''' Returns a unique id for the node or component for use in ELK '''
@@ -106,13 +106,13 @@ def elkID(item: 'Component|Node') -> str:
         return f'node{item._id}'
     elif issubclass(item.__class__, Component):
         if item.__class__ == Mux:
-            return f"component{item._id}|{json.dumps({'name':'', 'weight':weightAdjust(item.weight())})}"
+            return f"component{item._id}|{json.dumps({'name':'', 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight()})}"
         if item.__class__ == Wire:
             return f"component{item._id}|{json.dumps({'name':''})}"
         if item.__class__ == Function:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'tokensSourcedFrom':item.tokensSourcedFrom})}"
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.tokensSourcedFrom})}"
         if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight())})}"
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight()})}"
         return f"component{item._id}|{json.dumps({'name':item.name})}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
