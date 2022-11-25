@@ -52,8 +52,8 @@ def getELK(component: 'Component') -> str:
                 getPorts(child, portsToComponents)
         if "ports" in componentELK:
             for port in componentELK["ports"]:
-                portsToComponents[port["id"]] = componentELK
-    portsToComponents = {}  # Maps port ids to the corresponding component
+                portsToComponents[port["id"]] = (componentELK, port)
+    portsToComponents = {}  # Maps port ids to a tuple (corresponding component, port)
     getPorts(componentELK, portsToComponents)
 
     # Move nonhierarchical edges to be children of the closest common ancestor
@@ -64,23 +64,16 @@ def getELK(component: 'Component') -> str:
                 assert len(edge["targets"]) == 1
                 sourceNode = edge["sources"][0]
                 targetNode = edge["targets"][0]
-                # TODO currently, the function f(x) = x; will have its wire moved
-                # outside the function; this is the case since for registers, such a wire
-                # should go outside the register ... reconsider this.
-                if "parent" in portsToComponents[sourceNode]:
-                    currentELK = portsToComponents[sourceNode]["parent"]
-                else:
-                    # if we are at the top level and there is no parent
-                    currentELK = portsToComponents[sourceNode]
+                currentELK, currentPort = portsToComponents[sourceNode]
+                if currentPort["properties"]["port.side"] == "EAST":
+                    currentELK = currentELK["parent"]
                 sourceParents = [currentELK]
                 while "parent" in currentELK:
                     currentELK = currentELK["parent"]
                     sourceParents.append(currentELK)
-                if "parent" in portsToComponents[targetNode]:
-                    currentELK = portsToComponents[targetNode]["parent"]
-                else:
-                    # if we are at the top level and there is no parent
-                    currentELK = portsToComponents[targetNode]
+                currentELK, currentPort = portsToComponents[targetNode]
+                if currentPort["properties"]["port.side"] == "WEST":
+                    currentELK = currentELK["parent"]
                 while currentELK not in sourceParents:
                     assert "parent" in currentELK, "Can't find common ancestor for edge source/target"
                     currentELK = currentELK["parent"]
