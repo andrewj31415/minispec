@@ -42,7 +42,66 @@ properties that go beyond ELK's layouting data.
 
 def getELK(component: 'Component') -> str:
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
-    return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered', 'hierarchyHandling': 'INCLUDE_CHILDREN' }, 'children': [ toELK(component) ], 'edges': [] } )
+    componentELK = toELK(component)
+
+    # Collect all ports and mark parent pointers
+    def getPorts(componentELK, portsToComponents):
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                child["parent"] = componentELK
+                getPorts(child, portsToComponents)
+        if "ports" in componentELK:
+            for port in componentELK["ports"]:
+                portsToComponents[port["id"]] = componentELK
+    portsToComponents = {}  # Maps port ids to the corresponding component
+    getPorts(componentELK, portsToComponents)
+
+    # Move nonhierarchical edges to be children of the closest common ancestor
+    def liftEdges(componentELK):
+        if "edges" in componentELK:
+            for edge in componentELK["edges"].copy():  # copies the list since we may be removing edges from it
+                assert len(edge["sources"]) == 1
+                assert len(edge["targets"]) == 1
+                sourceNode = edge["sources"][0]
+                targetNode = edge["targets"][0]
+                # TODO currently, the function f(x) = x; will have its wire moved
+                # outside the function; this is the case since for registers, such a wire
+                # should go outside the register ... reconsider this.
+                if "parent" in portsToComponents[sourceNode]:
+                    currentELK = portsToComponents[sourceNode]["parent"]
+                else:
+                    # if we are at the top level and there is no parent
+                    currentELK = portsToComponents[sourceNode]
+                sourceParents = [currentELK]
+                while "parent" in currentELK:
+                    currentELK = currentELK["parent"]
+                    sourceParents.append(currentELK)
+                if "parent" in portsToComponents[targetNode]:
+                    currentELK = portsToComponents[targetNode]["parent"]
+                else:
+                    # if we are at the top level and there is no parent
+                    currentELK = portsToComponents[targetNode]
+                while currentELK not in sourceParents:
+                    assert "parent" in currentELK, "Can't find common ancestor for edge source/target"
+                    currentELK = currentELK["parent"]
+                componentELK["edges"].remove(edge)
+                if "edges" not in currentELK:
+                    currentELK["edges"] = []
+                currentELK["edges"].append(edge)
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                liftEdges(child)
+    liftEdges(componentELK)
+
+    # Remove parent pointers (since JSON can't have circular references)
+    def removeParents(componentELK):
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                del child["parent"]
+                removeParents(child)
+    removeParents(componentELK)
+
+    return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered', 'hierarchyHandling': 'INCLUDE_CHILDREN' }, 'children': [ componentELK ], 'edges': [] } )
 
 def weightAdjust(weight):
     ''' Given the 'weight' of a component, returns the amount of space to reserve for the label of the element. '''
