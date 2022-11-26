@@ -473,6 +473,7 @@ class PartiallyIndexedModule:
                         currentLevel = currentLevel.indexFurther(globalsHandler, tempIndex)
                     muxInputs.append(currentLevel)
             mux = Mux([Node() for i in muxInputs])
+            mux.inputNames = [str(i) for i in range(len(muxInputs))]
             for i in range(len(muxInputs)):
                 wireIn = Wire(muxInputs[i], mux.inputs[i])
                 globalsHandler.currentComponent.addChild(wireIn)
@@ -496,6 +497,7 @@ class PartiallyIndexedModule:
                     currentLevel = currentLevel.indexFurther(globalsHandler, tempIndex)
                 muxInputs.append(currentLevel)
         mux = Mux([Node() for i in muxInputs])
+        mux.inputNames = [str(i) for i in range(len(muxInputs))]
         for i in range(len(muxInputs)):
             wireIn = Wire(muxInputs[i], mux.inputs[i])
             globalsHandler.currentComponent.addChild(wireIn)
@@ -1548,6 +1550,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                 else:
                                     # variable index value, create a mux
                                     mux = Mux([Node(), Node()])
+                                    mux.inputNames = [BooleanLiteral(True), BooleanLiteral(False)]
                                     eq = Function('=', [], [Node(), Node()])
                                     regIndex = regName.split(']')[k].split('[')[1]
                                     const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
@@ -1669,6 +1672,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if isMLiteral(value2):
                 value2 = value2.getHardware(self.globalsHandler)
             muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
+            muxComponent.inputNames = [BooleanLiteral(True), BooleanLiteral(False)]
             for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
                 self.globalsHandler.currentComponent.addChild(component)
             return muxComponent.output
@@ -1718,6 +1722,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if hasDefault:
                 possibleOutputs.append(defaultValue)
             mux = Mux([Node() for i in range(len(possibleOutputs))])
+            mux.inputNames = [str(pair[0]) for pair in expri]
             for i in range(len(possibleOutputs)):  # convert all possible outputs to hardware
                 possibleOutput = possibleOutputs[i]
                 if isMLiteral(possibleOutput):
@@ -1747,6 +1752,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         # at this point, each entry of expri will run and there is a default value.
         muxes = [Mux([Node(), Node()]) for i in range(len(expri))]
+        # TODO mux inputNames
         nextWires = [ Wire(muxes[i+1].output, muxes[i].inputs[1]) for i in range(len(expri)-1) ]
 
         valueWires = []
@@ -2240,6 +2246,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 else:
                     # variable index value, create a mux
                     mux = Mux([Node(), Node()])
+                    # TODO mux inputNames
                     eq = Function('=', [], [Node(), Node()])
                     regIndex = regName.split(']')[k].split('[')[1]
                     const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
@@ -2277,11 +2284,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentScope = elseScope
             self.visit(elseStmt)
         
-        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope])
+        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope], [BooleanLiteral(True), BooleanLiteral(False)])
 
-    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]'):
-        ''' Given if/else scopes, the original scope, and a condition node, copies the variables set in the 
-        if and else scopes back into the original scope with muxes controlled by the condition node. '''
+    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]', conditionLiterals: 'list[MLiteral]'):
+        ''' Given a collection of child scopes, the original scope, and a condition node, copies the variables set in the 
+        child scopes back into the original scope with muxes controlled by the condition node.
+        conditionLiterals is the list of MLiterals which indicate which child scope would be selected. '''
         self.globalsHandler.currentScope = originalScope
         varsToBind = set()
         for scope in childScopes:
@@ -2294,6 +2302,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if isMLiteral(values[i]):
                     values[i] = values[i].getHardware(self.globalsHandler)
             muxComponent = Mux([ Node('v'+str(i)) for i in range(len(values)) ], Node('c'))
+            muxComponent.inputNames = [str(value) for value in conditionLiterals]
             wires = [ Wire(values[i], muxComponent.inputs[i]) for i in range(len(values)) ]
             for component in [muxComponent, Wire(condition, muxComponent.control)] + wires:
                 self.globalsHandler.currentComponent.addChild(component)
@@ -2371,7 +2380,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         elif defaultItem:
             self.visit(defaultItem.stmt())
 
-        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope])
+        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope], [BooleanLiteral(True), BooleanLiteral(False)])
 
         self.globalsHandler.currentScope = originalScope
 
@@ -2465,7 +2474,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentScope = scope
                 self.visit(ctx.caseStmtDefaultItem().stmt())
             
-            self.copyBackIfStmt(originalScope, expr, scopes)
+            self.copyBackIfStmt(originalScope, expr, scopes, [str(pair[0]) for pair in expri] + ([] if coversAllCases else ['default']) )
             return
         # run the case statement as a sequence of if statements.
         self.doCaseStmtStep(expr, expri, 0, ctx.caseStmtDefaultItem())

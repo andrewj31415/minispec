@@ -156,8 +156,16 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
         return jsonObj
     if item.__class__ == Mux:
         ports = []
-        for node in item.inputs:
-            ports.append(toELK(node, {'port.side': 'WEST'}))
+        for i in range(len(item.inputs)):
+            node = item.inputs[i]
+            nodeELK = toELK(node, {'port.side': 'WEST'})
+            if item.inputNames:
+                nodeELK['labels'] = [ { 'text': item.inputNames[i],
+                                  'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
+                nodeELK['width'] = 0
+                nodeELK['height'] = 0
+                nodeELK['isMuxLabel'] = True
+            ports.append(nodeELK)
         ports.append( toELK(item.control, {'port.side': 'SOUTH'}) )
         ports.append( toELK(item.output, {'port.side': 'EAST'}) )
         jsonObj = { 'id': elkID(item),
@@ -686,7 +694,7 @@ class Function(Component):
 
 
 class Mux(Component):
-    __slots__ = '_inputs', '_control', '_output'
+    __slots__ = '_inputs', '_control', '_output', 'inputNames'
     def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
         Component.__init__(self)
         self._inputs = inputs
@@ -696,6 +704,7 @@ class Mux(Component):
         if output == None:
             output = Node('_mux_output')
         self._output = output
+        self.inputNames = None
     @property
     def name(self):
         '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
