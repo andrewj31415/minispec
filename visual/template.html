@@ -710,6 +710,9 @@
                     tokenSpan.addEventListener("mouseenter", () => {
                         highlightAssociatedComponents(tokenSpan);
                     })
+                    tokenSpan.addEventListener("mouseleave", () => {
+                        clearHighlightedComponents();
+                    })
                     sourceTokens.push(tokenSpan);
                 }
                 for (let tokenSpan of sourceTokens) {
@@ -827,27 +830,33 @@
             let currentHighlightedComponents = new Set();  // Stores the components currently being highlighted.
             /* Highlights the given component. Called by a component on mouse enter. */
             highlightComponent = (component) => {
+                component.overRect.setAttribute("fill", "yellow");
+                for (let portRect of component.portRects) {
+                    portRect.setAttribute("fill", "yellow");
+                }
+                currentHighlightedComponents.add(component);
+            }
+            dehighlightComponent = (component) => {
+                component.overRect.setAttribute("fill", "white");
+                for (let portRect of component.portRects) {
+                    portRect.setAttribute("fill", "white");
+                }
+            }
+            clearHighlightedComponents = () => {
                 for (let component of currentHighlightedComponents) {
-                    component.overRect.setAttribute("fill", "white");
+                    dehighlightComponent(component);
                 }
                 currentHighlightedComponents = new Set();
-                component.overRect.setAttribute("fill", "yellow");
-                currentHighlightedComponents.add(component)
             }
             /* Called by a token on mouse enter. Highlights the corresponding components. */
             highlightAssociatedComponents = (tokenSpan) => {
-                for (let component of currentHighlightedComponents) {
-                    component.overRect.setAttribute("fill", "white");
-                }
-                currentHighlightedComponents = new Set();
                 if (tokenSpan.components.length == 0) {
                     // no tokens corresponding to this component
                     return;
                 }
                 for (let componentAndParentPos of tokenSpan.components) {
                     let component = componentAndParentPos[0];
-                    component.overRect.setAttribute("fill", "yellow");
-                    currentHighlightedComponents.add(component)
+                    highlightComponent(component);
                 }
             }
 
@@ -892,24 +901,8 @@
                     // overName.setAttribute("fill", "blue");
                 }
 
-                // jump to the corresponding text on click 
-                overRect.addEventListener("dblclick", () => {
-                    jumpThroughSource(component);
-                });
-
-                //place children and edges
-                if (component.children) {
-                    for (child of component.children) {
-                        placeComponent(child, absolutePos);
-                    }
-                }
-                if (component.edges) {
-                    for (edge of component.edges) {
-                        placeEdge(edge, absolutePos);
-                    }
-                }
-
                 //label ports
+                component.portRects = [];
                 if (component.ports) {
                     for (let port of component.ports) {
                         if (port.labels) {
@@ -932,11 +925,10 @@
                                     rect.setAttribute("stroke", "black");
                                     rect.setAttribute("stroke-width", Math.sqrt((component.height + component.width) / 1000)); //make the thickness proportional to the height so that it does not cover the under text
                                     rect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
-                                    // rect.setAttribute("fill", "white");
-                                    rect.setAttribute("fill", "transparent");
-                                    rect.setAttribute("pointer-events", "none");
+                                    rect.setAttribute("fill", "white");
                                 }
                                 svgDisplay.appendChild(portRect);
+                                component.portRects.push(portRect);
                             }
                             let portName = fitText(label.text, {
                                 x: x,
@@ -951,6 +943,16 @@
 
                 // link component to source tokens
                 if (componentData.tokensSourcedFrom) {
+                    // jump to the corresponding text on click 
+                    overRect.addEventListener("dblclick", () => {
+                        jumpThroughSource(component);
+                    });
+                    for (let portRect of component.portRects) {
+                        portRect.addEventListener("dblclick", () => {
+                            jumpThroughSource(component);
+                        });
+                    }
+
                     let tokensToLink = componentData.tokensSourcedFrom;
                     for (filenameAndToken of tokensToLink) {
                         let filenameOfOrigin = filenameAndToken[0];
@@ -965,8 +967,37 @@
                     // highlight the associated tokens upon entering the box
                     overRect.addEventListener("mouseenter", () => {
                         highlightAssociatedTokens(component);
+                        clearHighlightedComponents();
                         highlightComponent(component);
                     });
+                    for (let portRect of component.portRects) {
+                        portRect.addEventListener("mouseenter", () => {
+                            highlightAssociatedTokens(component);
+                            clearHighlightedComponents();
+                            highlightComponent(component);
+                        });
+                    }
+                    // clear box highlight upon exiting
+                    overRect.addEventListener("mouseleave", () => {
+                        clearHighlightedComponents();
+                    });
+                    for (let portRect of component.portRects) {
+                        portRect.addEventListener("mouseleave", () => {
+                            clearHighlightedComponents();
+                        });
+                    }
+                }
+
+                //place children and edges
+                if (component.children) {
+                    for (child of component.children) {
+                        placeComponent(child, absolutePos);
+                    }
+                }
+                if (component.edges) {
+                    for (edge of component.edges) {
+                        placeEdge(edge, absolutePos);
+                    }
                 }
             };
 
