@@ -127,7 +127,8 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
     if item.__class__ == Node:
         jsonObj = { 'id': elkID(item), 'width': 0, 'height': 0, 'properties': properties }
         return jsonObj
-    elif item.__class__ == Function:
+    itemWeightAdjusted = weightAdjust(item.weight())
+    if item.__class__ == Function:
         ports = []
         ind = len(item.inputs)
         for i in range(len(item.inputs)):
@@ -136,8 +137,8 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
             if item.inputNames:
                 nodeELK['labels'] = [ { 'text': item.inputNames[i],
                                   'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
-                nodeELK['width'] = 10
-                nodeELK['height'] = 5
+                nodeELK['width'] = itemWeightAdjusted
+                nodeELK['height'] = 0.5*itemWeightAdjusted
             ports.append(nodeELK)
             ind -= 1  # elk indexes nodes clockwise from the top, so the index decrements.
         ports.append( toELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
@@ -148,12 +149,12 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
                     'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
                     'properties': { 'portConstraints': 'FIXED_ORDER',  # info on layout options: https://www.eclipse.org/elk/reference/options.html
-                                    'elk.padding': f'[top={weightAdjust(item.weight())+12},left=12,bottom=12,right=12]' } }  # the default padding is 12, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-padding.html. info on padding: https://github.com/kieler/elkjs/issues/27
+                                    'elk.padding': f'[top={itemWeightAdjusted+12},left=12,bottom=12,right=12]' } }  # the default padding is 12, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-padding.html. info on padding: https://github.com/kieler/elkjs/issues/27
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
             jsonObj['width'] = 15
             jsonObj['height'] = 15
         return jsonObj
-    elif item.__class__ == Mux:
+    if item.__class__ == Mux:
         ports = []
         for node in item.inputs:
             ports.append(toELK(node, {'port.side': 'WEST'}))
@@ -165,7 +166,7 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'height': 10 * len(item.inputs),
                     'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         return jsonObj
-    elif item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
+    if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
         ports = []
         for nodeName in item.inputs:
             node = item.inputs[nodeName]
@@ -180,14 +181,14 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
                     'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
                     'properties': { 'portConstraints': 'FIXED_SIDE',
-                                    'elk.padding': f'[top={weightAdjust(item.weight())+12},left=12,bottom=12,right=12]' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+                                    'elk.padding': f'[top={itemWeightAdjusted+12},left=12,bottom=12,right=12]' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         if len(item.children) == 0:
             jsonObj['width'] = 15
             jsonObj['height'] = 15
         # if item.__class__ == Register:  # this should only run if the register is used as a module method ... consider intermediate stages in a bitonic sorter or similar.
         #     jsonObj['properties']['layered.layering.layerConstraint'] = 'LAST' # put registers at the end, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-layered-layering-layerConstraint.html
         return jsonObj
-    elif item.__class__ == Wire:
+    if item.__class__ == Wire:
         return { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
     raise Exception(f"Unrecognized class {item.__class__} of item {item}.")
 

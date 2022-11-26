@@ -922,7 +922,9 @@
                                 rect.setAttribute("stroke", "black");
                                 rect.setAttribute("stroke-width", Math.sqrt((component.height + component.width) / 1000)); //make the thickness proportional to the height so that it does not cover the under text
                                 rect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
-                                rect.setAttribute("fill", "white");
+                                // rect.setAttribute("fill", "white");
+                                rect.setAttribute("fill", "transparent");
+                                rect.setAttribute("pointer-events", "none");
                             }
                             svgDisplay.appendChild(portRect);
                             let label = port.labels[0];
