@@ -1550,7 +1550,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                 else:
                                     # variable index value, create a mux
                                     mux = Mux([Node(), Node()])
-                                    mux.inputNames = [BooleanLiteral(True), BooleanLiteral(False)]
+                                    mux.inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
                                     eq = Function('=', [], [Node(), Node()])
                                     regIndex = regName.split(']')[k].split('[')[1]
                                     const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
@@ -1672,7 +1672,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if isMLiteral(value2):
                 value2 = value2.getHardware(self.globalsHandler)
             muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
-            muxComponent.inputNames = [BooleanLiteral(True), BooleanLiteral(False)]
+            muxComponent.inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
             for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
                 self.globalsHandler.currentComponent.addChild(component)
             return muxComponent.output
@@ -1714,15 +1714,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if all([isMLiteral(pair[0]) for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))): # case 2
             assert not isMLiteral(expr), "We assume expr is not a literal here, so we do not have to eliminate any extra values."
             possibleOutputs = [] # including the default output, if present
-            expriIndex = 0
-            for i in range(len(ctx.caseExprItem()) + (-1 if hasDefault else 0)):
-                caseExprItem = ctx.caseExprItem(i)
-                possibleOutputs.append(expri[expriIndex][1])
-                expriIndex += len(caseExprItem.exprPrimary())
+            # expriIndex = 0
+            # for i in range(len(ctx.caseExprItem()) + (-1 if hasDefault else 0)):
+            #     caseExprItem = ctx.caseExprItem(i)
+            #     possibleOutputs.append(expri[expriIndex][1])
+            #     expriIndex += len(caseExprItem.exprPrimary())
+            for pair in expri:
+                possibleOutputs.append(pair[1])
             if hasDefault:
                 possibleOutputs.append(defaultValue)
             mux = Mux([Node() for i in range(len(possibleOutputs))])
-            mux.inputNames = [str(pair[0]) for pair in expri]
+            mux.inputNames = [str(pair[0]) for pair in expri] + (['default'] if hasDefault else [])
             for i in range(len(possibleOutputs)):  # convert all possible outputs to hardware
                 possibleOutput = possibleOutputs[i]
                 if isMLiteral(possibleOutput):

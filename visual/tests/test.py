@@ -392,9 +392,9 @@ def _():
 
     fa, fb, fc, fd, fe, fo = Node(), Node(), Node(), Node(), Node(), Node()
 
-    zeroA, oneA, twoA, threeA = Function('0'), Function('1'), Function('2'), Function('3')
-    muxA = Mux([Node(), Node(), Node(), Node()])
-    xWires = [Wire(zeroA.output, muxA.inputs[0]), Wire(twoA.output, muxA.inputs[1]), Wire(threeA.output, muxA.inputs[2]), Wire(oneA.output, muxA.inputs[3]), Wire(fa, muxA.control), Wire(muxA.output, fo)]
+    zeroA, oneA, twoA, threeA, threeA1 = Function('0'), Function('1'), Function('2'), Function('3'), Function('3')
+    muxA = Mux([Node(), Node(), Node(), Node(), Node()])
+    xWires = [Wire(zeroA.output, muxA.inputs[0]), Wire(twoA.output, muxA.inputs[1]), Wire(threeA.output, muxA.inputs[2]), Wire(threeA1.output, muxA.inputs[3]), Wire(oneA.output, muxA.inputs[4]), Wire(fa, muxA.control), Wire(muxA.output, fo)]
 
     zeroY, oneY, twoY = Function('0'), Function('1'), Function('2')
     nb, nc = Function('~', [], [Node()]), Function('~', [], [Node()])
@@ -409,7 +409,7 @@ def _():
     ne = Function('~', [], [Node()])
     wWires = [Wire(fe, ne.inputs[0]), Wire(ne.output, fo)]
 
-    f1 = Function('f1', [zeroA, oneA, twoA, threeA, muxA] + xWires, [fa, fb, fc, fd, fe], fo)
+    f1 = Function('f1', [zeroA, oneA, twoA, threeA, threeA1, muxA] + xWires, [fa, fb, fc, fd, fe], fo)
     f2 = Function('f2', [zeroY, oneY, twoY, nb, nc, myb, myc] + yWires, [fa, fb, fc, fd, fe], fo)
     f3 = Function('f3', [zeroZ, oneZ, twoZ, eqb, eqc, mzb, mzc] + zWires, [fa, fb, fc, fd, fe], fo)
     f4 = Function('f4', [ne] + wWires, [fa, fb, fc, fd, fe], fo)

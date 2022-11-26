@@ -94,7 +94,12 @@ def getELK(component: 'Component') -> str:
                 removeParents(child)
     removeParents(componentELK)
 
-    return json.dumps( { 'id': 'root', 'layoutOptions': { 'algorithm': 'layered', 'hierarchyHandling': 'INCLUDE_CHILDREN' }, 'children': [ componentELK ], 'edges': [] } )
+    return json.dumps( { 'id': 'root',
+                        'layoutOptions': { 'algorithm': 'layered',
+                                            # 'elk.layered.nodePlacement.strategy': 'SIMPLE',
+                                            'hierarchyHandling': 'INCLUDE_CHILDREN' },
+                        'children': [ componentELK ],
+                        'edges': [] } )
 
 def weightAdjust(weight):
     ''' Given the 'weight' of a component, returns the amount of space to reserve for the label of the element. '''
@@ -694,7 +699,7 @@ class Function(Component):
 
 
 class Mux(Component):
-    __slots__ = '_inputs', '_control', '_output', 'inputNames'
+    __slots__ = '_inputs', '_control', '_output', '_inputNames'
     def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
         Component.__init__(self)
         self._inputs = inputs
@@ -704,7 +709,7 @@ class Mux(Component):
         if output == None:
             output = Node('_mux_output')
         self._output = output
-        self.inputNames = None
+        self._inputNames = None
     @property
     def name(self):
         '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
@@ -733,6 +738,13 @@ class Mux(Component):
     @output.setter
     def output(self, output: 'Node'):
         raise Exception("Can't directly modify this property")
+    @property
+    def inputNames(self):
+        return self._inputNames
+    @inputNames.setter
+    def inputNames(self, inputNames: 'str'):
+        assert(len(inputNames) == len(self._inputs)), f"Wrong number of mux input labels--expected {len(self._inputs)}, got {len(inputNames)}"
+        self._inputNames = inputNames
     def __repr__(self):
         return "Mux(" + self.inputs.__repr__() + ", " + self.control.__repr__() + ", " + self.output.__repr__() + ")"
     def __str__(self):
