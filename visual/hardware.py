@@ -183,10 +183,22 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
         ports = []
         for nodeName in item.inputs:
             node = item.inputs[nodeName]
-            ports.append(toELK(node, {'port.side': 'WEST'}))
+            nodeELK = toELK(node, {'port.side': 'WEST'})
+            if item.__class__ == Module:
+                nodeELK['labels'] = [ { 'text': nodeName,
+                                    'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
+                nodeELK['width'] = itemWeightAdjusted
+                nodeELK['height'] = 0.5*itemWeightAdjusted
+            ports.append(nodeELK)
         for nodeName in item.methods:
             node = item.methods[nodeName]
-            ports.append(toELK(node, {'port.side': 'EAST'}))
+            nodeELK = toELK(node, {'port.side': 'EAST'})
+            if item.__class__ == Module:
+                nodeELK['labels'] = [ { 'text': nodeName,
+                                    'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
+                nodeELK['width'] = itemWeightAdjusted
+                nodeELK['height'] = 0.5*itemWeightAdjusted
+            ports.append(nodeELK)
         jsonObj = { 'id': elkID(item),
                     'labels': [ { 'text': item.name,
                                   'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ],
