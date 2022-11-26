@@ -551,7 +551,7 @@ class Function(Component):
             output = Node('_' + self.name + '_output')
         assert output.isNode(), f"Function output node must be a Node, not {output} which is {output.__class__}"
         self._output = output
-        self.tokensSourcedFrom = []
+        self.tokensSourcedFrom: 'list[tuple[str, int]]' = []
         self.inputNames = None
     @property
     def name(self):

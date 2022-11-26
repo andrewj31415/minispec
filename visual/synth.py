@@ -1852,6 +1852,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # both left and right are nodes, so we combine them using function hardware and return the output node.
         assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
         binComponent = Function(op, [], [Node("l"), Node("r")])
+        binComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
         leftWireIn = Wire(left, binComponent.inputs[0])
         rightWireIn = Wire(right, binComponent.inputs[1])
         for component in [binComponent, leftWireIn, rightWireIn]:
@@ -1894,6 +1895,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     '-': MLiteralOperations.neg}[op](value)
         assert value.__class__ == Node, "value should be hardware"
         unopComponenet = Function(op, [], [Node("v")])
+        unopComponenet.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
         wireIn = Wire(value, unopComponenet.inputs[0])
         for component in [unopComponenet, wireIn]:
             self.globalsHandler.currentComponent.addChild(component)
