@@ -130,8 +130,15 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
     elif item.__class__ == Function:
         ports = []
         ind = len(item.inputs)
-        for node in item.inputs:
-            ports.append(toELK(node, {'port.side': 'WEST', 'port.index': ind}))
+        for i in range(len(item.inputs)):
+            node = item.inputs[i]
+            nodeELK = toELK(node, {'port.side': 'WEST', 'port.index': ind})
+            if item.inputNames:
+                nodeELK['labels'] = [ { 'text': item.inputNames[i],
+                                  'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
+                nodeELK['width'] = 10
+                nodeELK['height'] = 5
+            ports.append(nodeELK)
             ind -= 1  # elk indexes nodes clockwise from the top, so the index decrements.
         ports.append( toELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
         jsonObj = { 'id': elkID(item),
@@ -498,8 +505,10 @@ class Function(Component):
     ''' children is a list of components.
     tokensSourcedFrom is an array of tuples (filename, token) where filename is the name of a source file
     and token is a token index (int) in that source file such that clicking on that token in the given source file should jump
-    to this function. '''
-    __slots__ = '_name', '_children', '_inputs', '_output', 'tokensSourcedFrom'
+    to this function.
+    inputNames is either None or a list[str] of length equal to len(_inputs). The ith entry of inputNames is
+    the name of the argument to the function which corresponds to the ith node of _inputs. '''
+    __slots__ = '_name', '_children', '_inputs', '_output', 'tokensSourcedFrom', 'inputNames'
     def __init__(self, name: 'str', children: 'list[Component]'=None, inputs: 'list[Node]'=None, output: 'Node'=None):
         Component.__init__(self)
         self.name = name
@@ -517,6 +526,7 @@ class Function(Component):
         assert output.isNode(), f"Function output node must be a Node, not {output} which is {output.__class__}"
         self._output = output
         self.tokensSourcedFrom = []
+        self.inputNames = None
     @property
     def name(self):
         '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''

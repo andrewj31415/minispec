@@ -1403,6 +1403,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             functionScope.set(val, var)
         # extract arguments to function and set up the input nodes
         inputNodes = []
+        inputNames = []
         if ctx.argFormals():
             # a function with no arguments is still meaningful--if it is defined in a
             # module, it still has access to the module registers/inputs.
@@ -1412,7 +1413,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 argNode = Node(argName, argType)
                 functionScope.set(argNode, argName)
                 inputNodes.append(argNode)
+                inputNames.append(argName)
         funcComponent = Function(functionName, [], inputNodes)
+        funcComponent.inputNames = inputNames
         funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.functionId().getSourceInterval()[0]))
         previousOutputNode = self.globalsHandler.outputNode
         self.globalsHandler.outputNode = funcComponent.output

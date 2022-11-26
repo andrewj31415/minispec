@@ -897,24 +897,6 @@
                     jumpThroughSource(component);
                 });
 
-                //recursive placement of children on click
-                // overRect.addEventListener('dblclick', () => {
-                //     // if (overName !== undefined) {
-                //     //     overName.remove();
-                //     // }
-                //     //place children and edges
-                //     if (component.children) {
-                //         for (child of component.children) {
-                //             placeComponent(child, absolutePos);
-                //         }
-                //     }
-                //     if (component.edges) {
-                //         for (edge of component.edges) {
-                //             placeEdge(edge, absolutePos);
-                //         }
-                //     }
-                //     fitAllText();
-                // })
                 //place children and edges
                 if (component.children) {
                     for (child of component.children) {
@@ -924,6 +906,34 @@
                 if (component.edges) {
                     for (edge of component.edges) {
                         placeEdge(edge, absolutePos);
+                    }
+                }
+
+                //label ports
+                if (component.ports) {
+                    for (let port of component.ports) {
+                        if (port.labels) {
+                            let portRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                            for (let rect of [portRect]) {
+                                rect.setAttribute("x", absolutePos.x + port.x);
+                                rect.setAttribute("y", absolutePos.y + port.y);
+                                rect.setAttribute("width", port.width);
+                                rect.setAttribute("height", port.height);
+                                rect.setAttribute("stroke", "black");
+                                rect.setAttribute("stroke-width", Math.sqrt((component.height + component.width) / 1000)); //make the thickness proportional to the height so that it does not cover the under text
+                                rect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
+                                rect.setAttribute("fill", "white");
+                            }
+                            svgDisplay.appendChild(portRect);
+                            let label = port.labels[0];
+                            let portName = fitText(label.text, {
+                                x: absolutePos.x + port.x,
+                                y: absolutePos.y + port.y,
+                                width: port.width,
+                                height: port.height,
+                            });
+                            portName.setAttribute("pointer-events", "none");
+                        }
                     }
                 }
 
