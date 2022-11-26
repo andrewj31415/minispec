@@ -2062,6 +2062,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     inWires.append(inWire2)
             text += "]"
             sliceComponent = Function(text, [], inputs)
+            sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.msb.getSourceInterval()[0]-1))
+            if ctx.lsb:
+                sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.lsb.getSourceInterval()[-1]+1))
+            else:
+                sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.msb.getSourceInterval()[-1]+1))
             self.globalsHandler.currentComponent.addChild(sliceComponent)
             for wire in inWires:
                 self.globalsHandler.currentComponent.addChild(wire)

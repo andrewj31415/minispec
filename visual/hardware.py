@@ -711,7 +711,7 @@ class Function(Component):
 
 
 class Mux(Component):
-    __slots__ = '_inputs', '_control', '_output', '_inputNames'
+    __slots__ = '_inputs', '_control', '_output', 'tokensSourcedFrom', '_inputNames'
     def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
         Component.__init__(self)
         self._inputs = inputs
@@ -722,6 +722,7 @@ class Mux(Component):
             output = Node('_mux_output')
         self._output = output
         self._inputNames = None
+        self.tokensSourcedFrom: 'list[tuple[str, int]]' = []
     @property
     def name(self):
         '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
