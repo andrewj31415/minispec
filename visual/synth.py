@@ -1714,17 +1714,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if all([isMLiteral(pair[0]) for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))): # case 2
             assert not isMLiteral(expr), "We assume expr is not a literal here, so we do not have to eliminate any extra values."
             possibleOutputs = [] # including the default output, if present
-            # expriIndex = 0
-            # for i in range(len(ctx.caseExprItem()) + (-1 if hasDefault else 0)):
-            #     caseExprItem = ctx.caseExprItem(i)
-            #     possibleOutputs.append(expri[expriIndex][1])
-            #     expriIndex += len(caseExprItem.exprPrimary())
             for pair in expri:
                 possibleOutputs.append(pair[1])
             if hasDefault:
                 possibleOutputs.append(defaultValue)
             mux = Mux([Node() for i in range(len(possibleOutputs))])
             mux.inputNames = [str(pair[0]) for pair in expri] + (['default'] if hasDefault else [])
+            mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
+            mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[-1]))
             for i in range(len(possibleOutputs)):  # convert all possible outputs to hardware
                 possibleOutput = possibleOutputs[i]
                 if isMLiteral(possibleOutput):
@@ -2297,7 +2294,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         
         self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope], [BooleanLiteral(True), BooleanLiteral(False)])
 
-    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]', conditionLiterals: 'list[MLiteral]'):
+    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]', conditionLiterals: 'list[MLiteral]', tokensSourcedFrom = None):
         ''' Given a collection of child scopes, the original scope, and a condition node, copies the variables set in the 
         child scopes back into the original scope with muxes controlled by the condition node.
         conditionLiterals is the list of MLiterals which indicate which child scope would be selected. '''
@@ -2314,6 +2311,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     values[i] = values[i].getHardware(self.globalsHandler)
             muxComponent = Mux([ Node('v'+str(i)) for i in range(len(values)) ], Node('c'))
             muxComponent.inputNames = [str(value) for value in conditionLiterals]
+            if tokensSourcedFrom:
+                muxComponent.tokensSourcedFrom = tokensSourcedFrom
             wires = [ Wire(values[i], muxComponent.inputs[i]) for i in range(len(values)) ]
             for component in [muxComponent, Wire(condition, muxComponent.control)] + wires:
                 self.globalsHandler.currentComponent.addChild(component)
@@ -2485,7 +2484,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentScope = scope
                 self.visit(ctx.caseStmtDefaultItem().stmt())
             
-            self.copyBackIfStmt(originalScope, expr, scopes, [str(pair[0]) for pair in expri] + ([] if coversAllCases else ['default']) )
+            tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0]), (getSourceFilename(ctx), ctx.getSourceInterval()[-1])]
+            self.copyBackIfStmt(originalScope, expr, scopes, [str(pair[0]) for pair in expri] + ([] if coversAllCases else ['default']), tokensSourcedFrom)
             return
         # run the case statement as a sequence of if statements.
         self.doCaseStmtStep(expr, expri, 0, ctx.caseStmtDefaultItem())
