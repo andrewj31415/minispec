@@ -1932,6 +1932,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentComponent.addChild(inputWire)
             inputs.append(inputNode)
         sliceComponent = Function('{}', [], inputs)
+        sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.expression(0).getSourceInterval()[0]-1))
+        for expr in ctx.expression():
+            sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), expr.getSourceInterval()[-1]+1))
         self.globalsHandler.currentComponent.addChild(sliceComponent)
         return sliceComponent.output
 
