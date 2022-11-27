@@ -389,7 +389,7 @@ class ModuleWithMetadata:
 
         self.methodsWithArguments = methodsWithArguments
 
-    def syntheiszeInputs(self, globalsHandler: 'GlobalsHandler'):
+    def synthesizeInputs(self, globalsHandler: 'GlobalsHandler'):
         ''' Synthesizes the connections between the input values to the module (in inputsWithDefaults)
         and the actual module inputs of self.module.
         Called during visitModuleDef after synthesizing all submodules and rules of the parent modules. '''
@@ -397,9 +397,8 @@ class ModuleWithMetadata:
         for inputName in self.inputValues:
             value = self.inputValues[inputName]
             assert value != None, f"All submodule inputs must be assigned--missing input {inputName} on {submoduleName}"
-            # when a value is assigned to a submodule input/register write, we expect to convert it to hardware then since it cannot be reassigned. TODO test this by assigning constant literal values to registers/inputs.
-            # the following assert might be trigger by a default literal input to which no assignment is ever made. TODO figure out what should happen in this case--is this legitimate behavior? I think it should be.
-            assert isNode(value), "value must be hardware in order to wire in to input node"
+            if isMLiteral(value):
+                value = value.getHardware(globalsHandler)
             if hasattr(self.module, 'isRegister') and self.module.isRegister():
                 inputNode = self.module.input
             else:
@@ -410,7 +409,7 @@ class ModuleWithMetadata:
         if self.module.__class__ == VectorModule:
             # synthesize inputs for vectors of submodules, too
             for module in self.module.numberedSubmodules:
-                module.metadata.syntheiszeInputs(globalsHandler)
+                module.metadata.synthesizeInputs(globalsHandler)
 
     def setInput(self, inputName: 'str', newValue: 'MLiteral|Node|None'):
         ''' Given the name of an input and the value to assign, assigns that value. '''
@@ -510,8 +509,9 @@ class BluespecModuleWithMetadata:
     ''' An imported bluespec module must be recognizable, with methods for creating inputs/methods dynamically
     as they are encountered. A bluespec module's default inputs are functions labeled with a ? (not don't care
     symbols). '''
-    def __init__(self, module: 'Module'):
+    def __init__(self, module: 'Module', homeScope: 'Scope'):
         self.module: Module = module
+        self.homeScope = homeScope  # the scope in which this module was created. used for creating module inputs.
     def getMethod(self, fieldToAccess: 'str'):
         ''' Given the name of a method, returns the corresponding node.
         Dynamically creates the node if it does not exist. '''
@@ -537,7 +537,14 @@ class BluespecModuleWithMetadata:
             globalsHandler.currentComponent.addChild(wireIn)
         globalsHandler.currentComponent.addChild(methodComponent)
         return methodComponent.output
-    #TODO implement bluespec module inputs
+    def createInput(self, fieldToAccess: 'str', nameOfSubodule: 'str'):
+        ''' Given the name of an input and the local name of the module, creates the corresponding input.
+        Dynamically creates the input if it does not exist. '''
+        if (fieldToAccess not in self.module.inputs):
+            self.module.addInput(Node(), fieldToAccess)
+            # TODO replace the DontCareLiteral with something representing an 'unknown' literal, since
+            # this value represents an unknown default input.
+            self.homeScope.setPermanent(DontCareLiteral(), nameOfSubodule + '.' + fieldToAccess)
     #TODO create wire from bluespec module to method with argument function (one more input)
 
 class UnsynthesizableComponent:
@@ -1160,7 +1167,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         submodules: 'dict[str, ModuleWithMetadata]' = {}
 
         for submoduleDecl in submoduleDecls:
-            submoduleWithMetadata: ModuleWithMetadata = self.visitSubmoduleDecl(submoduleDecl, registers, submodules)
+            submoduleWithMetadata: ModuleWithMetadata = self.visitSubmoduleDecl(submoduleDecl, registers, submodules, moduleScope)
             submoduleName = submoduleDecl.name.getText()
             # log the submodule in the relevant scope
             moduleScope.setPermanent(submoduleWithMetadata.module, submoduleName)
@@ -1184,7 +1191,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
         for submoduleName in submodules:
             submoduleWithMetadata: ModuleWithMetadata = submodules[submoduleName]
-            submoduleWithMetadata.syntheiszeInputs(self.globalsHandler)
+            submoduleWithMetadata.synthesizeInputs(self.globalsHandler)
             
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
@@ -1201,7 +1208,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
         raise Exception("Not accessed directly, handled in moduleDef")
 
-    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]'):
+    def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]', moduleScope: 'Scope'):
         ''' We have a submodule, so we synthesize it and add it to the current module.
         We also need to bind to submodule's methods somehow; methods with no args bind to
         the corresponding module output, while methods with args need to be somehow tracked as
@@ -1229,7 +1236,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleName = ctx.typeName().getText()
             moduleComponent = Module(moduleName, [], {}, {})
             self.globalsHandler.currentComponent.addChild(moduleComponent)
-            moduleWithMetadata = BluespecModuleWithMetadata(moduleComponent)
+            moduleWithMetadata = BluespecModuleWithMetadata(moduleComponent, moduleScope)
             moduleComponent.metadata = moduleWithMetadata
             return moduleWithMetadata
             # TODO add params to module name (built-in parameterized modules)
@@ -1481,13 +1488,25 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 # TODO the [i]...[k] should only be present when the __class__ is VectorModule--remove this case
                 # from the == Module case.
                 if settingOverall.__class__ == Module:
-                    if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext: # no slicing is present, only the input name.
+                    if settingOverall.metadata.__class__ == ModuleWithMetadata:
+                        # no slicing is present, only the input name.
+                        assert lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext, "Can only slice into a vector of modules"
                         inputName = lvalue.lowerCaseIdentifier().getText()
                         self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
                         return
+                    elif settingOverall.metadata.__class__ == BluespecModuleWithMetadata:
+                        if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext: # no slicing is present, only the input name.
+                            # we are setting an input to a bluespec imported module
+                            inputName = lvalue.lowerCaseIdentifier().getText()
+                            settingOverall.metadata.createInput(inputName, prospectiveModuleName)
+                            self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
+                            return
+                        else:
+                            # we are slicing into a module, which must be a bluespec built-in (since otherwise it would be a VectorModule)
+                            raise Exception("Not implemented")  #TODO implement this
                     else:
-                        # we are slicing into a module, which must be a bluespec built-in (since otherwise it would be a VectorModule)
-                        raise Exception("Not implemented")  #TODO implement this
+                        # Should never run--all cases of metadata should be covered.
+                        raise Exception("Not implemented")
                 elif settingOverall.__class__ == VectorModule:
                     if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
                         inputName = lvalue.lowerCaseIdentifier().getText()
@@ -1984,9 +2003,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(returnWire)
 
     def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):
-        structType = self.visit(ctx.typeName())
         fieldValues = {}
         packingHardware = False
+        try:
+            structType = self.visit(ctx.typeName())
+        except MissingVariableException:
+            packingHardware = True
+            structType = ctx.typeName().getText()
         for memberBind in ctx.memberBinds().memberBind():
             fieldName = memberBind.field.getText()
             fieldValue = self.visit(memberBind.expression())
