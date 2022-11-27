@@ -1040,7 +1040,7 @@
             /* Given a component and its parent component's position,
             moves the svg view window to focus on the component. */
             jumpToComponent = (component, parentPos) => {
-                let marginPercent = 10;
+                let marginPercent = 10 + 15*1000/(1+component.width);
                 let margin = (component.width * marginPercent) / 100;
                 destinationViewBox = [
                     -margin + component.x + parentPos.x,
