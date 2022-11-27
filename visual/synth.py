@@ -1356,6 +1356,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 inputNodes.append(argNode)
             # set up and log the method component
             methodComponent = Function(methodName, [], inputNodes, methodOutputNode)
+            methodComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.name.getSourceInterval()[0]))
             previousComponent = self.globalsHandler.currentComponent
             self.globalsHandler.currentComponent = methodComponent
 
