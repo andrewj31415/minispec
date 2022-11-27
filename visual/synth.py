@@ -1637,6 +1637,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         and the last str is varName, the name of the variable being updated. '''
         text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
         text += '.' + ctx.lowerCaseIdentifier().getText()
+        tokensSourcedFrom.append((getSourceFilename(ctx), ctx.lowerCaseIdentifier().getSourceInterval()[0]))
         return (text, nodes, varName, tokensSourcedFrom)  # no new selection input nodes since field selection is not dynamic
 
     def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
@@ -1688,6 +1689,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             text += str(lsb)
         text += ']'
+        # TODO source map
         return (text, nodes, varName, tokensSourcedFrom)
 
     def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
@@ -2234,6 +2236,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if isMLiteral(toAccess):
             return toAccess.fieldBinds[field]
         fieldExtractComp = Function('.'+field, [], [Node()])
+        fieldExtractComp.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.field.getSourceInterval()[0]))
         wireIn = Wire(toAccess, fieldExtractComp.inputs[0])
         self.globalsHandler.currentComponent.addChild(fieldExtractComp)
         self.globalsHandler.currentComponent.addChild(wireIn)
