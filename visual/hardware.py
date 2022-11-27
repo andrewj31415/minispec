@@ -117,7 +117,7 @@ def elkID(item: 'Component|Node') -> str:
         if item.__class__ == Function:
             return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.tokensSourcedFrom})}"
         if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight()})}"
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.tokensSourcedFrom})}"
         return f"component{item._id}|{json.dumps({'name':item.name})}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
@@ -334,7 +334,7 @@ class Component:
 
 class Module(Component):
     ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
-    __slots__ = '_name', '_children', '_inputs', '_methods', 'metadata'
+    __slots__ = '_name', '_children', '_inputs', '_methods', 'metadata', 'tokensSourcedFrom'
     def __init__(self, name: 'str', children: 'list[Component]', inputs: 'dict[str, Node]', methods: 'dict[str, Node]'):
         Component.__init__(self)
         self.name = name
@@ -342,6 +342,7 @@ class Module(Component):
         self._inputs = inputs.copy()
         self._methods = methods.copy()
         self.metadata = None
+        self.tokensSourcedFrom = []
     @property
     def name(self):
         '''The name of the module'''

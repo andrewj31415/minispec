@@ -1144,6 +1144,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleScope.set(val, var)
 
         moduleComponent = Module(moduleName, [], {}, {})
+        moduleComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.moduleId().getSourceInterval()[0]))
         # log the current component
         previousComponent = self.globalsHandler.currentComponent
         self.globalsHandler.currentComponent = moduleComponent
@@ -1262,6 +1263,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentComponent.addChild(moduleComponent)
             moduleWithMetadata = BluespecModuleWithMetadata(moduleComponent, moduleScope)
             moduleComponent.metadata = moduleWithMetadata
+            moduleComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.name.getSourceInterval()[0]))
             submodules[submoduleName] = moduleWithMetadata
             return moduleWithMetadata
             # TODO add params to module name (built-in parameterized modules)
@@ -1283,6 +1285,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         moduleWithMetadata = self.visitModuleForSynth(submoduleDef, submoduleParams, submoduleArguments)
         moduleComponent = moduleWithMetadata.module
+        moduleComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.name.getSourceInterval()[0]))
         self.globalsHandler.currentComponent.addChild(moduleComponent)
 
         submodules[submoduleName] = moduleWithMetadata
