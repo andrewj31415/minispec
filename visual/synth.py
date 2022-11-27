@@ -807,10 +807,10 @@ visitRuleDef: No returns, mutates existing hardware
 visitFunctionDef: Returns the function hardware
 visitFunctionId: Error, this node is handled in functionDef and should not be visited
 visitVarAssign: No returns, mutates existing hardware
-visitMemberLvalue: a tuple ( str, tuple[Node], str ), see method for details
-visitIndexLvalue: a tuple ( str, tuple[Node], str ), see method for details
-visitSimpleLvalue: a tuple ( str, tuple[Node], str ), see method for details
-visitSliceLvalue: a tuple ( str, tuple[Node], str ), see method for details
+visitMemberLvalue: a tuple ( str, tuple[Node], str, tokensSourcedFrom ), see method for details
+visitIndexLvalue: a tuple ( str, tuple[Node], str, tokensSourcedFrom ), see method for details
+visitSimpleLvalue: a tuple ( str, tuple[Node], str, tokensSourcedFrom ), see method for details
+visitSliceLvalue: a tuple ( str, tuple[Node], str, tokensSourcedFrom ), see method for details
 visitOperatorExpr: Node or MLiteral corresponding to the value of the expression
 visitCondExpr: Node or MLiteral corresponding to the value of the expression
 visitCaseExpr: Node or MLiteral corresponding to the value of the expression
@@ -1572,8 +1572,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     pass  # not a module, move on
             except MissingVariableException:
                 pass  # not a module, move on
-        text, nodes, varName = self.visit(lvalue)
+        text, nodes, varName, tokensSourcedFrom = self.visit(lvalue)
         insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
+        insertComponent.tokensSourcedFrom += tokensSourcedFrom
         for i in range(len(nodes)):
             wire = Wire(nodes[i], insertComponent.inputs[i])
             self.globalsHandler.currentComponent.addChild(wire)
@@ -1584,18 +1585,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
 
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
-        ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
+        ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        text, nodes, varName = self.visit(ctx.lvalue())
+        text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
         text += '.' + ctx.lowerCaseIdentifier().getText()
-        return (text, nodes, varName)  # no new selection input nodes since field selection is not dynamic
+        return (text, nodes, varName, tokensSourcedFrom)  # no new selection input nodes since field selection is not dynamic
 
     def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
-        ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
+        ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        text, nodes, varName = self.visit(ctx.lvalue())
+        text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
         index = self.visit(ctx.index)
         text += '['
         if isNode(index):
@@ -1604,25 +1605,27 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             text += str(index)
         text += ']'
-        return (text, nodes, varName)
+        tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[0]-1))
+        tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[-1]+1))
+        return (text, nodes, varName, tokensSourcedFrom)
 
     def visitSimpleLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext):
-        ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
+        ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
         valueFound = self.globalsHandler.currentScope.get(self, ctx.getText())
         if valueFound == None:
             # value has not yet been initialized
-            return ("", tuple(), ctx.getText())
+            return ("", tuple(), ctx.getText(), [])
         if isMLiteral(valueFound):
             valueFound = valueFound.getHardware(self.globalsHandler)
-        return ("", (valueFound,), ctx.getText())
+        return ("", (valueFound,), ctx.getText(), [])
 
     def visitSliceLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext):
-        ''' Returns a tuple ( str, tuple[Node], str ) where str is the slicing text interpreted so far,
+        ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        text, nodes, varName = self.visit(ctx.lvalue())
+        text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
         msb = self.visit(ctx.msb)
         lsb = self.visit(ctx.lsb)
         text += '['
@@ -1638,7 +1641,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             text += str(lsb)
         text += ']'
-        return (text, nodes, varName)
+        return (text, nodes, varName, tokensSourcedFrom)
 
     def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
         '''This is an expression corresponding to a binary operation (which may be a unary operation,
