@@ -512,6 +512,7 @@ class BluespecModuleWithMetadata:
     def __init__(self, module: 'Module', homeScope: 'Scope'):
         self.module: Module = module
         self.homeScope = homeScope  # the scope in which this module was created. used for creating module inputs.
+        self.inputValues: 'dict[str, Node|MLiteral|None]' = {}
     def getMethod(self, fieldToAccess: 'str'):
         ''' Given the name of a method, returns the corresponding node.
         Dynamically creates the node if it does not exist. '''
@@ -522,10 +523,11 @@ class BluespecModuleWithMetadata:
         ''' Given the name of a method with arguments, as well as the arguments themselves,
         creates the corresponding hardware and returns the output node.
         fieldToAccess is the name of the method, functionArgs is a list of input nodes/literals.'''
-        methodComponent = Function(fieldToAccess, [], [Node() for i in range(len(functionArgs))])
+        if '_'+fieldToAccess not in self.module.methods:
+            self.module.addMethod(Node(), '_'+fieldToAccess)
+        methodComponent = Function(fieldToAccess, [], [Node() for i in range(1+len(functionArgs))])
         # TODO source map support
         # funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
-        # hook up the funcComponent to the arguments passed in.
         for i in range(len(functionArgs)):
             exprValue = functionArgs[i]
             if isMLiteral(exprValue):
@@ -535,6 +537,9 @@ class BluespecModuleWithMetadata:
             funcInputNode = methodComponent.inputs[i]
             wireIn = Wire(exprNode, funcInputNode)
             globalsHandler.currentComponent.addChild(wireIn)
+        funcInputNode = methodComponent.inputs[-1]
+        wireIn = Wire(self.module.methods['_'+fieldToAccess], funcInputNode)
+        globalsHandler.currentComponent.addChild(wireIn)
         globalsHandler.currentComponent.addChild(methodComponent)
         return methodComponent.output
     def createInput(self, fieldToAccess: 'str', nameOfSubodule: 'str'):
@@ -545,7 +550,25 @@ class BluespecModuleWithMetadata:
             # TODO replace the DontCareLiteral with something representing an 'unknown' literal, since
             # this value represents an unknown default input.
             self.homeScope.setPermanent(DontCareLiteral(), nameOfSubodule + '.' + fieldToAccess)
-    #TODO create wire from bluespec module to method with argument function (one more input)
+            self.inputValues[fieldToAccess] = DontCareLiteral()
+    def setInput(self, inputName: 'str', newValue: 'MLiteral|Node|None'):
+        ''' Given the name of an input and the value to assign, assigns that value. '''
+        assert inputName in self.inputValues, "Inputs must have been created before they can be set"
+        self.inputValues[inputName] = newValue
+    def getAllInputs(self) -> 'set[str]':
+        ''' Returns the set of all names of all inputs to this module.
+        The elements of the set returned by this function are precisely the strings
+        which may be used as 'inputName' for getInput and setInput. '''
+        allInputs = set(self.inputValues)
+        return allInputs
+    def synthesizeInputs(self, globalsHandler: 'GlobalsHandler'):
+        for inputName in self.inputValues:
+            value = self.inputValues[inputName]
+            if isMLiteral(value):
+                value = value.getHardware(globalsHandler)
+            inputNode = self.module.inputs[inputName]
+            wireIn = Wire(value, inputNode)
+            globalsHandler.currentComponent.addChild(wireIn)
 
 class UnsynthesizableComponent:
     ''' Used to represent strings, etc. Any interpretation process that encounters an
@@ -1227,6 +1250,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # not "inner.enable") since the submodule does not have access to what it will be called in the original module.
         # submoduleInputsWithDefault: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
 
+        submoduleName = ctx.name.getText()
         try:
             submoduleType = self.visit(ctx.typeName())  # get the moduleDef ctx. Automatically extracts params.
             submoduleDef = submoduleType._moduleCtx
@@ -1238,6 +1262,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentComponent.addChild(moduleComponent)
             moduleWithMetadata = BluespecModuleWithMetadata(moduleComponent, moduleScope)
             moduleComponent.metadata = moduleWithMetadata
+            submodules[submoduleName] = moduleWithMetadata
             return moduleWithMetadata
             # TODO add params to module name (built-in parameterized modules)
             # if len(params) > 0:  #attach parameters to the function name if present
@@ -1258,9 +1283,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         moduleWithMetadata = self.visitModuleForSynth(submoduleDef, submoduleParams, submoduleArguments)
         moduleComponent = moduleWithMetadata.module
-
         self.globalsHandler.currentComponent.addChild(moduleComponent)
-        submoduleName = ctx.name.getText()
 
         submodules[submoduleName] = moduleWithMetadata
 
