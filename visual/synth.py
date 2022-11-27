@@ -370,7 +370,7 @@ class BuiltinRegisterCtx:
 class ModuleWithMetadata:
     ''' During synthesis, a module has extra data that needs to be carried around.
     This includes its input values, any default input values, and any methods with arguments. '''
-    def __init__(self, visitor: 'SynthesizerVisitor', module: 'Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]', methodsWithArguments: 'dict[str, build.MinispecPythonParser.MinispecPythonParser.MethodDefContext]'):
+    def __init__(self, visitor: 'SynthesizerVisitor', module: 'Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]', methodsWithArguments: 'dict[str, tuple[build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, Scope]]'):
         '''hey'''
         self.module: 'Module' = module
         self.inputValues: 'dict[str, Node|MLiteral|None]' = {}
@@ -388,6 +388,7 @@ class ModuleWithMetadata:
                 self.inputValues[inputName] = None
 
         self.methodsWithArguments = methodsWithArguments
+        # TODO methodsWithArguments must keep track of scopes as well so that references to identical modules do not get mixed up.
 
     def synthesizeInputs(self, globalsHandler: 'GlobalsHandler'):
         ''' Synthesizes the connections between the input values to the module (in inputsWithDefaults)
@@ -523,6 +524,8 @@ class BluespecModuleWithMetadata:
         ''' Given the name of a method with arguments, as well as the arguments themselves,
         creates the corresponding hardware and returns the output node.
         fieldToAccess is the name of the method, functionArgs is a list of input nodes/literals.'''
+        print(globalsHandler.currentScope)
+        print(globalsHandler.currentScope.parents[0])
         if '_'+fieldToAccess not in self.module.methods:
             self.module.addMethod(Node(), '_'+fieldToAccess)
         methodComponent = Function(fieldToAccess, [], [Node() for i in range(1+len(functionArgs))])
@@ -928,7 +931,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # and the relevant .input is implicitly ._input.
 
         vectorInputsWithDefault = {}
-        vectorMethodsWithArguments = {}
+        vectorMethodsWithArguments = {}  # vectors of submodules have no methods with arguments
         moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, vectorComp, vectorInputsWithDefault, vectorMethodsWithArguments)
         vectorComp.metadata = moduleWithMetadata
 
@@ -1196,16 +1199,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleScope.setPermanent(submoduleWithMetadata.module, submoduleName)
             moduleScope.set(submoduleWithMetadata.module, submoduleName)
 
-        moduleMethodsWithArguments: 'dict[str, build.MinispecPythonParser.MinispecPythonParser.MethodDefContext]' = {}
+        moduleMethodsWithArguments: 'dict[str, tuple[build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, Scope]]' = {}
         for methodDef in methodDefs:
             methodName = methodDef.name.getText()
             if methodDef.argFormals():
                 # only methodDefs with no arguments are synthesized in the module
                 pass
-                moduleMethodsWithArguments[methodName] = methodDef
+                moduleMethodsWithArguments[methodName] = (methodDef, moduleScope)
             else:
-                methodArgs = []
-                self.visitMethodDef(methodDef, methodArgs)
+                self.visitMethodDef(methodDef, moduleScope)
 
         for ruleDef in ruleDefs:
             self.visitRuleDef(ruleDef, registers, submodules, sharedSubmodules)
@@ -1306,7 +1308,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addInput(inputNode, inputName)
         return (inputName, ctx.defaultVal)
 
-    def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, args):
+    def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, parentScope: 'Scope'):
         '''
         registers is a dictionary mapping register names to the corresponding register hardware.
 
@@ -1325,7 +1327,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         When we synthesize a methodDef with args, we should return the output to the synthesized method.
         When there are no args, there is no need to return anything.
         '''
-        #TODO remove extraneous argument args to visitMethodDef
 
         try:
             methodType = self.visit(ctx.typeName())
@@ -1339,6 +1340,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         previousOutputNode = self.globalsHandler.outputNode
         self.globalsHandler.outputNode = methodOutputNode
         methodScope = ctx.scope
+        print('methodScope', ctx.scope)
         self.globalsHandler.enterScope(methodScope)
 
         if ctx.argFormals():
@@ -1958,6 +1960,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #   to be evaluated and must evaluate to an integer).
                 assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
                 params.append(value)
+        print('getting var', ctx.var.getText())
         value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params)
         self.globalsHandler.lastParameterLookup = params
         return value
@@ -2191,9 +2194,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
                 return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs, ctx.fcn.field)
             else:
+                print()
+                print(ctx.getText())
+                print(ctx.fcn.getText())
+                print('getting method', fieldToAccess, 'off of', toAccess.name)
+                print()
                 moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
-                methodDef = moduleWithMetadata.methodsWithArguments[fieldToAccess]
-                methodComponent = self.visitMethodDef(methodDef, functionArgs)
+                methodDef, parentScope = moduleWithMetadata.methodsWithArguments[fieldToAccess]
+                methodComponent = self.visitMethodDef(methodDef, parentScope)
                 methodComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.fcn.field.getSourceInterval()[0]))
                 # hook up the methodComponent to the arguments passed in.
                 for i in range(len(functionArgs)):
