@@ -519,15 +519,14 @@ class BluespecModuleWithMetadata:
         if (fieldToAccess not in self.module.methods):
             self.module.addMethod(Node(), fieldToAccess)
         return self.module.methods[fieldToAccess]
-    def getMethodWithArguments(self, globalsHandler: 'GlobalsHandler', fieldToAccess: 'str', functionArgs: 'list[Node|MLiteral]'):
+    def getMethodWithArguments(self, globalsHandler: 'GlobalsHandler', fieldToAccess: 'str', functionArgs: 'list[Node|MLiteral]', ctx):
         ''' Given the name of a method with arguments, as well as the arguments themselves,
         creates the corresponding hardware and returns the output node.
         fieldToAccess is the name of the method, functionArgs is a list of input nodes/literals.'''
         if '_'+fieldToAccess not in self.module.methods:
             self.module.addMethod(Node(), '_'+fieldToAccess)
         methodComponent = Function(fieldToAccess, [], [Node() for i in range(1+len(functionArgs))])
-        # TODO source map support
-        # funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
+        methodComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
         for i in range(len(functionArgs)):
             exprValue = functionArgs[i]
             if isMLiteral(exprValue):
@@ -2190,11 +2189,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             toAccess = self.visit(ctx.fcn.exprPrimary())
             fieldToAccess = ctx.fcn.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
-                return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs)
+                return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs, ctx.fcn.field)
             else:
                 moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
                 methodDef = moduleWithMetadata.methodsWithArguments[fieldToAccess]
                 methodComponent = self.visitMethodDef(methodDef, functionArgs)
+                methodComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.fcn.field.getSourceInterval()[0]))
                 # hook up the methodComponent to the arguments passed in.
                 for i in range(len(functionArgs)):
                     exprValue = functionArgs[i]
