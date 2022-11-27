@@ -1997,12 +1997,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''We have an integer literal, so we parse it and return it.
         Note that integer literals may be either integers or bit values. '''
         text = ctx.getText()
+        tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
         if text[0] == "'":
             # unsized literal, integer
             if 'b' in text: #binary
                 raise Exception("Not implemented")
             if 'h' in text: #hex value
-                return IntegerLiteral(int("0x"+text[2:], 0))
+                return IntegerLiteral(int("0x"+text[2:], 0), tokensSourcedFrom)
                 raise Exception("Not implemented")
             if 'd' in text: #decimal value
                 raise Exception("Not implemented")
@@ -2019,7 +2020,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if 'd' in text: #decimal value
             raise Exception("Not implemented")
         # else we have an integer
-        return IntegerLiteral(int(text))
+        return IntegerLiteral(int(text), tokensSourcedFrom)
 
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
         '''This is the return expression in a function. We need to put the correct wire
@@ -2592,7 +2593,10 @@ def getSourceFilename(node: 'ctxType') -> 'str':
     `filename` which is the desired filename. '''
     if node.parentCtx != None:
         return getSourceFilename(node.parentCtx)
-    return node.filename
+    if hasattr(node, 'filename'):
+        return node.filename
+    # TODO handle sources that point back to the command line, as in the `32` in `visual Adder.ms "add#(32)"`.
+    return "unknown_filename"
 
 from typing import Callable # for annotation function calls
 def parseAndSynth(text: 'str', topLevel: 'str', filename: 'str' ='', pullTextFromImport: 'Callable[[int],int]' = lambda x: 1/0, sourceFilesCollect: 'list[tuple[str, str]]' = []) -> 'Component':

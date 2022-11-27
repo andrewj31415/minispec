@@ -135,6 +135,8 @@ class MLiteral(metaclass=MType):
     def getHardware(self, globalsHandler):
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
         constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
+        if hasattr(self, 'tokensSourcedFrom'):
+            constantFunc.tokensSourcedFrom += self.tokensSourcedFrom
         globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output
     def numLiterals(self) -> 'int|float':
@@ -372,10 +374,13 @@ class Any(MLiteral):
 class Integer(MLiteral):
     '''An integer type. Has value value.'''
     _name = "Integer"
-    def __init__(self, value):
+    def __init__(self, value, tokensSourcedFrom = None):
         ''' Create an integer literal '''
         assert value.__class__ == int, f"Expected int, not {value} which is {value.__class__}"
         self.value = value
+        if tokensSourcedFrom == None:
+            tokensSourcedFrom = []
+        self.tokensSourcedFrom = tokensSourcedFrom.copy()
     def numLiterals(self) -> 'int|float':
         return math.inf
     def __repr__(self):
