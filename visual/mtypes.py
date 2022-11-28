@@ -141,6 +141,7 @@ class MLiteral(metaclass=MType):
         return constantFunc.output
     def copy(self):
         ''' Returns a copy of self. Used for handling source support of constant values. '''
+        print(f"Cannot copy literals of type {self.__class__}")
         raise Exception("Not implemented")
     def numLiterals(self) -> 'int|float':
         ''' Returns the number of possible distinct literals of this type (or math.inf), where
@@ -480,7 +481,7 @@ def Bit(n: 'IntegerLiteral'):
         _name = f"Bit#({n})"
         _constructor = Bit
         _n = n
-        def __init__(self, value: 'int'):
+        def __init__(self, value: 'int', tokensSourcedFrom = None):
             ''' Create a Bit#(n) literal.
             value is an integer which will be assigned (mod 2**n) to self.value.
             Value may be any integer even though bsc requires Bit#(n) literals
@@ -488,8 +489,11 @@ def Bit(n: 'IntegerLiteral'):
             self.n = n
             assert value.__class__ == int, f"Expected int, not {value} which is {value.__class__}"
             self.value = value % (2**n.value)
+            if tokensSourcedFrom == None:
+                tokensSourcedFrom = []
+            self.tokensSourcedFrom = tokensSourcedFrom.copy()
         def copy(self):
-            return BitLiteral(self.value)
+            return BitLiteral(self.value, self.tokensSourcedFrom.copy())
         def numLiterals(self) -> 'int|float':
             return 2**n.value
         @classmethod
@@ -575,10 +579,13 @@ BitLiteral = Bit #useful synonym
 class Bool(MLiteral):
     '''The boolean type'''
     _name = "Bool"
-    def __init__(self, value: 'bool'):
+    def __init__(self, value: 'bool', tokensSourcedFrom = None):
         self.value = value
+        if tokensSourcedFrom == None:
+            tokensSourcedFrom = []
+        self.tokensSourcedFrom = tokensSourcedFrom.copy()
     def copy(self):
-        return Bool(self.value)
+        return Bool(self.value, self.tokensSourcedFrom.copy())
     def numLiterals(self) -> 'int|float':
         return 2
     def __repr__(self):
@@ -731,17 +738,22 @@ def Maybe(mtype: 'MType'):
         _name = "Maybe#(" + str(mtype) + ")"
         _constructor = Maybe
         _mtype = mtype
-        def __init__(self, value: 'mtype' = None):
+        def __init__(self, value: 'mtype' = None, tokensSourcedFrom = None):
+            self.value = value
             if value == None:
                 self.isValid = False
             else:
                 self.isValid = True
                 #assert value.__class__ == mtype, "Type of value does not match type of maybe" #TODO incorporate any types
-                self.value = value
+            if tokensSourcedFrom == None:
+                tokensSourcedFrom = []
+            self.tokensSourcedFrom = tokensSourcedFrom.copy()
         def __str__(self):
             if not self.isValid:
                 return "Invalid"
             return "Valid(" + str(self.value) + ")"
+        def copy(self):
+            return MaybeType(self.value, self.tokensSourcedFrom.copy())
         def eq(self, other):
             if self.__class__ != other.__class__:
                 return False
@@ -756,8 +768,10 @@ def Invalid(mtype: 'MType'):
 
 class DontCareLiteral(MLiteral):
     '''only one kind, "?" '''
-    def __init__(self):
-        pass
+    def __init__(self, tokensSourcedFrom = None):
+        if tokensSourcedFrom == None:
+            tokensSourcedFrom = []
+        self.tokensSourcedFrom = tokensSourcedFrom.copy()
     def __str__(self):
         return '?'
     # Returns itself for all binary operations
