@@ -139,6 +139,9 @@ class MLiteral(metaclass=MType):
             constantFunc.tokensSourcedFrom += self.tokensSourcedFrom
         globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output
+    def copy(self):
+        ''' Returns a copy of self. Used for handling source support of constant values. '''
+        raise Exception("Not implemented")
     def numLiterals(self) -> 'int|float':
         ''' Returns the number of possible distinct literals of this type (or math.inf), where
         distinct is defined by minispec's "==" operator.
@@ -308,10 +311,15 @@ def Enum(name: 'str', values: 'set[str]'):
         _name = name
         _constructor = Enum
         _values = values
-        def __init__(self, value: 'str'):
+        def __init__(self, value: 'str', tokensSourcedFrom = None):
             ''' Create an enum literal '''
             assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
             self.value = value
+            if tokensSourcedFrom == None:
+                tokensSourcedFrom = []
+            self.tokensSourcedFrom = tokensSourcedFrom.copy()
+        def copy(self):
+            return EnumType(self.value, self.tokensSourcedFrom.copy())
         def numLiterals(self) -> 'int|float':
             return len(values)
         @classmethod
@@ -333,12 +341,18 @@ def Struct(name: 'str', fields: 'dict[str:MType]'):
         _name = name
         _constructor = Struct
         _fields = fields
-        def __init__(self, fieldBinds: 'dict[str:MLiteral]'):
+        def __init__(self, fieldBinds: 'dict[str:MLiteral]', tokensSourcedFrom = None):
             assert set(fieldBinds) == set(fields), f"Must specify fields {set(fields)} but instead specified fields {set(fieldBinds)}"
             for field in fieldBinds:
                 pass #TODO modify this to allow implicit conversion Integer -> Bit#(n).
                 #assert fieldBinds[field].__class__.untypedef() == fields[field].untypedef(), f"Received type {fieldBinds[field].__class__} but expected type {fields[field]}"
             self.fieldBinds = fieldBinds.copy()
+            # TODO do structs ever get source tokens?
+            if tokensSourcedFrom == None:
+                tokensSourcedFrom = []
+            self.tokensSourcedFrom = tokensSourcedFrom.copy()
+        def copy(self):
+            return StructType(self.fieldBinds.copy(), self.tokensSourcedFrom.copy())
         def numLiterals(self) -> 'int|float':
             fieldTypeList = [ fields[field] for field in fields ]
             return math.prod([ fieldType.numLiteral() for fieldType in fieldTypeList ])
@@ -381,6 +395,8 @@ class Integer(MLiteral):
         if tokensSourcedFrom == None:
             tokensSourcedFrom = []
         self.tokensSourcedFrom = tokensSourcedFrom.copy()
+    def copy(self):
+        return Integer(self.value, self.tokensSourcedFrom.copy())
     def numLiterals(self) -> 'int|float':
         return math.inf
     def __repr__(self):
@@ -472,6 +488,8 @@ def Bit(n: 'IntegerLiteral'):
             self.n = n
             assert value.__class__ == int, f"Expected int, not {value} which is {value.__class__}"
             self.value = value % (2**n.value)
+        def copy(self):
+            return BitLiteral(self.value)
         def numLiterals(self) -> 'int|float':
             return 2**n.value
         @classmethod
@@ -559,6 +577,8 @@ class Bool(MLiteral):
     _name = "Bool"
     def __init__(self, value: 'bool'):
         self.value = value
+    def copy(self):
+        return Bool(self.value)
     def numLiterals(self) -> 'int|float':
         return 2
     def __repr__(self):

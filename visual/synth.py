@@ -1926,8 +1926,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
             return value
         value = self.visit(ctx.exprPrimary())
-        if not isNodeOrMLiteral(value):
-            value = self.visit(value)
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
         if isMLiteral(value):
@@ -1962,8 +1960,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #   to be evaluated and must evaluate to an integer).
                 assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
                 params.append(value)
-        print('getting var', ctx.var.getText())
         value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params)
+        if value.__class__.__class__ == MType:
+            # we are returning a literal value, update its source
+            if hasattr(value, 'tokensSourcedFrom'):
+                value = value.copy()  # make a copy so we don't have lots of different literals linked together
+                value.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
         self.globalsHandler.lastParameterLookup = params
         return value
 
