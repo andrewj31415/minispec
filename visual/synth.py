@@ -2090,7 +2090,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             return structType(fieldValues)  # no hardware, just a struct literal
 
     def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
-        return DontCareLiteral()
+        tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
+        return DontCareLiteral(tokensSourcedFrom)
 
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
