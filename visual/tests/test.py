@@ -974,7 +974,6 @@ def _():
 
     output = synth.parseAndSynth(text, 'Outer')
     expected = out
-    compare(output, expected)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 #run all the tests

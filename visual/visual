@@ -48,10 +48,9 @@ if __name__ == '__main__':
     targetText = pullTextFromImport(sourceFilename) 
     topLevel = args.target
     sourceFilesCollect = []
-    print('synthing!!!')
+    print('Synthesizing to hardware representation ...')
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
-    print('synthed!!!')
-    print(synthesizedComponent)
+    print('Synthesis complete.')
 
     if args.all:
         # Hardcode locations of all components recursively via ELKJS at compile time.
@@ -71,7 +70,9 @@ if __name__ == '__main__':
             fp.write(hardware.getELK(synthesizedComponent))
 
         print("elkcaller", ELKcaller)
+        print("Calculating layout ...")
         os.system(f"cd {visualDir} && node {ELKcaller}")
+        print("Layout complete.")
 
         elkOutput = JSToPythonFile.read_text() # the output from elk
 
@@ -119,5 +120,5 @@ if __name__ == '__main__':
     # the equivalent of synths's sanitizeParametric
     outputFilename = topLevel.replace("#", "_").replace(",", "_").replace("(", "").replace(")", "").replace(" ", "").replace("\t", "")
     output = currentPath.joinpath(f'{outputFilename}.html')
-    print(f"putting output into {output}")
+    print(f"Putting output into {output}")
     output.open("w").write(template)

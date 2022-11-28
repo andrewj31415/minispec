@@ -527,8 +527,6 @@ class BluespecModuleWithMetadata:
         ''' Given the name of a method with arguments, as well as the arguments themselves,
         creates the corresponding hardware and returns the output node.
         fieldToAccess is the name of the method, functionArgs is a list of input nodes/literals.'''
-        print(globalsHandler.currentScope)
-        print(globalsHandler.currentScope.parents[0])
         if '_'+fieldToAccess not in self.module.methods:
             self.module.addMethod(Node(), '_'+fieldToAccess)
         methodComponent = Function(fieldToAccess, [], [Node() for i in range(1+len(functionArgs))])
@@ -1341,7 +1339,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''
 
         methodScope = ctx.scope
-        print('methodScope', ctx.scope)
         try:
             methodType = self.visit(ctx.typeName())
         except MissingVariableException:
@@ -2228,11 +2225,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
                 return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs, ctx.fcn.field)
             else:
-                print()
-                print(ctx.getText())
-                print(ctx.fcn.getText())
-                print('getting method', fieldToAccess, 'off of', toAccess.name)
-                print()
                 moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
                 methodDef, parentScope = moduleWithMetadata.methodsWithArguments[fieldToAccess]
                 methodComponent = self.visitMethodDef(methodDef, parentScope)
