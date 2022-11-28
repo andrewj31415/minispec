@@ -736,7 +736,7 @@
                 newSourceTitle.addEventListener("click", (event) => {
                     pullGivenSource(sourceFileName);
                 });
-                sourceFilenameDisplay.appendChild(newSourceTitle);
+                sourceFilenameDisplay.prepend(newSourceTitle);
                 sourceTitleDivs.set(sourceFileName, newSourceTitle);
             }
             pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
