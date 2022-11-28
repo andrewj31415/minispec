@@ -946,6 +946,31 @@ def _():
     expected = mr
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Handles multiple identical submodules with methods with arguments''')
+def _():
+    text = pull('moduleArgument2')
+
+    n1 = Node()
+    s1 = Register('Reg#(Bit#(2))')
+    i1 = Module('Inner', [s1, Wire(n1, s1.input)], {'next', n1}, {})
+
+    n2 = Node()
+    s2 = Register('Reg#(Bit#(2))')
+    i2 = Module('Inner', [s2, Wire(n2, s2.input)], {'next', n2}, {})
+
+    next1, next2, o1, o2 = Node(), Node(), Node(), Node()
+    a1, a2 = Function('+', [], [Node(), Node()]), Function('+', [], [Node(), Node()])
+    one1, one2 = Function('1'), Function('1')
+    g11, g12, g1o, g21, g22, g2o = Node(), Node(), Node(), Node(), Node(), Node()
+    g1 = Function('getUp', [a1, Wire(g11, a1.inputs[0]), Wire(g12, a1.inputs[1]), Wire(a1.output, g1o)], [g11, g12], g1o)
+    g2 = Function('getUp', [a2, Wire(g21, a2.inputs[0]), Wire(g22, a2.inputs[1]), Wire(a2.output, g2o)], [g21, g22], g2o)
+    wires = [Wire(s1.value, a1.inputs[0]), Wire(s2.value, a2.inputs[0]), Wire(one1.output, g1.inputs[1]), Wire(one2.output, g2.inputs[1])]
+    wires += [Wire(g1.output, o1), Wire(g2.output, o2), Wire(next1, n1), Wire(next2, n2)]
+    out = Module('Outer', [i1, i2, g1, g2, one1, one2] + wires, {'next1': next1, 'next2': next2}, {'out1': o1, 'out2': o2})
+
+    output = synth.parseAndSynth(text, 'Outer')
+    expected = out
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 #run all the tests
 import time
