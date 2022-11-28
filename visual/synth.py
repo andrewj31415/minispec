@@ -1805,10 +1805,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         # at this point, each entry of expri will run and there is a default value.
         muxes = [Mux([Node(), Node()]) for i in range(len(expri))]
+        # TODO mux inputNames
         for mux in muxes:
             mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
             mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[-1]))
-        # TODO mux inputNames
         nextWires = [ Wire(muxes[i+1].output, muxes[i].inputs[1]) for i in range(len(expri)-1) ]
 
         valueWires = []
@@ -2348,7 +2348,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Each variety of statement is handled separately. '''
         return self.visitChildren(ctx)
 
-    def runIfStmt(self, condition: 'Node', ifStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext', elseStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext|None'):
+    def runIfStmt(self, condition: 'Node', ifStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext', elseStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext|None', ctx):
         ''' Creates hardware corresponding to the if statement
         if (condition)
           ifStmt
@@ -2368,7 +2368,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentScope = elseScope
             self.visit(elseStmt)
         
-        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope], [BooleanLiteral(True), BooleanLiteral(False)])
+        tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
+        # TODO source for 'else' token
+        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope], [BooleanLiteral(True), BooleanLiteral(False)], tokensSourcedFrom)
 
     def copyBackIfStmt(self, originalScope: 'Scope', condition: 'Node', childScopes: 'list[Scope]', conditionLiterals: 'list[MLiteral]', tokensSourcedFrom = None):
         ''' Given a collection of child scopes, the original scope, and a condition node, copies the variables set in the 
@@ -2404,7 +2406,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if ctx.stmt(1):
                     self.visit(ctx.stmt(1))
         else:
-            self.runIfStmt(condition, ctx.stmt(0), ctx.stmt(1))
+            self.runIfStmt(condition, ctx.stmt(0), ctx.stmt(1), ctx)
 
     def doCaseStmtStep(self, expr: 'Node|MLiteral', expri: 'list', index: 'int', defaultItem: 'None|build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext') -> None:
         ifScope = Scope(self.globalsHandler, "ifScope", [self.globalsHandler.currentScope], fleeting=True)
