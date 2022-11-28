@@ -270,18 +270,17 @@
                         to enter fullscreen; press escape to exit fullscreen.
                     </p>
                     <p>
-                        If you double-click on a component, you can view its internal structure (if available). If you hover on a
-                        component or a wire, its source code will be highlighted; if you click on a component, you will jump to
-                        the source code. You can also click on a component's type if it defined in the minispec source. Hovering
-                        over a wire shows its type and source.
+                        If you hover over a component, its source code will be highlighted; if you double click
+                        on a component, you will jump to the corresponding source code. If a component corresponds
+                        to multiple locations in the source code (for instance, a function which is defined in
+                        one location and called from another), double clicking repeatedly on that component will
+                        cycle through the corresponding locations in the source code.
+                        If you hover over a source token in a <span style="border-radius: 5px; border-width: 1.5px; border-style: solid; border-color:black;">black rectangle</span>, any corresponding components will be highlighted.
+                        Clicking on that token will jump to and cycle through the corresponding components.
                     </p>
                     <p>
-                        The latency of components is shown in green. Note that the timing for a component includes synth's
-                        optimizations for that component, but only for that component, so timings for a component will likely be
-                        shorter than suggested by the timings of its child components, especially for smaller componenets (and
-                        even when examining only the critical path). I will look in to the possibility of synthesizing module
-                        methods separately from module rules to give more detail about latencies as opposed to just the minimal
-                        clock cycle.
+                        Currently, all internals of all components are displayed if available; hiding/showing internals
+                        of components will be implemented in the future.
                     </p>
                 </div>
             </div>
