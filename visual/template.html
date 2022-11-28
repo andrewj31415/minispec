@@ -1006,7 +1006,7 @@
                 let segments = []; //Array<{start:{x:number, y:number}, end:{x:number, y:number}}>
                 if (edge.sections === undefined) {
                     // behavior should not occur
-                    console.log(edge);
+                    console.log("edge missing sections", edge);
                 }
                 let currentLocation = edge.sections[0].startPoint; //walk along the edge and collect its segements
                 if (edge.sections.length !== 1) {
@@ -1030,7 +1030,21 @@
                     // line.setAttribute("stroke", "black");
                     line.setAttribute("stroke", "blue");
                     line.setAttribute("stroke-width", 1);
+                    line.setAttribute("pointer-events", "none");
                     svgDisplay.appendChild(line);
+                }
+
+                //draw circles at junction points
+                if (edge.junctionPoints) {
+                    for (let junction of edge.junctionPoints) {
+                        let circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                        circle.setAttribute("cx", parentPos.x + junction.x);
+                        circle.setAttribute("cy", parentPos.y + junction.y);
+                        circle.setAttribute("r", 2);
+                        circle.setAttribute("fill", "blue");
+                        circle.setAttribute("pointer-events", "none");
+                        svgDisplay.appendChild(circle);
+                    }
                 }
             };
 
