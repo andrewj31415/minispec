@@ -2689,7 +2689,8 @@ endfunction
 
 
 def tokensAndWhitespace(text: 'str') -> 'list[str]':
-    ''' Returns a list of all grammar tokens from ANTLR in text, including whitespace tokens. '''
+    ''' Returns a list of all grammar tokens from ANTLR in text, including whitespace
+    tokens and the final <EOF> token. '''
     data = antlr4.InputStream(text)
     lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
     stream = antlr4.CommonTokenStream(lexer)

@@ -86,7 +86,7 @@ if __name__ == '__main__':
         for sourceInfo in sourceFilesCollect:
             filename, text = sourceInfo
             sourcesInfo += f'''sources.set("{filename}", {{
-            tokens: {synth.tokensAndWhitespace(text)}
+            tokens: {synth.tokensAndWhitespace(text)[:-1]}
         }});\n'''
 
         elementsToPlace = f'''elementsToPlace = {elkOutput}'''
@@ -109,7 +109,7 @@ if __name__ == '__main__':
         for sourceInfo in sourceFilesCollect:
             filename, text = sourceInfo
             sourcesInfo += f'''sources.set("{filename}", {{
-            tokens: {synth.tokensAndWhitespace(text)}
+            tokens: {synth.tokensAndWhitespace(text)[:-1]}
         }});\n'''
 
         elementsToPlace = f'''elkInput = {elkInput}'''
