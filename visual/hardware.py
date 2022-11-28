@@ -240,9 +240,6 @@ class Node:
     def isNode(self):
         return True
 
-def isMLiteral(value):
-    '''Returns whether or not value is an MLiteral'''
-    return issubclass(value.__class__, MLiteral)
 def isNode(value):
     '''Returns whether or not value is a Node'''
     return value.__class__ == Node

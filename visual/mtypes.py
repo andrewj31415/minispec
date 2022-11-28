@@ -95,6 +95,57 @@ logical_unary = set(['~'])
 arithmetic_unary = set(['+', '-'])
 reduction_unary = set(['&', '|', '^'])
 
+def binaryOperationConstantFold(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'MLiteral':
+    ''' Returns the MLiteral corresponding to the operation `left` `op` `right`. '''
+    assert isMLiteral(left)
+    assert isMLiteral(right)
+    result =  {'**': MLiteralOperations.pow,
+                '*': MLiteralOperations.mul,
+                '/': MLiteralOperations.div,
+                '%': MLiteralOperations.mod,
+                '+': MLiteralOperations.add,
+                '-': MLiteralOperations.sub,
+                '<<': MLiteralOperations.sleft,
+                '>>': MLiteralOperations.sright,
+                '<': MLiteralOperations.lt,
+                '<=': MLiteralOperations.le,
+                '>': MLiteralOperations.gt,
+                '>=': MLiteralOperations.ge,
+                '==': MLiteralOperations.eq,
+                '!=': MLiteralOperations.neq,
+                '&': MLiteralOperations.bitand,
+                '^': MLiteralOperations.bitxor,
+                '^~': MLiteralOperations.bitnor,
+                '~^': MLiteralOperations.bitnor,
+                '|': MLiteralOperations.bitor,
+                '&&': MLiteralOperations.booleanand,
+                '||': MLiteralOperations.booleanor}[op](left, right)
+    if hasattr(result, 'tokensSourcedFrom'):
+        if hasattr(left, 'tokensSourcedFrom'):
+            result.tokensSourcedFrom += left.tokensSourcedFrom
+        if hasattr(right, 'tokensSourcedFrom'):
+            result.tokensSourcedFrom += right.tokensSourcedFrom
+    return result
+
+def unaryOperationConstantFold(value: 'MLiteral', op: 'str') -> 'MLiteral':
+    ''' Returns the MLiteral corresponding to the operation `op` `value`. '''
+    assert isMLiteral(value)
+    result = {'!': MLiteralOperations.booleaninv,
+                '~': MLiteralOperations.inv,
+                '&': MLiteralOperations.redand,
+                '~&': MLiteralOperations.notredand,
+                '|': MLiteralOperations.redor,
+                '~|': MLiteralOperations.notredor,
+                '^': MLiteralOperations.redxor,
+                '^~': MLiteralOperations.notredxor,
+                '~^': MLiteralOperations.notredxor,
+                '+': MLiteralOperations.unaryadd,
+                '-': MLiteralOperations.neg}[op](value)
+    if hasattr(result, 'tokensSourcedFrom'):
+        if hasattr(value, 'tokensSourcedFrom'):
+            result.tokensSourcedFrom += value.tokensSourcedFrom
+    return result
+
 class MType(type):
     ''' The type of a minispec type. Instances are minispec types. '''
     def __str__(self):
@@ -117,6 +168,10 @@ class MType(type):
         if self._constructor != other._constructor:  # look at the factory function
             return False
         return self.sameType(other) # remove typedef synonyms before comparing
+
+def isMLiteral(value):
+    '''Returns whether or not value is an MLiteral'''
+    return issubclass(value.__class__, MLiteral)
 
 class MLiteral(metaclass=MType):
     ''' A minispec type. Instances are minispec literals. '''

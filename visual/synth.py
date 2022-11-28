@@ -1895,27 +1895,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         op = ctx.op.text
         '''Combining literals'''
         if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
-            return {'**': MLiteralOperations.pow,
-                    '*': MLiteralOperations.mul,
-                    '/': MLiteralOperations.div,
-                    '%': MLiteralOperations.mod,
-                    '+': MLiteralOperations.add,
-                    '-': MLiteralOperations.sub,
-                    '<<': MLiteralOperations.sleft,
-                    '>>': MLiteralOperations.sright,
-                    '<': MLiteralOperations.lt,
-                    '<=': MLiteralOperations.le,
-                    '>': MLiteralOperations.gt,
-                    '>=': MLiteralOperations.ge,
-                    '==': MLiteralOperations.eq,
-                    '!=': MLiteralOperations.neq,
-                    '&': MLiteralOperations.bitand,
-                    '^': MLiteralOperations.bitxor,
-                    '^~': MLiteralOperations.bitnor,
-                    '~^': MLiteralOperations.bitnor,
-                    '|': MLiteralOperations.bitor,
-                    '&&': MLiteralOperations.booleanand,
-                    '||': MLiteralOperations.booleanor}[op](left, right)
+            result = binaryOperationConstantFold(left, right, op)
+            if hasattr(result, 'tokensSourcedFrom'):
+                result.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
+            return result
         # convert literals to hardware
         if isMLiteral(left):
             left = left.getHardware(self.globalsHandler)
@@ -1952,17 +1935,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
         if isMLiteral(value):
-            return {'!': MLiteralOperations.booleaninv,
-                    '~': MLiteralOperations.inv,
-                    '&': MLiteralOperations.redand,
-                    '~&': MLiteralOperations.notredand,
-                    '|': MLiteralOperations.redor,
-                    '~|': MLiteralOperations.notredor,
-                    '^': MLiteralOperations.redxor,
-                    '^~': MLiteralOperations.notredxor,
-                    '~^': MLiteralOperations.notredxor,
-                    '+': MLiteralOperations.unaryadd,
-                    '-': MLiteralOperations.neg}[op](value)
+            result = unaryOperationConstantFold(value, op)
+            if hasattr(result, 'tokensSourcedFrom'):
+                result.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
+            return result
         assert value.__class__ == Node, "value should be hardware"
         unopComponenet = Function(op, [], [Node("v")])
         unopComponenet.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
