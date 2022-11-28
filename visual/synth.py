@@ -1127,8 +1127,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if len(params) > 0:  #attach parameters to the function name if present
             moduleName += "#(" + ",".join(str(i) for i in params) + ")"
 
-        moduleScope: Scope = ctx.scope
-        self.globalsHandler.enterScope(moduleScope)
+        moduleCtxScope: Scope = ctx.scope
+        moduleScope = Scope(self.globalsHandler, moduleName, [moduleCtxScope.parents[0]])
+        previousCtxParent = moduleCtxScope.parents
+        moduleCtxScope.parents = [moduleScope]
+        self.globalsHandler.enterScope(moduleCtxScope)
 
         # dictionary of shared modules available to this module, but which are not submodules
         sharedSubmodules: 'dict[str, ModuleWithMetadata]' = {}
@@ -1140,13 +1143,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if argValue.__class__ == ModuleWithMetadata:
                     sharedSubmodules[argName] = argValue
                     argValue = argValue.module
+                moduleScope.setPermanent(argValue, argName)
                 moduleScope.set(argValue, argName)
+                moduleCtxScope.set(argValue, argName)
         
         #bind any parameters in the module scope
         bindings = self.globalsHandler.parameterBindings
         for var in bindings:
             val = bindings[var]
+            moduleScope.setPermanent(val, var)
             moduleScope.set(val, var)
+            moduleCtxScope.set(val, var)
 
         moduleComponent = Module(moduleName, [], {}, {})
         moduleComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.moduleId().getSourceInterval()[0]))
@@ -1185,7 +1192,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # Maps the name of the input to the context with the default value, if it exists. Otherwise maps the name of the input to None.
         moduleInputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]' = {}
         for inputDef in inputDefs:
-            inputName, defaultValCtxOrNone = self.visitInputDef(inputDef)
+            inputName, defaultValCtxOrNone = self.visitInputDef(inputDef, moduleScope)
             moduleInputsWithDefaults[inputName] = defaultValCtxOrNone  # collect inputs along with default values
         
         ''' dictionary of registers, only used in a module, str is the variable name that points
@@ -1220,9 +1227,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for submoduleName in submodules:
             submoduleWithMetadata: ModuleWithMetadata = submodules[submoduleName]
             submoduleWithMetadata.synthesizeInputs(self.globalsHandler)
-            
+
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
+        moduleCtxScope.parents = previousCtxParent
 
         moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, moduleComponent, moduleInputsWithDefaults, moduleMethodsWithArguments)
         moduleComponent.metadata = moduleWithMetadata
@@ -1299,21 +1307,22 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         return moduleWithMetadata
 
-    def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext):
+    def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext, parentScope: Scope):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
         Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').)
         Returns a tuple (inputName, defaultCtx), where defaultCtx is None if the input has no default value. '''
         inputName = ctx.name.getText()
         inputType = self.visit(ctx.typeName())
         inputNode = Node(inputName, inputType)
-        self.globalsHandler.currentScope.setPermanent(None, inputName)
-        self.globalsHandler.currentScope.set(inputNode, inputName)
+        parentScope.setPermanent(None, inputName)
+        parentScope.set(inputNode, inputName)
         self.globalsHandler.currentComponent.addInput(inputNode, inputName)
         return (inputName, ctx.defaultVal)
 
     def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, parentScope: 'Scope'):
         '''
         registers is a dictionary mapping register names to the corresponding register hardware.
+        parentScope is the scope held by the Module object that this method belongs to.
 
         I think methods with arguments need to be handled separately from methods without arguments.
         - No args:
@@ -1331,6 +1340,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         When there are no args, there is no need to return anything.
         '''
 
+        methodScope = ctx.scope
+        print('methodScope', ctx.scope)
         try:
             methodType = self.visit(ctx.typeName())
         except MissingVariableException:
@@ -1340,10 +1351,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if not ctx.argFormals():
             # if there are no method arguments, synthesize the method here and add it to the module.
             self.globalsHandler.currentComponent.addMethod(methodOutputNode, methodName)
+        if ctx.argFormals():
+            # we are synthesizing the method from elsewhere, and we need to reattach the parent scope to the original module.
+            moduleCtxScope: Scope = methodScope.parents[0]
+            previousCtxParent = moduleCtxScope.parents
+            moduleCtxScope.parents = [parentScope]
         previousOutputNode = self.globalsHandler.outputNode
         self.globalsHandler.outputNode = methodOutputNode
-        methodScope = ctx.scope
-        print('methodScope', ctx.scope)
         self.globalsHandler.enterScope(methodScope)
 
         if ctx.argFormals():
@@ -1378,9 +1392,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.visit(stmt)
         
         if ctx.argFormals():
-            self.globalsHandler.currentComponent = previousComponent #reset the current component
+            self.globalsHandler.currentComponent = previousComponent  #reset the current component
         self.globalsHandler.exitScope()
         self.globalsHandler.outputNode = previousOutputNode
+        if ctx.argFormals():
+            moduleCtxScope.parents = previousCtxParent  # reset the module scope parents
         if ctx.argFormals():
             # if we have a method with arguments, we return the corresponding component.
             return methodComponent
@@ -1388,7 +1404,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]', sharedSubmodules: 'dict[str, ModuleWithMetadata]'):
         ''' Synthesize the update rule. registers is a dictionary mapping register names to the corresponding register hardware. '''
         ruleScope: 'Scope' = ctx.scope
-        moduleScope: 'Scope' = self.globalsHandler.currentScope
         self.globalsHandler.enterScope(ruleScope)
         # bind register outputs
         for registerName in registers:
