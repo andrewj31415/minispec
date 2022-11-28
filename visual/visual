@@ -10,6 +10,7 @@
 # See https://stackoverflow.com/questions/38558989/node-js-heap-out-of-memory for more info.
 
 import argparse, os, pathlib
+import time
 
 import synth
 import hardware
@@ -36,6 +37,8 @@ if __name__ == '__main__':
     targetFile = currentPath.joinpath(args.file)
     visualDir = pathlib.Path(args.visualdir)
 
+    synthesisStartTime = time.time()
+
     def pullTextFromImport(filename: 'str') -> 'str':
         ''' Given the name of a file to import (eg, filename = "fourbitcounter"), returns the text
         of the corresponding minispec file in the current directory (eg, the text of "/fourbitcounter.ms")
@@ -50,7 +53,7 @@ if __name__ == '__main__':
     sourceFilesCollect = []
     print('Synthesizing to hardware representation ...')
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
-    print('Synthesis complete.')
+    print(f'Synthesis complete. Time: {time.time() - synthesisStartTime} seconds')
 
     if args.all:
         # Hardcode locations of all components recursively via ELKJS at compile time.
@@ -61,6 +64,7 @@ if __name__ == '__main__':
         absoluteFilePath = pathlib.Path(__file__).resolve()
         ELKcaller = absoluteFilePath.with_name("elk").joinpath("place.js")
 
+        layoutStartTime = time.time()
 
         # if not os.path.exists(JSToPythonFile):
         #     with JSToPythonFile.open('w') as fp: # create the output file if it does not exist
@@ -72,7 +76,7 @@ if __name__ == '__main__':
         print("elkcaller", ELKcaller)
         print("Calculating layout ...")
         os.system(f"cd {visualDir} && node {ELKcaller}")
-        print("Layout complete.")
+        print(f"Layout complete. Time: {time.time() - layoutStartTime}  seconds")
 
         elkOutput = JSToPythonFile.read_text() # the output from elk
 
@@ -96,6 +100,7 @@ if __name__ == '__main__':
 
     else:
         # Layout components at page load.
+        raise Exception("This part of the program is not currently maintained; use the '-a' flag.")
 
         elkInput = hardware.getELK(synthesizedComponent) # the components to feed in
 
