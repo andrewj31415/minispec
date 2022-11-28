@@ -2265,8 +2265,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         We don't create the wire here, since the register write might have occured during an if statement--
         the wires are created at the end of the rule, in visitRuleDef.'''
         value = self.visit(ctx.rhs)
-        # if isMLiteral(value):  # convert value to hardware before assigning to register
-        #     value = value.getHardware(self.globalsHandler)  # I don't think we need to convert to hardware yet.
         if ctx.lhs.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
             # ordinary register, no vectors
             regName = ctx.lhs.getText()
@@ -2309,6 +2307,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for i in range(len(regsToWrite)):
             regName = regsToWrite[i]
             val = value
+            if isMLiteral(val):
+                val = val.getHardware(self.globalsHandler)
             oldVal = self.globalsHandler.currentScope.get(self, regName + "input")
             # create the relevant hardware
             for k in range(len(indexes)):
