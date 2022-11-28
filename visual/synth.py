@@ -1725,6 +1725,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value2 = value2.getHardware(self.globalsHandler)
             muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
             muxComponent.inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
+            muxComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.condQmark.tokenIndex))
+            muxComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.condColon.tokenIndex))
             for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
                 self.globalsHandler.currentComponent.addChild(component)
             return muxComponent.output
@@ -1747,7 +1749,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''
         #TODO in caseExpr and caseStmt, if a default is included but all possible inputs are already present (as literals), skip the default input.
         expr = self.visit(ctx.expression())
-        expri: 'tuple[MLiteral|Node, MLiteral|Node]' = [] # pairs (comparisonStmt, valueToOutput)
+        expri: 'list[tuple[MLiteral|Node, MLiteral|Node]]' = [] # pairs (comparisonStmt, valueToOutput)
         hasDefault = False
         for caseExprItem in ctx.caseExprItem():
             if not caseExprItem.exprPrimary():  # no selection expression, so we have a default expression.
@@ -1803,6 +1805,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         # at this point, each entry of expri will run and there is a default value.
         muxes = [Mux([Node(), Node()]) for i in range(len(expri))]
+        for mux in muxes:
+            mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
+            mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[-1]))
         # TODO mux inputNames
         nextWires = [ Wire(muxes[i+1].output, muxes[i].inputs[1]) for i in range(len(expri)-1) ]
 
@@ -1823,6 +1828,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             muxControl = muxes[i].control
             assert not (isMLiteral(controlValue) and isMLiteral(expr)), "This case should have been evaluated earlier"
             if isMLiteral(expr) and expr.__class__ == Bool:
+                # TODO mux input names instead of inverting
                 if expr:
                     controlWires.append(Wire(controlValue, muxControl))
                 else:
@@ -1831,6 +1837,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     controlWires.append(Wire(controlValue, n.inputs[0]))
                     controlWires.append(Wire(n.output, muxControl))
             elif isMLiteral(controlValue) and controlValue.__class__ == Bool:
+                # TODO mux input names instead of inverting
                 if controlValue:
                     controlWires.append(Wire(expr, muxControl))
                 else:
@@ -1846,6 +1853,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 controlWires.append(Wire(expr, eq.inputs[0]))
                 controlWires.append(Wire(controlValue, eq.inputs[1]))
                 controlWires.append(Wire(eq.output, muxControl))
+                muxes[i].inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
         for component in muxes + nextWires + valueWires + controlWires + controlComponents:
                 self.globalsHandler.currentComponent.addChild(component)
         return muxes[0].output if len(muxes) > 0 else defaultValue
@@ -2052,6 +2060,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             fieldValues[fieldName] = fieldValue
         if packingHardware:  # at least one of the fields is hardware, so we convert all of the fields to hardware, combine them, and return the output node.
             combineComp = Function(str(structType) + "{}", [], [Node() for field in fieldValues])
+            combineComp.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.typeName().getSourceInterval()[0]))
             fieldList = list(fieldValues)
             for i in range(len(fieldValues)):
                 fieldName = fieldList[i]

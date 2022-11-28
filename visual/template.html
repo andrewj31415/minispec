@@ -739,7 +739,7 @@
                 sourceFilenameDisplay.prepend(newSourceTitle);
                 sourceTitleDivs.set(sourceFileName, newSourceTitle);
             }
-            pullGivenSource([...sources.keys()][0]); //Pull out the first source file to start
+            pullGivenSource([...sources.keys()][sources.size-1]); //Pull out the first source file to start
 
             /* Start of code for highlighting tokens and components */
 

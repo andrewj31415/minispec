@@ -132,7 +132,7 @@ lvalue :
     ;
 
 expression :
-    <assoc=right> pred=expression '?' expression ':' expression #condExpr
+    <assoc=right> pred=expression condQmark='?' expression condColon=':' expression #condExpr
     | 'case' '(' expression ')' caseExprItem* 'endcase' #caseExpr
     | binopExpr #operatorExpr
     ;
