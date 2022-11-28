@@ -280,6 +280,7 @@ class BluespecBuiltinFunction(Exception):
         self.functionComponent = functionComponent
         self.evalute = evaluate
 
+assumedBuiltinOrImport = set()  # the set of function names for which we have issued warning messages
 class BuiltInScope(Scope):
     '''The minispec built-ins. Behaves slightly differently from other scopes.'''
     def __init__(self, globalsHandler: 'GlobalsHandler', name: 'str', parents: 'list[Scope]'):
@@ -351,9 +352,11 @@ class BuiltInScope(Scope):
                 assert n.__class__ == IntegerLiteral, "Can only take log of integer"
                 return IntegerLiteral(n.value.bit_length())
             raise BluespecBuiltinFunction(functionComp, log2)
-        if varName == '$format' or varName == "$write" or varName == "$finish":
+        if varName == '$format' or varName == "$write" or varName == "$finish" or varName == "$display":
             return UnsynthesizableComponent()
-        print(f"Warning: assuming {varName} is a Bluespec built-in or import")
+        if varName not in assumedBuiltinOrImport:
+            print(f"Warning: assuming {varName} is a Bluespec built-in or import")
+            assumedBuiltinOrImport.add(varName)
         raise MissingVariableException(f"Couldn't find variable {varName} with parameters {parameters}.")
 
 #type annotation for context objects.
@@ -2175,6 +2178,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             functionToCall = ctx.fcn.var.getText()
             try:
                 functionDef = self.globalsHandler.currentScope.get(self, functionToCall, params)
+                if functionDef.__class__ == UnsynthesizableComponent:
+                    return UnsynthesizableComponent()
                 self.globalsHandler.lastParameterLookup = params
                 funcComponent = self.visit(functionDef)  #synthesize the function internals
             except MissingVariableException as e:
