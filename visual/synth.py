@@ -2000,27 +2000,30 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         text = ctx.getText()
         tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
         if text[0] == "'":
-            # unsized literal, integer
-            if 'b' in text: #binary
-                raise Exception("Not implemented")
+            # unsized literal, integer type
+            # must check for hex values first since b and d are legitimate hex digits
             if 'h' in text: #hex value
                 return IntegerLiteral(int("0x"+text[2:], 0), tokensSourcedFrom)
-                raise Exception("Not implemented")
+            if 'b' in text: #binary
+                return IntegerLiteral(int("0b"+text[2:], 0), tokensSourcedFrom)
             if 'd' in text: #decimal value
-                raise Exception("Not implemented")
+                return IntegerLiteral(int(text[2:]), tokensSourcedFrom)
+            raise Exception("Error: literal missing base indicator.")
+        # must check for hex values first since b and d are legitimate hex digits
+        if 'h' in text: #hex value
+            # TODO test this branch
+            width, binValue = text.split("'h")
+            assert len(width) > 0 and len(binValue) > 0, f"something went wrong with parsing {text} into width {width} and value {binValue}"
+            return Bit(IntegerLiteral(int(width)))(int("0x"+binValue, 0))
         if 'b' in text: #binary
             width, binValue = text.split("'b")
             assert len(width) > 0 and len(binValue) > 0, f"something went wrong with parsing {text} into width {width} and value {binValue}"
             return Bit(IntegerLiteral(int(width)))(int("0b"+binValue, 0))
-        if 'h' in text: #hex value
-            raise Exception("Not implemented") # TODO test this
-            print(text)
-            width, binValue = text.split("'h")
-            assert len(width) > 0 and len(binValue) > 0, f"something went wrong with parsing {text} into width {width} and value {binValue}"
-            return Bit(IntegerLiteral(int(width)))(int("0x"+binValue, 0))
         if 'd' in text: #decimal value
-            raise Exception("Not implemented")
-        # else we have an integer
+            width, decValue = text.split("'d")
+            assert len(width) > 0 and len(decValue) > 0, f"something went wrong with parsing {text} into width {width} and value {decValue}"
+            return Bit(IntegerLiteral(int(width)))(int(decValue))
+        # else we have an ordinary decimal integer
         return IntegerLiteral(int(text), tokensSourcedFrom)
 
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
@@ -2145,6 +2148,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
         functionArgs = []
         allLiterals = True # true if all function args are literals, false otherwise. used for evaluating built-ins.
+        print(ctx.getText())
         for i in range(len(ctx.expression())):
             expr = ctx.expression(i)
             exprValue = self.visit(expr) # visit the expression and get the corresponding node
@@ -2200,8 +2204,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             toAccess = self.visit(ctx.fcn.exprPrimary())
             fieldToAccess = ctx.fcn.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
+                if len(functionArgs) == 0:
+                    # this is actually just an ordinary method of the module, being called as `module.method()` instead of `module.method`.
+                    raise Exception("Not implemented")
                 return toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs, ctx.fcn.field)
             else:
+                if len(functionArgs) == 0:
+                    # this is actually just an ordinary method of the module, being called as `module.method()` instead of `module.method`.
+                    # TODO make sure methods with no arguments are properly registered, etc.
+                    return toAccess.methods[fieldToAccess]
                 moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
                 methodDef, parentScope = moduleWithMetadata.methodsWithArguments[fieldToAccess]
                 methodComponent = self.visitMethodDef(methodDef, parentScope)

@@ -576,7 +576,7 @@ def Bit(n: 'IntegerLiteral'):
         def mod(self, other):
             raise Exception("Not implemented")
         def add(self, other):
-            return Bit(max(self.n, other.n))(self.value + other.value)
+            return Bit(IntegerLiteral(max(self.n.value, other.n.value)))(self.value + other.value)
         def sub(self, other):
             raise Exception("Not implemented")
         def sleft(self, other):
