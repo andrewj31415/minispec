@@ -2148,7 +2148,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
         functionArgs = []
         allLiterals = True # true if all function args are literals, false otherwise. used for evaluating built-ins.
-        print(ctx.getText())
         for i in range(len(ctx.expression())):
             expr = ctx.expression(i)
             exprValue = self.visit(expr) # visit the expression and get the corresponding node

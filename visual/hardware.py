@@ -44,6 +44,27 @@ def getELK(component: 'Component') -> str:
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
     componentELK = toELK(component)
 
+    def eliminateVectorModules(componentELK, parentELK):
+        # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                eliminateVectorModules(child, componentELK)
+        if 'isVectorModule' in componentELK:
+            print('eliminating a vector 1')
+            if componentELK['isVectorModule'] and parentELK != None:
+                print('eliminating a vector 2')
+                if 'ports' not in componentELK or len(componentELK['ports']) == 0:
+                    print('eliminating a vector 3')
+                    parentELK["children"].remove(componentELK)
+                    # lift children and edges
+                    if "children" in componentELK:
+                        parentELK["children"] += componentELK["children"]
+                    if "edges" in componentELK:
+                        parentELK["edges"] += componentELK["edges"]
+    # Optional pass to eliminate vectors of registers.
+    # Currently not run.
+    # eliminateVectorModules(componentELK, None)
+
     # Collect all ports and mark parent pointers
     def getPorts(componentELK, portsToComponents):
         if "children" in componentELK:
@@ -210,6 +231,9 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
         if len(item.children) == 0:
             jsonObj['width'] = 15
             jsonObj['height'] = 15
+        if item.__class__ == VectorModule:
+            print('marked vector module')
+            jsonObj['isVectorModule'] = True
         # if item.__class__ == Register:  # this should only run if the register is used as a module method ... consider intermediate stages in a bitonic sorter or similar.
         #     jsonObj['properties']['layered.layering.layerConstraint'] = 'LAST' # put registers at the end, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-layered-layering-layerConstraint.html
         return jsonObj
@@ -804,6 +828,11 @@ class Mux(Component):
     def outputNodes(self):
         return {self.output}
 
+class Demux(Component):
+    ''' Used for variable assignments to a vector of submodules.
+    Has an input value, a control value, and a list of outputs.
+    Each output node is a valid signal. TODO redesign. '''
+    pass
 
 #not currently used for anything--consider removing.
 class Splitter(Component):
