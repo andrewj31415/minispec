@@ -221,6 +221,7 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'width': 10,
                     'height': 10 * len(item.inputs),
                     'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+        jsonObj['isMux'] = True
         return jsonObj
     if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
         ports = []

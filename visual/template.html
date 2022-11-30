@@ -873,17 +873,22 @@
                 component.componentData = componentData;
                 let componentName = componentData.name;
 
-                let overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                let overRect;
+                if (component.isMux) {
+                    overRect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    let muxHeightOffset = 5/2;
+                    let points = `${absolutePos.x},${absolutePos.y-muxHeightOffset} ${absolutePos.x+component.width},${absolutePos.y+muxHeightOffset} ${absolutePos.x+component.width},${absolutePos.y+component.height-muxHeightOffset} ${absolutePos.x},${absolutePos.y+component.height+muxHeightOffset}`;
+                    overRect.setAttribute("points", points);
+                } else {
+                    overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    overRect.setAttribute("x", absolutePos.x);
+                    overRect.setAttribute("y", absolutePos.y);
+                    overRect.setAttribute("width", component.width);
+                    overRect.setAttribute("height", component.height);
+                }
                 for (let rect of [overRect]) {
-                    rect.setAttribute("x", absolutePos.x);
-                    rect.setAttribute("y", absolutePos.y);
-                    rect.setAttribute("width", component.width);
-                    rect.setAttribute("height", component.height);
                     rect.setAttribute("stroke", "black");
-                    rect.setAttribute("stroke-width", Math.sqrt((component.height + component.width) / 1000)); //make the thickness proportional to the height so that it does not cover the under text
                     rect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
-                    // rect.setAttribute("stroke", "blue");
-                    // rect.setAttribute("stroke-width", 0.2);
                     rect.setAttribute("fill", "white");
                 }
                 component.overRect = overRect;
