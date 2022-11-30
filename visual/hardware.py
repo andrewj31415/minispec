@@ -44,26 +44,48 @@ def getELK(component: 'Component') -> str:
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
     componentELK = toELK(component)
 
+    # consider a pass to set certain edges to go forwards:
+    # https://eclipse.org/elk/reference/options/org-eclipse-elk-layered-priority-direction.html
+
+    # Collects edges with unique starting ports and sets ELK to prioritize having these edges go forward
+    portsFound = {}
+    portsRepeated = set()
+    def collectEdgesWithUniqueStarts(componentELK):
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                collectEdgesWithUniqueStarts(child)
+        if "edges" in componentELK:
+            for edge in componentELK["edges"]:
+                sourceNode = edge["sources"][0]
+                if sourceNode in portsRepeated:
+                    pass
+                elif sourceNode in portsFound:
+                    portsRepeated.add(sourceNode)
+                    del portsFound[sourceNode]
+                else:
+                    portsFound[sourceNode] = edge
+    collectEdgesWithUniqueStarts(componentELK)
+    for sourceNode in portsFound:
+        edge = portsFound[sourceNode]
+        if 'properties' not in edge:
+            edge['properties'] = {}
+        edge['properties']['layered.priority.direction'] = 10
+
+    # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
     def eliminateVectorModules(componentELK, parentELK):
-        # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
         if "children" in componentELK:
             for child in componentELK["children"]:
                 eliminateVectorModules(child, componentELK)
         if 'isVectorModule' in componentELK:
-            print('eliminating a vector 1')
             if componentELK['isVectorModule'] and parentELK != None:
-                print('eliminating a vector 2')
                 if 'ports' not in componentELK or len(componentELK['ports']) == 0:
-                    print('eliminating a vector 3')
                     parentELK["children"].remove(componentELK)
                     # lift children and edges
                     if "children" in componentELK:
                         parentELK["children"] += componentELK["children"]
                     if "edges" in componentELK:
                         parentELK["edges"] += componentELK["edges"]
-    # Optional pass to eliminate vectors of registers.
-    # Currently not run.
-    # eliminateVectorModules(componentELK, None)
+    eliminateVectorModules(componentELK, None)
 
     # Collect all ports and mark parent pointers
     def getPorts(componentELK, portsToComponents):
@@ -232,7 +254,6 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
             jsonObj['width'] = 15
             jsonObj['height'] = 15
         if item.__class__ == VectorModule:
-            print('marked vector module')
             jsonObj['isVectorModule'] = True
         # if item.__class__ == Register:  # this should only run if the register is used as a module method ... consider intermediate stages in a bitonic sorter or similar.
         #     jsonObj['properties']['layered.layering.layerConstraint'] = 'LAST' # put registers at the end, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-layered-layering-layerConstraint.html
