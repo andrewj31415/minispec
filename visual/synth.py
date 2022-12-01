@@ -2313,35 +2313,42 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     for i in range(len(oldRegsToWrite)):
                         regName = oldRegsToWrite[i] + f'[{j}]'
                         regsToWrite.append(regName)
-        # assign the correct values
+        # collect the values to assign
+        vals = []
         for i in range(len(regsToWrite)):
-            regName = regsToWrite[i]
             val = value
             if isMLiteral(val):
                 val = val.getHardware(self.globalsHandler)
-            oldVal = self.globalsHandler.currentScope.get(self, regName + "input")
-            # create the relevant hardware
-            for k in range(len(indexes)):
-                indexValue = indexes[len(indexes) - 1 - k]
-                if indexValue.__class__ == IntegerLiteral:
-                    # fixed index value
-                    pass
-                else:
-                    # variable index value, create a mux
-                    mux = Mux([Node(), Node()])
-                    # TODO mux inputNames
-                    eq = Function('=', [], [Node(), Node()])
-                    regIndex = regName.split(']')[k].split('[')[1]
-                    const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
-                    w1 = Wire(eq.output, mux.control)
-                    w2 = Wire(indexValue, eq.inputs[0])
-                    w3 = Wire(const, eq.inputs[1])
-                    w4 = Wire(val, mux.inputs[0])
-                    w5 = Wire(oldVal, mux.inputs[1])
-                    for component in [mux, eq, w1, w2, w3, w4, w5]:
-                        self.globalsHandler.currentComponent.addChild(component)
-                    val = mux.output
-            self.globalsHandler.currentScope.set(val, regName + "input")
+            vals.append(val)
+        # assign the correct values
+        for k in range(len(indexes)):
+            indexValue = indexes[len(indexes) - 1 - k]
+            if indexValue.__class__ == IntegerLiteral:
+                # fixed index value, no corresponding hardware
+                continue
+            for i in range(len(regsToWrite)):
+                # variable index, create the corresponding hardware
+                regName = regsToWrite[i]
+                oldVal = self.globalsHandler.currentScope.get(self, regName + "input")
+                val = vals[i]
+                # variable index value, create a mux
+                mux = Mux([Node(), Node()])
+                # TODO mux inputNames
+                eq = Function('=', [], [Node(), Node()])
+                regIndex = regName.split(']')[k].split('[')[1]
+                const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
+                w1 = Wire(eq.output, mux.control)
+                w2 = Wire(indexValue, eq.inputs[0])
+                w3 = Wire(const, eq.inputs[1])
+                w4 = Wire(val, mux.inputs[0])
+                w5 = Wire(oldVal, mux.inputs[1])
+                for component in [mux, eq, w1, w2, w3, w4, w5]:
+                    self.globalsHandler.currentComponent.addChild(component)
+                val = mux.output
+                vals[i] = val
+        for i in range(len(regsToWrite)):
+            regName = regsToWrite[i]
+            self.globalsHandler.currentScope.set(vals[i], regName + "input")
 
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
         ''' Each variety of statement is handled separately. '''
