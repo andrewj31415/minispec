@@ -74,7 +74,7 @@ def getELK(component: 'Component') -> str:
     # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
     def eliminateVectorModules(componentELK, parentELK):
         if "children" in componentELK:
-            for child in componentELK["children"]:
+            for child in componentELK["children"].copy():  # copy since the children may mutate componentELK's child list
                 eliminateVectorModules(child, componentELK)
         if 'isVectorModule' in componentELK:
             if componentELK['isVectorModule'] and parentELK != None:
