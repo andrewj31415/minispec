@@ -299,11 +299,11 @@ class MLiteralOperations:
         first, second = MLiteralOperations.coerceArithmetic(first, second)
         return first.lt(second)
     def le(first, second):
-        return Bool(MLiteralOperations.lt(first, second) or MLiteralOperations.eq(first, second))
+        return MLiteralOperations.lt(first, second).booleanor(MLiteralOperations.eq(first, second))
     def gt(first, second):
         return MLiteralOperations.lt(second, first)
     def ge(first, second):
-        return Bool(MLiteralOperations.lt(second, first) or MLiteralOperations.eq(first, second))
+        return MLiteralOperations.lt(second, first).booleanor(MLiteralOperations.eq(first, second))
     def eq(first, second):
         return first.eq(second)
     def neq(first, second):
@@ -635,6 +635,7 @@ class Bool(MLiteral):
     '''The boolean type'''
     _name = "Bool"
     def __init__(self, value: 'bool', tokensSourcedFrom = None):
+        assert value.__class__ == bool, "Boolean literals must have boolean value"
         self.value = value
         if tokensSourcedFrom == None:
             tokensSourcedFrom = []
