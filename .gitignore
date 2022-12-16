@@ -22,6 +22,8 @@ visual/antlr4
 visual/sample.html
 visual/elk/elkInput.txt
 visual/elk/elkOutput.txt
+visual/elkJava/elkInput.txt
+visual/elkJava/elkOutput.txt
 # Coverage testing
 .coverage
 
