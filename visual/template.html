@@ -864,10 +864,25 @@
             elementsToPlace = {};
             /* Python data goes here */
 
+            console.log(elementsToPlace);
+
             topLevel = elementsToPlace.children[0];
 
             /* component: an elk node. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeComponent = (component, parentPos) => {
+                if (component.width === undefined) {
+                    console.log("Unexpected missing width", component);
+                }
+                if (component.height === undefined) {
+                    console.log("Unexpected missing height", component);
+                }
+                if (component.x === undefined) {
+                    console.log("Unexpected missing x value", component);
+                }
+                if (component.y === undefined) {
+                    console.log("Unexpected missing y value", component);
+                }
+
                 let absolutePos = { x: parentPos.x + component.x, y: parentPos.y + component.y }; // The absolute position of the componenet in the svg
                 let componentData = JSON.parse(component.id.slice(component.id.indexOf("|") + 1));
                 component.componentData = componentData;
