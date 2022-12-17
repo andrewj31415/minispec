@@ -884,6 +884,9 @@
                 }
 
                 let absolutePos = { x: parentPos.x + component.x, y: parentPos.y + component.y }; // The absolute position of the componenet in the svg
+                if (component.id.indexOf("|") === -1) {
+                    console.log("Unexpected missing data in component id", component);
+                }
                 let componentData = JSON.parse(component.id.slice(component.id.indexOf("|") + 1));
                 component.componentData = componentData;
                 let componentName = componentData.name;

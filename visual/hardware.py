@@ -107,16 +107,43 @@ def getELK(component: 'Component') -> str:
                 assert len(edge["targets"]) == 1
                 sourceNode = edge["sources"][0]
                 targetNode = edge["targets"][0]
-                currentELK, currentPort = portsToComponents[sourceNode]
-                if currentPort["properties"]["port.side"] == "EAST":
-                    currentELK = currentELK["parent"]
+                # determine if the edge goes from the left side of a node to the right side directly,
+                # which confuses the layouting library
+                sourceParent, sourcePort = portsToComponents[sourceNode]
+                targetParent, targetPort = portsToComponents[targetNode]
+                isDirectEdge = sourceParent == targetParent and sourcePort["properties"]["port.side"] == "WEST" and targetPort["properties"]["port.side"]
+                if isDirectEdge:
+                    # break the edge into two edges with a zero-size node in the middle
+                    middleNode = toELK(Function(""))
+                    middleNode['parent'] = componentELK
+                    middleNode['width'] = 0
+                    middleNode['height'] = 0
+                    assert len(edge['sources']) == 1, f"Unexpected edge {edge} with too many source nodes"
+                    assert len(edge['targets']) == 1, f"Unexpected edge {edge} with too many target nodes"
+                    edge1 = { 'id': 'part1_'+edge['id'], 'sources': [ edge['sources'][0] ], 'targets': [ middleNode['id'] ] }
+                    edge2 = { 'id': 'part2_'+edge['id'], 'sources': [ middleNode['id'] ], 'targets': [ edge['targets'][0] ] }
+                    componentELK['edges'].remove(edge)
+                    if "edges" not in sourceParent:
+                        sourceParent['edges'] = []
+                    sourceParent['edges'].append(edge1)
+                    sourceParent['edges'].append(edge2)
+                    if "children" not in sourceParent:
+                        sourceParent['children'] = []
+                    sourceParent['children'].append(middleNode)
+                    continue
+                # we have an ordinary edge, move it to the correct parent
+                if sourcePort["properties"]["port.side"] == "EAST":
+                    sourceParent = sourceParent["parent"]
+                # collect the parents of the source node
+                currentELK = sourceParent
                 sourceParents = [currentELK]
                 while "parent" in currentELK:
                     currentELK = currentELK["parent"]
                     sourceParents.append(currentELK)
-                currentELK, currentPort = portsToComponents[targetNode]
-                if currentPort["properties"]["port.side"] == "WEST":
-                    currentELK = currentELK["parent"]
+                if targetPort["properties"]["port.side"] == "WEST":
+                    targetParent = targetParent["parent"]
+                # collect the parents of the target node
+                currentELK = targetParent
                 while currentELK not in sourceParents:
                     assert "parent" in currentELK, "Can't find common ancestor for edge source/target"
                     currentELK = currentELK["parent"]
@@ -164,6 +191,23 @@ def elkID(item: 'Component|Node') -> str:
         return f"component{item._id}|{json.dumps({'name':item.name})}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
+def setName(nodeELK: 'dict[str, Any]', name: 'str', height: 'float'):
+    ''' Sets nodeELK to have a label `name` taking up `height` space at the top of the node. '''
+    if 'labels' not in nodeELK:
+        nodeELK['labels'] = []
+    nodeELK['labels'].append({ 'text': name,
+                                'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} })
+    if 'properties' not in nodeELK:
+        nodeELK['properties'] = {}
+    nodeELK['properties']['elk.padding'] = f'[top={height+12},left=12,bottom=12,right=12]'  # the default padding is 12, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-padding.html. info on padding: https://github.com/kieler/elkjs/issues/27
+
+def setPortLabel(nodeELK: 'dict[str, Any]', text: 'str', width: 'float', height: 'float'):
+    nodeELK['labels'] = [ { 'text': text,
+                            'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
+    nodeELK['width'] = width
+    nodeELK['height'] = height
+
+
 def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
     ''' Converts the node or component into the ELK JSON format as a python object. 
     See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html 
@@ -183,21 +227,16 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
             node = item.inputs[i]
             nodeELK = toELK(node, {'port.side': 'WEST', 'port.index': ind})
             if item.inputNames:
-                nodeELK['labels'] = [ { 'text': item.inputNames[i],
-                                  'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
-                nodeELK['width'] = itemWeightAdjusted
-                nodeELK['height'] = 0.5*itemWeightAdjusted
+                setPortLabel(nodeELK, item.inputNames[i], itemWeightAdjusted, 0.5*itemWeightAdjusted)
             ports.append(nodeELK)
             ind -= 1  # elk indexes nodes clockwise from the top, so the index decrements.
         ports.append( toELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
         jsonObj = { 'id': elkID(item),
-                    'labels': [ { 'text': item.name,
-                                  'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ],
                     'ports': ports,
                     'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
                     'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
-                    'properties': { 'portConstraints': 'FIXED_ORDER',  # info on layout options: https://www.eclipse.org/elk/reference/options.html
-                                    'elk.padding': f'[top={itemWeightAdjusted+12},left=12,bottom=12,right=12]' } }  # the default padding is 12, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-padding.html. info on padding: https://github.com/kieler/elkjs/issues/27
+                    'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+        setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
             jsonObj['width'] = 15
             jsonObj['height'] = 15
@@ -208,10 +247,7 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
             node = item.inputs[i]
             nodeELK = toELK(node, {'port.side': 'WEST'})
             if item.inputNames:
-                nodeELK['labels'] = [ { 'text': item.inputNames[i],
-                                  'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
-                nodeELK['width'] = 0
-                nodeELK['height'] = 0
+                setPortLabel(nodeELK, item.inputNames[i], 0, 0)
                 nodeELK['isMuxLabel'] = True
             ports.append(nodeELK)
         ports.append( toELK(item.control, {'port.side': 'SOUTH'}) )
@@ -229,35 +265,25 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
             node = item.inputs[nodeName]
             nodeELK = toELK(node, {'port.side': 'WEST'})
             if item.__class__ == Module:
-                nodeELK['labels'] = [ { 'text': nodeName,
-                                    'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
-                nodeELK['width'] = itemWeightAdjusted
-                nodeELK['height'] = 0.5*itemWeightAdjusted
+                setPortLabel(nodeELK, nodeName, itemWeightAdjusted, 0.5*itemWeightAdjusted)
             ports.append(nodeELK)
         for nodeName in item.methods:
             node = item.methods[nodeName]
             nodeELK = toELK(node, {'port.side': 'EAST'})
             if item.__class__ == Module:
-                nodeELK['labels'] = [ { 'text': nodeName,
-                                    'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
-                nodeELK['width'] = itemWeightAdjusted
-                nodeELK['height'] = 0.5*itemWeightAdjusted
+                setPortLabel(nodeELK, nodeName, itemWeightAdjusted, 0.5*itemWeightAdjusted)
             ports.append(nodeELK)
         jsonObj = { 'id': elkID(item),
-                    'labels': [ { 'text': item.name,
-                                  'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ],
                     'ports': ports,
                     'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
                     'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
-                    'properties': { 'portConstraints': 'FIXED_SIDE',
-                                    'elk.padding': f'[top={itemWeightAdjusted+12},left=12,bottom=12,right=12]' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+                    'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+        setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0:
             jsonObj['width'] = 15
             jsonObj['height'] = 15
         if item.__class__ == VectorModule:
             jsonObj['isVectorModule'] = True
-        # if item.__class__ == Register:  # this should only run if the register is used as a module method ... consider intermediate stages in a bitonic sorter or similar.
-        #     jsonObj['properties']['layered.layering.layerConstraint'] = 'LAST' # put registers at the end, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-layered-layering-layerConstraint.html
         return jsonObj
     if item.__class__ == Wire:
         return { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
