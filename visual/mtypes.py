@@ -191,7 +191,7 @@ class MLiteral(metaclass=MType):
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
         constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
         if hasattr(self, 'tokensSourcedFrom'):
-            constantFunc.tokensSourcedFrom += self.tokensSourcedFrom
+            constantFunc.addSourceTokens(self.tokensSourcedFrom)
         globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output
     def copy(self):

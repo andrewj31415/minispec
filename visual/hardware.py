@@ -181,13 +181,13 @@ def elkID(item: 'Component|Node') -> str:
         return f'node{item._id}'
     elif issubclass(item.__class__, Component):
         if item.__class__ == Mux:
-            return f"component{item._id}|{json.dumps({'name':'', 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.tokensSourcedFrom})}"
+            return f"component{item._id}|{json.dumps({'name':'', 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()})}"
         if item.__class__ == Wire:
             return f"component{item._id}|{json.dumps({'name':''})}"
         if item.__class__ == Function:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.tokensSourcedFrom})}"
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()})}"
         if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.tokensSourcedFrom})}"
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()})}"
         return f"component{item._id}|{json.dumps({'name':item.name})}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
@@ -399,11 +399,17 @@ class Component:
         if hasattr(self, 'children'):
             return 1 + sum([c.weight() for c in self.children])
         return 0
+    def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
+        ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the component. '''
+        self._tokensSourcedFrom.append(tokens)
+    def getSourceTokens(self) -> 'list[tuple[str, int]]':
+        ''' Returns the source tokens of self. '''
+        return sum(self._tokensSourcedFrom, [])
 
 
 class Module(Component):
     ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
-    __slots__ = '_name', '_children', '_inputs', '_methods', 'metadata', 'tokensSourcedFrom'
+    __slots__ = '_name', '_children', '_inputs', '_methods', 'metadata', '_tokensSourcedFrom'
     def __init__(self, name: 'str', children: 'list[Component]', inputs: 'dict[str, Node]', methods: 'dict[str, Node]'):
         Component.__init__(self)
         self.name = name
@@ -411,7 +417,7 @@ class Module(Component):
         self._inputs = inputs.copy()
         self._methods = methods.copy()
         self.metadata = None
-        self.tokensSourcedFrom = []
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
     @property
     def name(self):
         '''The name of the module'''
@@ -599,12 +605,12 @@ class VectorModule(Module):
 
 class Function(Component):
     ''' children is a list of components.
-    tokensSourcedFrom is an array of tuples (filename, token) where filename is the name of a source file
+    tokensSourcedFrom is an array of arrays of tuples (filename, token) where filename is the name of a source file
     and token is a token index (int) in that source file such that clicking on that token in the given source file should jump
     to this function.
     inputNames is either None or a list[str] of length equal to len(_inputs). The ith entry of inputNames is
     the name of the argument to the function which corresponds to the ith node of _inputs. '''
-    __slots__ = '_name', '_children', '_inputs', '_output', 'tokensSourcedFrom', 'inputNames'
+    __slots__ = '_name', '_children', '_inputs', '_output', '_tokensSourcedFrom', 'inputNames'
     def __init__(self, name: 'str', children: 'list[Component]'=None, inputs: 'list[Node]'=None, output: 'Node'=None):
         Component.__init__(self)
         self.name = name
@@ -621,7 +627,7 @@ class Function(Component):
             output = Node('_' + self.name + '_output')
         assert output.isNode(), f"Function output node must be a Node, not {output} which is {output.__class__}"
         self._output = output
-        self.tokensSourcedFrom: 'list[tuple[str, int]]' = []
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
         self.inputNames = None
     @property
     def name(self):
@@ -781,7 +787,7 @@ class Function(Component):
 
 
 class Mux(Component):
-    __slots__ = '_inputs', '_control', '_output', 'tokensSourcedFrom', '_inputNames'
+    __slots__ = '_inputs', '_control', '_output', '_tokensSourcedFrom', '_inputNames'
     def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
         Component.__init__(self)
         self._inputs = inputs
@@ -792,7 +798,7 @@ class Mux(Component):
             output = Node('_mux_output')
         self._output = output
         self._inputNames = None
-        self.tokensSourcedFrom: 'list[tuple[str, int]]' = []
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
     @property
     def name(self):
         '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''

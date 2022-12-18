@@ -530,7 +530,7 @@ class BluespecModuleWithMetadata:
         if '_'+fieldToAccess not in self.module.methods:
             self.module.addMethod(Node(), '_'+fieldToAccess)
         methodComponent = Function(fieldToAccess, [], [Node() for i in range(1+len(functionArgs))])
-        methodComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
+        methodComponent.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
         for i in range(len(functionArgs)):
             exprValue = functionArgs[i]
             if isMLiteral(exprValue):
@@ -1154,7 +1154,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleCtxScope.set(val, var)
 
         moduleComponent = Module(moduleName, [], {}, {})
-        moduleComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.moduleId().getSourceInterval()[0]))
+        moduleComponent.addSourceTokens([(getSourceFilename(ctx), ctx.moduleId().getSourceInterval()[0])])
         # log the current component
         previousComponent = self.globalsHandler.currentComponent
         self.globalsHandler.currentComponent = moduleComponent
@@ -1273,7 +1273,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentComponent.addChild(moduleComponent)
             moduleWithMetadata = BluespecModuleWithMetadata(moduleComponent, moduleScope)
             moduleComponent.metadata = moduleWithMetadata
-            moduleComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.name.getSourceInterval()[0]))
+            moduleComponent.addSourceTokens([(getSourceFilename(ctx), ctx.name.getSourceInterval()[0])])
             submodules[submoduleName] = moduleWithMetadata
             return moduleWithMetadata
             # TODO add params to module name (built-in parameterized modules)
@@ -1295,7 +1295,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         moduleWithMetadata = self.visitModuleForSynth(submoduleDef, submoduleParams, submoduleArguments)
         moduleComponent = moduleWithMetadata.module
-        moduleComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.name.getSourceInterval()[0]))
+        moduleComponent.addSourceTokens([(getSourceFilename(ctx), ctx.name.getSourceInterval()[0])])
         self.globalsHandler.currentComponent.addChild(moduleComponent)
 
         submodules[submoduleName] = moduleWithMetadata
@@ -1371,7 +1371,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 inputNodes.append(argNode)
             # set up and log the method component
             methodComponent = Function(methodName, [], inputNodes, methodOutputNode)
-            methodComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.name.getSourceInterval()[0]))
+            methodComponent.addSourceTokens([(getSourceFilename(ctx), ctx.name.getSourceInterval()[0])])
             previousComponent = self.globalsHandler.currentComponent
             self.globalsHandler.currentComponent = methodComponent
 
@@ -1468,7 +1468,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 inputNames.append(argName)
         funcComponent = Function(functionName, [], inputNodes)
         funcComponent.inputNames = inputNames
-        funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.functionId().getSourceInterval()[0]))
+        funcComponent.addSourceTokens([(getSourceFilename(ctx), ctx.functionId().getSourceInterval()[0])])
         previousOutputNode = self.globalsHandler.outputNode
         self.globalsHandler.outputNode = funcComponent.output
         # log the current component
@@ -1636,7 +1636,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 pass  # not a module, move on
         text, nodes, varName, tokensSourcedFrom = self.visit(lvalue)
         insertComponent = Function(text, [], [Node() for node in nodes] + [Node()])
-        insertComponent.tokensSourcedFrom += tokensSourcedFrom
+        insertComponent.addSourceTokens(tokensSourcedFrom)
         for i in range(len(nodes)):
             wire = Wire(nodes[i], insertComponent.inputs[i])
             self.globalsHandler.currentComponent.addChild(wire)
@@ -1740,8 +1740,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value2 = value2.getHardware(self.globalsHandler)
             muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
             muxComponent.inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
-            muxComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.condQmark.tokenIndex))
-            muxComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.condColon.tokenIndex))
+            muxComponent.addSourceTokens([(getSourceFilename(ctx), ctx.condQmark.tokenIndex)])
+            muxComponent.addSourceTokens([(getSourceFilename(ctx), ctx.condColon.tokenIndex)])
             for component in [muxComponent, Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)]:
                 self.globalsHandler.currentComponent.addChild(component)
             return muxComponent.output
@@ -1789,8 +1789,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 possibleOutputs.append(defaultValue)
             mux = Mux([Node() for i in range(len(possibleOutputs))])
             mux.inputNames = [str(pair[0]) for pair in expri] + (['default'] if hasDefault else [])
-            mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
-            mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[-1]))
+            mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
+            mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[-1])])
             for i in range(len(possibleOutputs)):  # convert all possible outputs to hardware
                 possibleOutput = possibleOutputs[i]
                 if isMLiteral(possibleOutput):
@@ -1822,8 +1822,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         muxes = [Mux([Node(), Node()]) for i in range(len(expri))]
         # TODO mux inputNames
         for mux in muxes:
-            mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
-            mux.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[-1]))
+            mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
+            mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[-1])])
         nextWires = [ Wire(muxes[i+1].output, muxes[i].inputs[1]) for i in range(len(expri)-1) ]
 
         valueWires = []
@@ -1907,7 +1907,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # both left and right are nodes, so we combine them using function hardware and return the output node.
         assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
         binComponent = Function(op, [], [Node("l"), Node("r")])
-        binComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
+        binComponent.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
         leftWireIn = Wire(left, binComponent.inputs[0])
         rightWireIn = Wire(right, binComponent.inputs[1])
         for component in [binComponent, leftWireIn, rightWireIn]:
@@ -1941,7 +1941,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             return result
         assert value.__class__ == Node, "value should be hardware"
         unopComponenet = Function(op, [], [Node("v")])
-        unopComponenet.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
+        unopComponenet.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
         wireIn = Wire(value, unopComponenet.inputs[0])
         for component in [unopComponenet, wireIn]:
             self.globalsHandler.currentComponent.addChild(component)
@@ -1983,9 +1983,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentComponent.addChild(inputWire)
             inputs.append(inputNode)
         sliceComponent = Function('{}', [], inputs)
-        sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.expression(0).getSourceInterval()[0]-1))
+        sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.expression(0).getSourceInterval()[0]-1)])
         for expr in ctx.expression():
-            sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), expr.getSourceInterval()[-1]+1))
+            sliceComponent.addSourceTokens([(getSourceFilename(ctx), expr.getSourceInterval()[-1]+1)])
         self.globalsHandler.currentComponent.addChild(sliceComponent)
         return sliceComponent.output
 
@@ -2054,7 +2054,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             fieldValues[fieldName] = fieldValue
         if packingHardware:  # at least one of the fields is hardware, so we convert all of the fields to hardware, combine them, and return the output node.
             combineComp = Function(str(structType) + "{}", [], [Node() for field in fieldValues])
-            combineComp.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.typeName().getSourceInterval()[0]))
+            combineComp.addSourceTokens([(getSourceFilename(ctx), ctx.typeName().getSourceInterval()[0])])
             fieldList = list(fieldValues)
             for i in range(len(fieldValues)):
                 fieldName = fieldList[i]
@@ -2126,10 +2126,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     inWires.append(inWire2)
             text += "]"
             sliceComponent = Function(text, [], inputs)
-            sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.msb.getSourceInterval()[0]-1))
+            sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.msb.getSourceInterval()[0]-1)])
             if ctx.lsb:
-                sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.lsb.getSourceInterval()[-1]+1))
-            sliceComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.msb.getSourceInterval()[-1]+1))
+                sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.lsb.getSourceInterval()[-1]+1)])
+            sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.msb.getSourceInterval()[-1]+1)])
             self.globalsHandler.currentComponent.addChild(sliceComponent)
             for wire in inWires:
                 self.globalsHandler.currentComponent.addChild(wire)
@@ -2185,7 +2185,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if allLiterals:
                     return evaluate(*functionArgs)
                 funcComponent = functionComponent
-            funcComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
+            funcComponent.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
             # hook up the funcComponent to the arguments passed in.
             for i in range(len(functionArgs)):
                 exprValue = functionArgs[i]
@@ -2215,7 +2215,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
                 methodDef, parentScope = moduleWithMetadata.methodsWithArguments[fieldToAccess]
                 methodComponent = self.visitMethodDef(methodDef, parentScope)
-                methodComponent.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.fcn.field.getSourceInterval()[0]))
+                methodComponent.addSourceTokens([(getSourceFilename(ctx), ctx.fcn.field.getSourceInterval()[0])])
                 # hook up the methodComponent to the arguments passed in.
                 for i in range(len(functionArgs)):
                     exprValue = functionArgs[i]
@@ -2247,7 +2247,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if isMLiteral(toAccess):
             return toAccess.fieldBinds[field]
         fieldExtractComp = Function('.'+field, [], [Node()])
-        fieldExtractComp.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.field.getSourceInterval()[0]))
+        fieldExtractComp.addSourceTokens([(getSourceFilename(ctx), ctx.field.getSourceInterval()[0])])
         wireIn = Wire(toAccess, fieldExtractComp.inputs[0])
         self.globalsHandler.currentComponent.addChild(fieldExtractComp)
         self.globalsHandler.currentComponent.addChild(wireIn)
@@ -2396,7 +2396,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             muxComponent = Mux([ Node('v'+str(i)) for i in range(len(values)) ], Node('c'))
             muxComponent.inputNames = [str(value) for value in conditionLiterals]
             if tokensSourcedFrom:
-                muxComponent.tokensSourcedFrom = tokensSourcedFrom
+                muxComponent.addSourceTokens(tokensSourcedFrom)
             wires = [ Wire(values[i], muxComponent.inputs[i]) for i in range(len(values)) ]
             for component in [muxComponent, Wire(condition, muxComponent.control)] + wires:
                 self.globalsHandler.currentComponent.addChild(component)
