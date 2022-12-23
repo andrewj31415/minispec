@@ -1922,7 +1922,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             value = self.visit(ctx.exprPrimary())
             if not isNodeOrMLiteral(value):
                 if hasattr(value, 'isRegister') and value.isRegister():
-                    value: 'Register' = value.value
+                    value = value.value
                 elif isinstance(value, Module):  # we have found a module, such as a shared module.
                     return value
                 elif value.__class__ == UnsynthesizableComponent:
@@ -1937,6 +1937,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
             return value
         value = self.visit(ctx.exprPrimary())
+        if hasattr(value, 'isRegister') and value.isRegister():
+            value = value.value
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
         if isMLiteral(value):

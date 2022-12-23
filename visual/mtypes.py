@@ -525,6 +525,8 @@ class Integer(MLiteral):
         return self
     def neg(self):
         return IntegerLiteral(-self.value)
+    def slice(self, msb, lsb=None):
+        return Bit(IntegerLiteral(1+self.value.bit_length()))(self.value).slice(msb, lsb)
 
 IntegerLiteral = Integer  #useful alias
 
