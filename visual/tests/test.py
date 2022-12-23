@@ -976,6 +976,26 @@ def _():
     expected = out
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+
+
+describe('''More Modules''')
+@it('''Handles functions inside of a module''')
+def _():
+    text = pull('moduleFunction')
+
+    gr1, gr2, s = Node(), Node(), Node()
+    r = Register('Reg#(Bit#(4))')
+    f1o, f2o = Node(), Node()
+    f1 = Function('my_value', [Wire(r.value, f1o)], [], f1o)
+    f2 = Function('my_value', [Wire(r.value, f2o)], [], f2o)
+    out = Module('Outer', [r, f1, f2, Wire(s, r.input), Wire(f1.output, gr1), Wire(f2.output, gr2)], {'set': s}, {'getR1': gr1, 'getR2': gr2})
+
+    output = synth.parseAndSynth(text, 'Outer')
+    expected = out
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
+
 #run all the tests
 import time
 import sys

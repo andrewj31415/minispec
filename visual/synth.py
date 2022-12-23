@@ -1928,7 +1928,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 elif value.__class__ == UnsynthesizableComponent:
                     return UnsynthesizableComponent()
                 else:
+                    # we have a ctx object, so we visit it
                     value = self.visit(value)
+                    if value.__class__ == Function:
+                        # we visitied a ctx object which was a function, so the corresponding value is the output.
+                        self.globalsHandler.currentComponent.addChild(value)
+                        value = value.output
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
             return value
         value = self.visit(ctx.exprPrimary())
