@@ -408,6 +408,28 @@ class Component:
         ''' Returns the source tokens of self. '''
         return sum(self._tokensSourcedFrom, [])
 
+class Constant(Component):
+    ''' The hardware corresponding to a constant literal value. '''
+    __slots__ = '_value', '_output'
+    def __init__(self, value: 'MLiteral', output: 'Node' = None):
+        self._value = value
+        if output == None:
+            output = Node()
+        self._output = output
+    @property
+    def value(self) -> 'MLiteral':
+        '''The value of the constant'''
+        return self.value
+    @property
+    def output(self) -> 'Node':
+        '''The output node'''
+        return self._output
+    def getNodeListRecursive(self):
+        return [self._output]
+    def match(self, other):
+        if self.__class__ != other.__class__:
+            return False
+        return self.value == other.value
 
 class Module(Component):
     ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
