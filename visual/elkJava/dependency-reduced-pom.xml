@@ -28,7 +28,7 @@
               </filters>
               <transformers>
                 <transformer>
-                  <mainClass>hello.HelloWorld</mainClass>
+                  <mainClass>place.Place</mainClass>
                 </transformer>
               </transformers>
             </configuration>

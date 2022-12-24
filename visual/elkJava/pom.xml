@@ -39,7 +39,7 @@
                             <transformers>
                                 <transformer
                                     implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>hello.HelloWorld</mainClass>
+                                    <mainClass>place.Place</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>

@@ -164,6 +164,8 @@ def getELK(component: 'Component') -> str:
                 removeParents(child)
     removeParents(componentELK)
 
+    # perhaps see https://snyk.io/advisor/npm-package/elkjs/example
+
     return json.dumps( { 'id': 'root',
                         'layoutOptions': { 'algorithm': 'layered',
                                             # 'elk.layered.nodePlacement.strategy': 'SIMPLE',
