@@ -1035,23 +1035,7 @@ for i in range(len(tests)):
                 print("    " + str(numTestsFailed) + ")", testName)
 
             # hold on to the error for report at the end of testing
-            errorReport = ""
-            errorReport += "Traceback (most recent call last):"
-
-            # see third answer of https://stackoverflow.com/questions/4690600/python-exception-message-capturing
-            ex_type, ex_value, ex_traceback = sys.exc_info()
-            # Extract unformatter stack traces as tuples
-            trace_back = traceback.extract_tb(ex_traceback)
-            # Format stacktrace
-            stackTraceLines = list()
-            for trace in trace_back:
-                stackTraceLines.append("File \"%s\", line %d, in %s" % (trace[0], trace[1], trace[2]))
-                stackTraceLines.append("  " + trace[3])
-            for line in stackTraceLines:
-                errorReport += "\n  " + line
-            errorName, errorMessage = ex_type.__name__, ex_value
-            errorReport += "\n" + errorName + ": " + str(errorMessage)
-            
+            errorReport = traceback.format_exc()  # the text of the error message
             failedTests.append((categoryName, testName, errorReport))
 
 msElapsedTotal = (time.time() - testingTimeStart)*1000

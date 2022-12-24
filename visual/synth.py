@@ -16,6 +16,34 @@ lexer = build.MinispecPythonLexer.MinispecPythonLexer(data)
 stream = antlr4.CommonTokenStream(lexer)
 parser = build.MinispecPythonParser.MinispecPythonParser(stream)
 
+def extractOriginalText(ctx) -> str:
+    ''' Given an antlr4 ctx object, returns the corresponding original text. '''
+    # from https://stackoverflow.com/questions/16343288/how-do-i-get-the-original-text-that-an-antlr4-rule-matched
+    token_source = ctx.start.getTokenSource()
+    input_stream = token_source.inputStream
+    start, stop  = ctx.start.start, ctx.stop.stop
+    return input_stream.getText(start, stop)    
+
+def decorateForErrorCatching(func):
+    ''' Given a function func(self, ctx, ...), returns the function with a wrapper
+    that catches errors, prints the text corresponding to ctx, and rethrows
+    any errors. '''
+    def newFunc(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if not hasattr(e, '___already_caught'):  # if we have no yet caught the error, print the current context.
+                ctx = args[1]
+                errorText = '  Note: Error occurred when synthesizing\n    ' + extractOriginalText(ctx)
+                if hasattr(e, 'add_note'):  # we are in Python 3.11 and can add notes to error messages
+                    e.add_note(errorText)
+                else:
+                    print(errorText)
+                # TODO look into printing just the current line (+ file name) instead of the full ctx.
+                e.___already_caught = True  # mark in the error that we have already caught it at least once
+            raise e
+    return newFunc
+
 newline = '\n' #used to format f-strings such as "Hi{newline}there" since backslash is not allowed in f-strings
 
 '''
@@ -941,45 +969,58 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def __init__(self, globalsHandler: 'GlobalsHandler') -> None:
         self.globalsHandler = globalsHandler
     
+    @decorateForErrorCatching
     def visitLowerCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LowerCaseIdentifierContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitUpperCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UpperCaseIdentifierContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IdentifierContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitAnyIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.AnyIdentifierContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitArg(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgContext):
         raise Exception("Not implemented")
     
+    @decorateForErrorCatching
     def visitArgs(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgsContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitArgFormal(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgFormalContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitArgFormals(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ArgFormalsContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitParam(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamContext):
         if ctx.intParam:
             return self.visit(ctx.intParam)
         assert ctx.typeName(), "Should have a typeName. Did the grammar change?"
         return self.visit(ctx.typeName())
 
+    @decorateForErrorCatching
     def visitParams(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamsContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitParamFormal(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamFormalContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitParamFormals(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParamFormalsContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitTypeName(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeNameContext):
         params = []
         if ctx.params():  #evaluate the type parameters, if any
@@ -1006,21 +1047,27 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             typeObject = self.visit(typeObject)
         return typeObject
 
+    @decorateForErrorCatching
     def visitPackageDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageDefContext):
         raise Exception("PackageDef should only be visited during static elaboration, not synthesis")
 
+    @decorateForErrorCatching
     def visitPackageStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.PackageStmtContext):
         raise Exception("PackageStmt should only be visited during static elaboration, not synthesis")
 
+    @decorateForErrorCatching
     def visitImportDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ImportDeclContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitBsvImportDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BsvImportDeclContext):
         raise Exception("Not implemented")
 
+    @decorateForErrorCatching
     def visitTypeDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDeclContext):
         raise Exception('Handled during static elaboration. Only subtypes typeDefSynonym and typeDefStruct should be visited.')
 
+    @decorateForErrorCatching
     def visitTypeDefSynonym(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext):
         ''' We look up the original type, then construct and return a synonym. '''
         typedefName = ctx.typeId().name.getText()
@@ -1043,15 +1090,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.exitScope()
         return Synonym(originalType, typedefName)
 
+    @decorateForErrorCatching
     def visitTypeId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeIdContext):
         raise Exception("Handled directly, should not be visited.")
 
+    @decorateForErrorCatching
     def visitTypeDefEnum(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumContext):
         raise Exception("Handled during static elaboration.")
 
+    @decorateForErrorCatching
     def visitTypeDefEnumElement(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefEnumElementContext):
         raise Exception("Handled during static elaboration.")
 
+    @decorateForErrorCatching
     def visitTypeDefStruct(self, ctx: build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext):
         typedefName = ctx.typeId().name.getText()
         params = self.globalsHandler.lastParameterLookup
@@ -1077,9 +1128,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.exitScope()
         return Struct(typedefName, fields)
 
+    @decorateForErrorCatching
     def visitStructMember(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructMemberContext):
         raise Exception("Handled in typeDefStruct, not visited")
 
+    @decorateForErrorCatching
     def visitVarBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarBindingContext):
         try:
             typeValue = self.visit(ctx.typeName())
@@ -1095,6 +1148,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value.setMType(typeValue)
             self.globalsHandler.currentScope.set(value, varName)
 
+    @decorateForErrorCatching
     def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
         '''A let binding declares a variable or a concatenation of variables and optionally assigns
         them to the given expression node ("rhs").'''
@@ -1112,14 +1166,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # nothing to return.
         #TODO handle other cases
 
+    @decorateForErrorCatching
     def visitVarInit(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarInitContext):
         raise Exception("Not visited--handled under varBinding to access typeName.")
 
+    @decorateForErrorCatching
     def visitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext, params: 'list[MLiteral|MType]', arguments: 'list[MLiteral|Module]'):
         ''' arguments is a list of arguments to the module.
         
         returns a tuple containing the module hardware and a dictionary moduleInputsWithDefaults of default inputs. '''
-        
+
         moduleName = ctx.moduleId().name.getText()
         # params = self.globalsHandler.lastParameterLookup
         if len(params) > 0:  #attach parameters to the function name if present
@@ -1235,13 +1291,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         return moduleWithMetadata
 
+    @decorateForErrorCatching
     def visitModuleId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleIdContext):
         ''' Handled in moduleDef '''
         raise Exception("Handled in moduleDef, should never be visited")
 
+    @decorateForErrorCatching
     def visitModuleStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleStmtContext):
         raise Exception("Not accessed directly, handled in moduleDef")
 
+    @decorateForErrorCatching
     def visitSubmoduleDecl(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SubmoduleDeclContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]', moduleScope: 'Scope'):
         ''' We have a submodule, so we synthesize it and add it to the current module.
         We also need to bind to submodule's methods somehow; methods with no args bind to
@@ -1305,6 +1364,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         return moduleWithMetadata
 
+    @decorateForErrorCatching
     def visitInputDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.InputDefContext, parentScope: Scope):
         ''' Add the appropriate input to the module, with hardware to handle the default value.
         Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').)
@@ -1317,6 +1377,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addInput(inputNode, inputName)
         return (inputName, ctx.defaultVal)
 
+    @decorateForErrorCatching
     def visitMethodDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, parentScope: 'Scope'):
         '''
         registers is a dictionary mapping register names to the corresponding register hardware.
@@ -1398,6 +1459,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # if we have a method with arguments, we return the corresponding component.
             return methodComponent
 
+    @decorateForErrorCatching
     def visitRuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RuleDefContext, registers: 'dict[str, Register]', submodules: 'dict[str, ModuleWithMetadata]', sharedSubmodules: 'dict[str, ModuleWithMetadata]'):
         ''' Synthesize the update rule. registers is a dictionary mapping register names to the corresponding register hardware. '''
         ruleScope: 'Scope' = ctx.scope
@@ -1437,6 +1499,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 sharedSubmodules[submoduleName].setInput(inputName, newValue)
         self.globalsHandler.exitScope()
 
+    @decorateForErrorCatching
     def visitFunctionDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext):
         '''Synthesizes the corresponding function and returns the entire function hardware.
         Gets any parameters from parsedCode.lastParameterLookup and
@@ -1483,10 +1546,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.outputNode = previousOutputNode
         return funcComponent
 
+    @decorateForErrorCatching
     def visitFunctionId(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FunctionIdContext):
         ''' Handled from functionDef '''
         raise Exception("Handled from functionDef, should never be visited")
 
+    @decorateForErrorCatching
     def visitVarAssign(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarAssignContext):
         ''' Assign the given variable to the given expression. No returns, mutates existing hardware. '''
         varList = ctx.lvalue()  #list of lhs vars
@@ -1645,7 +1710,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(newWire)
         self.globalsHandler.currentScope.set(insertComponent.output, varName)
 
-
+    @decorateForErrorCatching
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
@@ -1655,6 +1720,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         tokensSourcedFrom.append((getSourceFilename(ctx), ctx.lowerCaseIdentifier().getSourceInterval()[0]))
         return (text, nodes, varName, tokensSourcedFrom)  # no new selection input nodes since field selection is not dynamic
 
+    @decorateForErrorCatching
     def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
@@ -1672,6 +1738,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[-1]+1))
         return (text, nodes, varName, tokensSourcedFrom)
 
+    @decorateForErrorCatching
     def visitSimpleLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
@@ -1684,6 +1751,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             valueFound = valueFound.getHardware(self.globalsHandler)
         return ("", (valueFound,), ctx.getText(), [])
 
+    @decorateForErrorCatching
     def visitSliceLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
@@ -1707,6 +1775,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # TODO source map
         return (text, nodes, varName, tokensSourcedFrom)
 
+    @decorateForErrorCatching
     def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
         '''This is an expression corresponding to a binary operation (which may be a unary operation,
         which may be an exprPrimary). We return the Node or MLiteral with the corresponding output value.'''
@@ -1715,6 +1784,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
         return value
 
+    @decorateForErrorCatching
     def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
         condition = self.visit(ctx.expression(0))
         if condition.__class__ == UnsynthesizableComponent:
@@ -1747,6 +1817,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             return muxComponent.output
         #TODO go back through ?/if statements and make sure hardware/literal cases are handled properly.
 
+    @decorateForErrorCatching
     def visitCaseExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprContext):
         # Similar to caseStmt, only simpler, with one variable assignment instead of arbitrary statements to execute
         ''' We evaluate the case statement into one or more muxes, with the following optimizations:
@@ -1873,9 +1944,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(component)
         return muxes[0].output if len(muxes) > 0 else defaultValue
 
+    @decorateForErrorCatching
     def visitCaseExprItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprItemContext):
         raise Exception("Handled in caseExpr, should not be visited")
 
+    @decorateForErrorCatching
     def visitBinopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BinopExprContext):
         if ctx.unopExpr():  # our binary expression is actually a unopExpr.
             return self.visit(ctx.unopExpr())
@@ -1916,6 +1989,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         #assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
 
+    @decorateForErrorCatching
     def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
         ''' Return the Node or MLiteral corresponding to the expression '''
         if not ctx.op:  # our unopExpr is actually just an exprPrimary.
@@ -1954,6 +2028,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentComponent.addChild(component)
         return unopComponenet.output
 
+    @decorateForErrorCatching
     def visitVarExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.VarExprContext):
         '''We are visiting a variable/function name. We look it up and return the correpsonding information
         (which may be a Node or a ctx or a tuple (ctx/Node, paramMappings), for instance).'''
@@ -1975,6 +2050,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.lastParameterLookup = params
         return value
 
+    @decorateForErrorCatching
     def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
         ''' Bit concatenation is just a function. Returns the function output. '''
         toConcat = []
@@ -1996,11 +2072,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(sliceComponent)
         return sliceComponent.output
 
+    @decorateForErrorCatching
     def visitStringLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StringLiteralContext):
         return UnsynthesizableComponent()
         # I don't think string literals do anything--they are only for system functions (dollar-sign
         # identifiers) or for comments.
 
+    @decorateForErrorCatching
     def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
         '''We have an integer literal, so we parse it and return it.
         Note that integer literals may be either integers or bit values. '''
@@ -2033,6 +2111,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # else we have an ordinary decimal integer
         return IntegerLiteral(int(text), tokensSourcedFrom)
 
+    @decorateForErrorCatching
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
         '''This is the return expression in a function. We need to put the correct wire
         attaching the right hand side to the output of the function.'''
@@ -2045,6 +2124,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         returnWire = Wire(rhs, outputNode)
         self.globalsHandler.currentComponent.addChild(returnWire)
 
+    @decorateForErrorCatching
     def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):
         fieldValues = {}
         packingHardware = False
@@ -2075,10 +2155,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             return structType(fieldValues)  # no hardware, just a struct literal
 
+    @decorateForErrorCatching
     def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
         tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
         return DontCareLiteral(tokensSourcedFrom)
 
+    @decorateForErrorCatching
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
         Returns the result of slicing (the output of the slicing function).
@@ -2148,6 +2230,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 raise Exception("Variable slicing into modules is not implemented")
             return toSliceFrom.getNumberedSubmodule(msb.value)
 
+    @decorateForErrorCatching
     def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
         '''We are calling a function. We synthesize the given function, wire it to the appropriate inputs,
         and return the function output node (which corresponds to the value of the function).'''
@@ -2238,6 +2321,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             raise Exception(f"Unexpected lhs of function call {ctx.fcn.__class__}")
 
+    @decorateForErrorCatching
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
         toAccess = self.visit(ctx.exprPrimary())
         field = ctx.field.getText()
@@ -2260,15 +2344,19 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         self.globalsHandler.currentComponent.addChild(wireIn)
         return fieldExtractComp.output
 
+    @decorateForErrorCatching
     def visitParenExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ParenExprContext):
         return self.visit(ctx.expression())
 
+    @decorateForErrorCatching
     def visitMemberBinds(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberBindsContext):
         raise Exception("Handled in structExpr, should not be visited")
 
+    @decorateForErrorCatching
     def visitMemberBind(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberBindContext):
         raise Exception("Handled in structExpr, should not be visited")
 
+    @decorateForErrorCatching
     def visitBeginEndBlock(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BeginEndBlockContext):
         beginendScope = ctx.scope
         beginendScope.parents = [self.globalsHandler.currentScope] # in case we are in a fleeting if/case statement scope
@@ -2277,9 +2365,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.visit(stmt)
         self.globalsHandler.exitScope()
 
+    @decorateForErrorCatching
     def visitRegWrite(self, ctx: build.MinispecPythonParser.MinispecPythonParser.RegWriteContext):
         '''To assign to a register, we put a wire from the value (rhs) to the register input.
-        We don't create the wire here, since the register write might have occured during an if statement--
+        We don't create the wire here, since the register write might have occurred during an if statement--
         the wires are created at the end of the rule, in visitRuleDef.'''
         value = self.visit(ctx.rhs)
         if ctx.lhs.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
@@ -2357,6 +2446,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             regName = regsToWrite[i]
             self.globalsHandler.currentScope.set(vals[i], regName + "input")
 
+    @decorateForErrorCatching
     def visitStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StmtContext):
         ''' Each variety of statement is handled separately. '''
         return self.visitChildren(ctx)
@@ -2409,6 +2499,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.globalsHandler.currentComponent.addChild(component)
             originalScope.set(muxComponent.output, var)
 
+    @decorateForErrorCatching
     def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
         condition = self.visit(ctx.expression())
         if isMLiteral(condition):
@@ -2485,6 +2576,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         self.globalsHandler.currentScope = originalScope
 
+    @decorateForErrorCatching
     def visitCaseStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtContext):
         ''' The case statement:
         case (expr)
@@ -2581,12 +2673,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # run the case statement as a sequence of if statements.
         self.doCaseStmtStep(expr, expri, 0, ctx.caseStmtDefaultItem())
 
+    @decorateForErrorCatching
     def visitCaseStmtItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtItemContext):
         raise Exception("Handled in visitCaseStmt--not visited.")
 
+    @decorateForErrorCatching
     def visitCaseStmtDefaultItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseStmtDefaultItemContext):
         raise Exception("Handled in visitCaseStmt--not visited.")
 
+    @decorateForErrorCatching
     def visitForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
         iterVarName = ctx.initVar.getText()
         initVal = self.visit(ctx.expression(0))
