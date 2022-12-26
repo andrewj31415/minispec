@@ -23,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument("--visualdir", "-s", default="visualDir", help="Folder for intermediate visual files")
     parser.add_argument("--all", "-a", default=False, action="store_true", help="Layout all components recursively")
     parser.add_argument("--java", "-jv", default=False, action="store_true", help="Use the java version of elk")
+    parser.add_argument("--canvas", "-c", default=False, action="store_true", help="Use the canvas element instead of the svg approach")
     args = parser.parse_args()
 
     if not os.path.exists(args.visualdir):
@@ -81,16 +82,18 @@ if __name__ == '__main__':
         else:
             # Use the java version of ELK to calculate the layout
 
-            raise Exception("The -jv flag is not currently maintained; remove it to use the Javascript version.")
+            # raise Exception("The -jv flag is not currently maintained; remove it to use the Javascript version.")
 
             print("elkcaller", ELKJavacaller)
             print("Calculating layout ...")
-            os.system(f"cd {visualDir} && java -jar {ELKJavacaller}")
+            os.system(f"cd {visualDir} && java -Xmx16g -jar {ELKJavacaller}")
             print(f"Layout complete. Time: {time.time() - layoutStartTime}  seconds")
 
         elkOutput = JSToPythonFile.read_text() # the output from elk
 
         templateFile = pathlib.Path(__file__).with_name('template.html')
+        if args.canvas:
+            templateFile = pathlib.Path(__file__).with_name('canvas-template.html')
         template = templateFile.read_text()
 
         templateParts = template.split("/* Python data goes here */")

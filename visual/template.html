@@ -1029,6 +1029,7 @@
                 if (edge.sections === undefined) {
                     // behavior should not occur
                     console.log("edge missing sections", edge);
+                    return;
                 }
                 let currentLocation = edge.sections[0].startPoint; //walk along the edge and collect its segements
                 if (edge.sections.length !== 1) {

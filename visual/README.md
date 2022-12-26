@@ -35,6 +35,18 @@ An old implementation of the hardware representation. Used to produce a hardcode
 ### oldtemplate.py:
 An old implementation of the html template. Used to display a hardcoded output for testing GUI features. No longer in spec--only kept for reference.
 
+## TODO list
+
+- Test parametric lookups
+- Investigate demultiplexer design and source support for vectors of submodules
+- Source support for wires and variables
+- Implement and test multiple return statements
+- Constant folding across function boundaries
+- Representing variable index manipulations in parallel
+- Layouting via ELK Java
+- Runtime layouting for recursive expansion using ELK JS
+- Nicer error messages
+
 ## Install info (TODO give more detail)
 
 Commands to create python3 antlr4 build (dirs may vary):
