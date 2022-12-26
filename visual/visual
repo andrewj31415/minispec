@@ -76,18 +76,16 @@ if __name__ == '__main__':
             # Use ELKJS to calculate the layout
             print("elkcaller", ELKcaller)
             print("Calculating layout ...")
-            setHeapSize = 'export NODE_OPTIONS=--max_old_space_size=8192'  # otherwise we may run out of memory for large diagrams
-            os.system(f"cd {visualDir} && {setHeapSize} && node {ELKcaller}")
-            print(f"Layout complete. Time: {time.time() - layoutStartTime}  seconds")
+            setJSHeapSize = 'export NODE_OPTIONS=--max_old_space_size=8192'  # otherwise we may run out of memory for large diagrams
+            os.system(f"cd {visualDir} && {setJSHeapSize} && node {ELKcaller}")
+            print(f"Layout complete. Time: {time.time() - layoutStartTime} seconds")
         else:
             # Use the java version of ELK to calculate the layout
-
-            # raise Exception("The -jv flag is not currently maintained; remove it to use the Javascript version.")
-
             print("elkcaller", ELKJavacaller)
             print("Calculating layout ...")
-            os.system(f"cd {visualDir} && java -Xmx16g -jar {ELKJavacaller}")
-            print(f"Layout complete. Time: {time.time() - layoutStartTime}  seconds")
+            setJavaHeapSize = '-Xmx16g'  # otherwise we may run out of memory for large diagrams
+            os.system(f"cd {visualDir} && java {setJavaHeapSize} -jar {ELKJavacaller}")
+            print(f"Layout complete. Time: {time.time() - layoutStartTime} seconds")
 
         elkOutput = JSToPythonFile.read_text() # the output from elk
 
