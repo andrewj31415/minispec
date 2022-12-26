@@ -20,6 +20,8 @@ import org.eclipse.elk.core.util.IElkProgressMonitor;
 import org.eclipse.elk.graph.ElkNode;
 import org.eclipse.elk.graph.json.ElkGraphJson;
 
+import org.eclipse.elk.alg.layered.*;
+
 // File IO-related imports
 import java.util.Scanner;
 import java.io.File;
@@ -57,7 +59,7 @@ public class Place {
                           .omitZeroPositions(false)
 						  .omitZeroDimension(false)
                           .omitLayout(false)
-                          .shortLayoutOptionKeys(false)
+                          .shortLayoutOptionKeys(true)
 						  .omitUnknownLayoutOptions(false)
                           .prettyPrint(false)
                           .toJson();

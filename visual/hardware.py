@@ -38,6 +38,8 @@ class variable counter that is incremented each time an instance is created. It 
 or not longer node names may possibly slow down layout generation.
     In the html template, the portion of the id past the '|' is parsed into a JSON object to read off any
 properties that go beyond ELK's layouting data.
+    The `separators=(',', ':')` input to json.dumps tells python not to insert whitespace into the output
+json, which somewhat reduces the file size.
 '''
 
 def getELK(component: 'Component') -> str:
@@ -171,7 +173,7 @@ def getELK(component: 'Component') -> str:
                                             # 'elk.layered.nodePlacement.strategy': 'SIMPLE',
                                             'hierarchyHandling': 'INCLUDE_CHILDREN' },
                         'children': [ componentELK ],
-                        'edges': [] } )
+                        'edges': [] }, separators=(',', ':') )
 
 def weightAdjust(weight):
     ''' Given the 'weight' of a component, returns the amount of space to reserve for the label of the element. '''
@@ -183,14 +185,14 @@ def elkID(item: 'Component|Node') -> str:
         return f'node{item._id}'
     elif issubclass(item.__class__, Component):
         if item.__class__ == Mux:
-            return f"component{item._id}|{json.dumps({'name':'', 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()})}"
+            return f"component{item._id}|{json.dumps({'name':'', 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()}, separators=(',', ':'))}"
         if item.__class__ == Wire:
-            return f"component{item._id}|{json.dumps({'name':''})}"
+            return f"component{item._id}|{json.dumps({'name':''}, separators=(',', ':'))}"
         if item.__class__ == Function:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()})}"
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()}, separators=(',', ':'))}"
         if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()})}"
-        return f"component{item._id}|{json.dumps({'name':item.name})}"
+            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()}, separators=(',', ':'))}"
+        return f"component{item._id}|{json.dumps({'name':item.name}, separators=(',', ':'))}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
 def setName(nodeELK: 'dict[str, Any]', name: 'str', height: 'float'):

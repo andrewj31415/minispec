@@ -89,6 +89,19 @@ if __name__ == '__main__':
 
         elkOutput = JSToPythonFile.read_text() # the output from elk
 
+        elkOutputJson = json.loads(elkOutput)
+        def stripExtraInfo(jsonObj):
+            # removes unnecessary layouting info from jsonObj
+            # reduces output file size
+            for property in ['layoutOptions', 'properties', '$H']:
+                if property in jsonObj:
+                    del jsonObj[property]
+            if 'children' in jsonObj:
+                for child in jsonObj['children']:
+                    stripExtraInfo(child)
+        stripExtraInfo(elkOutputJson)
+        elkOutput = json.dumps(elkOutputJson, separators=(',', ':'))
+
         templateFile = pathlib.Path(__file__).with_name('template.html')
         if args.canvas:
             templateFile = pathlib.Path(__file__).with_name('canvas-template.html')
