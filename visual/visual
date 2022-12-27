@@ -89,6 +89,7 @@ if __name__ == '__main__':
         componentJsonString: 'str' = json.dumps(componentJson, separators=(',', ':'))
         with pythonToJSFile.open('w') as fp: # write to a file to give to elk
             fp.write(componentJsonString)
+        # TODO investigate using a pipe to pass data around: https://stackoverflow.com/questions/29112324/piping-input-from-python-to-java
 
         if not args.java:
             # Use ELKJS to calculate the layout

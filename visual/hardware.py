@@ -189,17 +189,12 @@ def elkID(item: 'Component|Node') -> str:
 
 def setName(nodeELK: 'dict[str, Any]', name: 'str', height: 'float'):
     ''' Sets nodeELK to have a label `name` taking up `height` space at the top of the node. '''
-    if 'labels' not in nodeELK:
-        nodeELK['labels'] = []
-    nodeELK['labels'].append({ 'text': name,
-                                'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} })
     if 'properties' not in nodeELK:
         nodeELK['properties'] = {}
     nodeELK['properties']['elk.padding'] = f'[top={height+12},left=12,bottom=12,right=12]'  # the default padding is 12, see https://www.eclipse.org/elk/reference/options/org-eclipse-elk-padding.html. info on padding: https://github.com/kieler/elkjs/issues/27
 
 def setPortLabel(nodeELK: 'dict[str, Any]', text: 'str', width: 'float', height: 'float'):
-    nodeELK['labels'] = [ { 'text': text,
-                            'properties': {"nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]"} } ]
+    nodeELK['labels'] = [ { 'text': text } ]
     nodeELK['width'] = width
     nodeELK['height'] = height
 
@@ -248,7 +243,6 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
             nodeELK = toELK(node, {'port.side': 'WEST'})
             if item.inputNames:
                 setPortLabel(nodeELK, item.inputNames[i], 0, 0)
-                nodeELK['isMuxLabel'] = True
             ports.append(nodeELK)
         ports.append( toELK(item.control, {'port.side': 'SOUTH'}) )
         ports.append( toELK(item.output, {'port.side': 'EAST'}) )

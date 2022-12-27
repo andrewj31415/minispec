@@ -892,7 +892,7 @@
                 let componentName = componentData.name;
 
                 let overRect;
-                if (component.i && component.i.isMux) {
+                if (componentData.isMux) {
                     overRect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
                     let muxHeightOffset = 5/2;
                     let points = `${absolutePos.x},${absolutePos.y-muxHeightOffset} ${absolutePos.x+component.width},${absolutePos.y+muxHeightOffset} ${absolutePos.x+component.width},${absolutePos.y+component.height-muxHeightOffset} ${absolutePos.x},${absolutePos.y+component.height+muxHeightOffset}`;
@@ -934,7 +934,7 @@
                             let y = absolutePos.y + port.y;
                             let width = port.width
                             let height = port.height
-                            if (port.isMuxLabel) {
+                            if (componentData.isMux) {
                                 y -= 5/2;
                                 width = 10;
                                 height = 5;
