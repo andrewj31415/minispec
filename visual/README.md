@@ -40,7 +40,6 @@ An old implementation of the html template. Used to display a hardcoded output f
 - Test parametric lookups
 - Investigate demultiplexer design and source support for vectors of submodules
 - Source support for wires and variables
-- Implement and test multiple return statements
 - Constant folding across function boundaries
 - Representing variable index manipulations in parallel
 - Layouting via ELK Java

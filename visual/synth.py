@@ -22,7 +22,12 @@ def extractOriginalText(ctx) -> str:
     token_source = ctx.start.getTokenSource()
     input_stream = token_source.inputStream
     start, stop  = ctx.start.start, ctx.stop.stop
-    return input_stream.getText(start, stop)    
+    return input_stream.getText(start, stop)
+def getLineNumber(ctx) -> int:
+    token_source = ctx.start.getTokenSource()
+    input_stream = token_source.inputStream
+    start, stop  = ctx.start.start, ctx.stop.stop
+    return ctx.start.line
 
 def decorateForErrorCatching(func):
     ''' Given a function func(self, ctx, ...), returns the function with a wrapper
@@ -34,7 +39,7 @@ def decorateForErrorCatching(func):
         except Exception as e:
             if not hasattr(e, '___already_caught'):  # if we have no yet caught the error, print the current context.
                 ctx = args[1]
-                errorText = '  Note: Error occurred when synthesizing\n    ' + extractOriginalText(ctx)
+                errorText = '  Note: Error occurred when synthesizing\n    ' + extractOriginalText(ctx) + '\non line ' + str(getLineNumber(ctx)) + ' of file ' + getSourceFilename(ctx)
                 if hasattr(e, 'add_note'):  # we are in Python 3.11 and can add notes to error messages
                     e.add_note(errorText)
                 else:
@@ -625,8 +630,6 @@ class GlobalsHandler:
         '''self.lastParameterLookup is a list consisting of the last integer values used to look up
         a function call. Should be set whenever calling a function. Used to determine how to name
         the function in the corresponding component.'''
-        self.outputNode = None  # the output node to which a return statement should go, used in functions and methods
-        #TODO move outputNode to temporary scope
 
         self.allScopes: 'list[Scope]' = []
         self.currentScope: 'Scope' = None
@@ -721,7 +724,6 @@ class StaticTypeListener(build.MinispecPythonListener.MinispecPythonListener):
         if ctx.argFormals():
             for argFormal in ctx.argFormals().argFormal():
                 moduleScope.setPermanent(None, argFormal.argName.getText())
-
 
     def exitModuleDef(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext):
         '''We have defined a module, so we step back into the parent scope.'''
@@ -900,8 +902,6 @@ visitCaseStmt:
 visitCaseStmtItem: 
 visitCaseStmtDefaultItem: 
 visitForStmt: No returns, mutates existing hardware
-
-
 '''
 
 class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
@@ -1414,9 +1414,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleCtxScope: Scope = methodScope.parents[0]
             previousCtxParent = moduleCtxScope.parents
             moduleCtxScope.parents = [parentScope]
-        previousOutputNode = self.globalsHandler.outputNode
-        self.globalsHandler.outputNode = methodOutputNode
         self.globalsHandler.enterScope(methodScope)
+        self.globalsHandler.currentScope.setPermanent(None, '-return')
 
         if ctx.argFormals():
             # we have a method with args. We create a component for it which we return at the end.
@@ -1449,10 +1448,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for stmt in ctx.stmt():  # evaluate the method
                 self.visit(stmt)
         
+            # collect the return value
+            returnValue = self.globalsHandler.currentScope.get(self, '-return')
+            if returnValue.__class__ != UnsynthesizableComponent:
+                if isMLiteral(returnValue):
+                    returnValue = returnValue.getHardware(self.globalsHandler)
+                returnWire = Wire(returnValue, methodOutputNode)
+                self.globalsHandler.currentComponent.addChild(returnWire)
+
         if ctx.argFormals():
             self.globalsHandler.currentComponent = previousComponent  #reset the current component
         self.globalsHandler.exitScope()
-        self.globalsHandler.outputNode = previousOutputNode
         if ctx.argFormals():
             moduleCtxScope.parents = previousCtxParent  # reset the module scope parents
         if ctx.argFormals():
@@ -1532,8 +1538,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         funcComponent = Function(functionName, [], inputNodes)
         funcComponent.inputNames = inputNames
         funcComponent.addSourceTokens([(getSourceFilename(ctx), ctx.functionId().getSourceInterval()[0])])
-        previousOutputNode = self.globalsHandler.outputNode
-        self.globalsHandler.outputNode = funcComponent.output
+        self.globalsHandler.currentScope.setPermanent(None, '-return')
         # log the current component
         previousComponent = self.globalsHandler.currentComponent
         self.globalsHandler.currentComponent = funcComponent
@@ -1541,9 +1546,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for stmt in ctx.stmt():
             self.visit(stmt)
 
+        returnValue = self.globalsHandler.currentScope.get(self, '-return')
+        # if returnValue.__class__ == UnsynthesizableComponent:
+        #     return
+        if isMLiteral(returnValue):
+            returnValue = returnValue.getHardware(self.globalsHandler)
+        returnWire = Wire(returnValue, funcComponent.output)
+        self.globalsHandler.currentComponent.addChild(returnWire)
+
         self.globalsHandler.exitScope()
         self.globalsHandler.currentComponent = previousComponent #reset the current component
-        self.globalsHandler.outputNode = previousOutputNode
         return funcComponent
 
     @decorateForErrorCatching
@@ -2113,16 +2125,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     @decorateForErrorCatching
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
-        '''This is the return expression in a function. We need to put the correct wire
-        attaching the right hand side to the output of the function.'''
-        rhs = self.visit(ctx.expression())  # the node with the value to return
-        if rhs.__class__ == UnsynthesizableComponent:
-            return
-        if isMLiteral(rhs):
-            rhs = rhs.getHardware(self.globalsHandler)
-        outputNode = self.globalsHandler.outputNode
-        returnWire = Wire(rhs, outputNode)
-        self.globalsHandler.currentComponent.addChild(returnWire)
+        '''This is the return expression in a function. We keep track of return values
+        by assigning them to `-return`. The `-` character was chosen because it cannot
+        be used in minispec variable names.'''
+        rhs = self.visit(ctx.expression())  # the value to return
+        self.globalsHandler.currentScope.set(rhs, '-return')
 
     @decorateForErrorCatching
     def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):

@@ -284,6 +284,22 @@ def _():
     expected = computeHalf
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly handles multiple return statements''')
+def _():
+    text = pull('returns')
+
+    five = Function('5')
+    eq = Function('==', [], [Node(), Node()])
+    m = Mux([Node(), Node()])
+    one, zero = Function('1'), Function('0')
+    i, o = Node(), Node()
+    p = Function('password', [eq, five, m, one, zero, Wire(i, eq.inputs[0]), Wire(five.output, eq.inputs[1]), Wire(eq.output, m.control), Wire(m.output, o), Wire(one.output, m.inputs[0]), Wire(zero.output, m.inputs[1])], [i], o)
+
+    output = synth.parseAndSynth(text, 'password')
+    expected = p
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
 describe('''Case Statements''')
 
 @it('''Correctly handles constant-folded case statement''')

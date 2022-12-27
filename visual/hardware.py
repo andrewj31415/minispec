@@ -71,7 +71,7 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
         edge = portsFound[sourceNode]
         if 'properties' not in edge:
             edge['properties'] = {}
-        edge['properties']['layered.priority.direction'] = 10
+        edge['properties']['org.eclipse.elk.layered.priority.direction'] = 10
 
     # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
     def eliminateVectorModules(componentELK, parentELK):
