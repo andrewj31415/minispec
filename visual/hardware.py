@@ -182,17 +182,9 @@ def weightAdjust(weight):
 def elkID(item: 'Component|Node') -> str:
     ''' Returns a unique id for the node or component for use in ELK '''
     if item.__class__ == Node:
-        return f'node{item._id}'
+        return f'n{item._id}'
     elif issubclass(item.__class__, Component):
-        if item.__class__ == Mux:
-            return f"component{item._id}|{json.dumps({'name':'', 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()}, separators=(',', ':'))}"
-        if item.__class__ == Wire:
-            return f"component{item._id}|{json.dumps({'name':''}, separators=(',', ':'))}"
-        if item.__class__ == Function:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()}, separators=(',', ':'))}"
-        if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
-            return f"component{item._id}|{json.dumps({'name':item.name, 'weight':weightAdjust(item.weight()), 'numSubcomponents': item.weight(), 'tokensSourcedFrom':item.getSourceTokens()}, separators=(',', ':'))}"
-        return f"component{item._id}|{json.dumps({'name':item.name}, separators=(',', ':'))}"
+        return f"c{item._id}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
 def setName(nodeELK: 'dict[str, Any]', name: 'str', height: 'float'):
@@ -244,6 +236,10 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
             jsonObj['width'] = 15
             jsonObj['height'] = 15
+        jsonObj['i'] = {'name':item.name,
+                        'weight':weightAdjust(item.weight()),
+                        'numSubcomponents': item.weight(),
+                        'tokensSourcedFrom':item.getSourceTokens()}
         return jsonObj
     if item.__class__ == Mux:
         ports = []
@@ -262,7 +258,11 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'height': 10 * len(item.inputs),
                     'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         jsonObj['isMux'] = True
-        jsonObj['i'] = {'isMux': True}
+        jsonObj['i'] = {'name': '',
+                        'weight': weightAdjust(item.weight()),
+                        'numSubcomponents': item.weight(),
+                        'isMux': True,
+                        'tokensSourcedFrom':item.getSourceTokens(),}
         return jsonObj
     if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
         ports = []
@@ -289,6 +289,10 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
             jsonObj['height'] = 15
         if item.__class__ == VectorModule:
             jsonObj['isVectorModule'] = True
+        jsonObj['i'] = {'name':item.name,
+                        'weight':weightAdjust(item.weight()),
+                        'numSubcomponents': item.weight(),
+                        'tokensSourcedFrom':item.getSourceTokens()}
         return jsonObj
     if item.__class__ == Wire:
         return { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }

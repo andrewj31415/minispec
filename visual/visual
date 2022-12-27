@@ -17,6 +17,8 @@ import hardware
 from hardware import *
 
 if __name__ == '__main__':
+    total_start_time = time.time()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Minispec(.ms) file containing the function or module to view")
     parser.add_argument("target", help="Name of the function or module to synthesize")
@@ -175,3 +177,5 @@ if __name__ == '__main__':
     output = currentPath.joinpath(f'{outputFilename}.html')
     print(f"Putting output into {output}")
     output.open("w").write(template)
+
+    print(f"Total time elapsed: {time.time() - total_start_time} seconds")
