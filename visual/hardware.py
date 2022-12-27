@@ -42,7 +42,7 @@ properties that go beyond ELK's layouting data.
 json, which somewhat reduces the file size.
 '''
 
-def getELK(component: 'Component') -> str:
+def getELK(component: 'Component') -> 'dict[str, Any]':
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
     componentELK = toELK(component)
 
@@ -168,12 +168,12 @@ def getELK(component: 'Component') -> str:
 
     # perhaps see https://snyk.io/advisor/npm-package/elkjs/example
 
-    return json.dumps( { 'id': 'root',
-                        'layoutOptions': { 'algorithm': 'layered',
-                                            # 'elk.layered.nodePlacement.strategy': 'SIMPLE',
-                                            'hierarchyHandling': 'INCLUDE_CHILDREN' },
-                        'children': [ componentELK ],
-                        'edges': [] }, separators=(',', ':') )
+    return { 'id': 'root',
+             'layoutOptions': { 'algorithm': 'layered',
+                                 # 'elk.layered.nodePlacement.strategy': 'SIMPLE',
+                                 'hierarchyHandling': 'INCLUDE_CHILDREN' },
+             'children': [ componentELK ],
+             'edges': [] }
 
 def weightAdjust(weight):
     ''' Given the 'weight' of a component, returns the amount of space to reserve for the label of the element. '''
@@ -262,6 +262,7 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'height': 10 * len(item.inputs),
                     'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         jsonObj['isMux'] = True
+        jsonObj['i'] = {'isMux': True}
         return jsonObj
     if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
         ports = []

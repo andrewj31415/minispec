@@ -57,6 +57,8 @@ if __name__ == '__main__':
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
     print(f'Synthesis complete. Time: {time.time() - synthesisStartTime} seconds')
 
+    componentJson: 'dict[str, Any]' = hardware.getELK(synthesizedComponent)
+
     if args.all:
         # Hardcode locations of all components recursively via ELKJS at compile time.
 
@@ -67,10 +69,24 @@ if __name__ == '__main__':
         ELKcaller = absoluteFilePath.with_name("elk").joinpath("place.js")
         ELKJavacaller = absoluteFilePath.with_name("elkJava").joinpath("target/gs-maven-0.1.0.jar")
 
+        # separate non-layout data before sending to library
+        iFieldValues: 'dict[str, dict]' = {}  # maps element id's to python dictionaries
+        def getIFieldValues(componentJson):
+            # mutates componentJson
+            if 'i' in componentJson:
+                iFieldValues[componentJson['id']] = componentJson['i']
+                del componentJson['i']
+            if 'children' in componentJson:
+                for child in componentJson['children']:
+                    getIFieldValues(child)
+        getIFieldValues(componentJson)
+
         layoutStartTime = time.time()
 
+        
+        componentJsonString: 'str' = json.dumps(componentJson, separators=(',', ':'))
         with pythonToJSFile.open('w') as fp: # write to a file to give to elk
-            fp.write(hardware.getELK(synthesizedComponent))
+            fp.write(componentJsonString)
 
         if not args.java:
             # Use ELKJS to calculate the layout
@@ -91,7 +107,7 @@ if __name__ == '__main__':
 
         elkOutputJson = json.loads(elkOutput)
         def stripExtraInfo(jsonObj):
-            # removes unnecessary layouting info from jsonObj
+            # removes now-unneeded layouting info from jsonObj
             # reduces output file size
             for property in ['layoutOptions', 'properties', '$H']:
                 if property in jsonObj:
@@ -100,6 +116,14 @@ if __name__ == '__main__':
                 for child in jsonObj['children']:
                     stripExtraInfo(child)
         stripExtraInfo(elkOutputJson)
+        def restoreIFieldValues(elkOutputJson):
+            # re-adds non-layout information into the component
+            if elkOutputJson['id'] in iFieldValues:
+                elkOutputJson['i'] = iFieldValues[elkOutputJson['id']]
+            if 'children' in elkOutputJson:
+                for child in elkOutputJson['children']:
+                    restoreIFieldValues(child)
+        restoreIFieldValues(elkOutputJson)
         elkOutput = json.dumps(elkOutputJson, separators=(',', ':'))
 
         templateFile = pathlib.Path(__file__).with_name('template.html')
@@ -126,7 +150,7 @@ if __name__ == '__main__':
         # Layout components at page load.
         raise Exception("This part of the program is not currently maintained; use the '-a' flag.")
 
-        elkInput = hardware.getELK(synthesizedComponent) # the components to feed in
+        componentJsonString: 'str' = json.dumps(componentJson, separators=(',', ':')) # the components to feed in
 
         templateFile = pathlib.Path(__file__).with_name('auto-place-template.html')
         template = templateFile.read_text()
@@ -142,7 +166,7 @@ if __name__ == '__main__':
             tokens: {synth.tokensAndWhitespace(text)[:-1]}
         }});\n'''
 
-        elementsToPlace = f'''elkInput = {elkInput}'''
+        elementsToPlace = f'''elkInput = {componentJsonString}'''
 
         template = templateParts[0] + sourcesInfo + templateParts[1] + elementsToPlace + templateParts[2]
 

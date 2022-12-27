@@ -892,7 +892,7 @@
                 let componentName = componentData.name;
 
                 let overRect;
-                if (component.isMux) {
+                if (component.i && component.i.isMux) {
                     overRect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
                     let muxHeightOffset = 5/2;
                     let points = `${absolutePos.x},${absolutePos.y-muxHeightOffset} ${absolutePos.x+component.width},${absolutePos.y+muxHeightOffset} ${absolutePos.x+component.width},${absolutePos.y+component.height-muxHeightOffset} ${absolutePos.x},${absolutePos.y+component.height+muxHeightOffset}`;
