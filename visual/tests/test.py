@@ -161,7 +161,7 @@ def _():
 
 describe('Literal Arithmetic')
 
-@it('''Correctly folds constants''')
+@it('''Correctly folds some simple constants''')
 def _():
     text = pull('literals1')
 
@@ -187,6 +187,11 @@ def _():
     output = synth.parseAndSynth(text, 'f')
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly folds all constants''')
+def _():
+    assert False, "finish writing test"
+
 
 describe("If and Ternary Statements")
 

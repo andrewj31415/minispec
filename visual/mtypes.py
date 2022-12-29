@@ -153,7 +153,8 @@ class MType(type):
             return super.__str__(self)
 
     def __eq__(self, other):
-        ''' Handles equality of minispec types. Returns true if self and other are the same minispec type. '''
+        ''' Handles equality of minispec types. Returns true if self and other are the same minispec type.
+        Typedefs of the same type compare to true. '''
         if other.__class__ != MType:
             return False
         self = self.untypedef()
@@ -175,6 +176,13 @@ class MLiteral(metaclass=MType):
     def __init__(self):
         self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
         raise Exception("Not implemented")
+    def __eq__(self, other: 'MLiteral') -> bool:
+        ''' Minispec literals have two types of equality, eq and __eq__.
+        Two literals compare equally under eq if they would compare equal in minispec, while
+        two literals compare equally under __eq__ if they are the same literal. Also, __eq__
+        returns a python boolean, while eq returns a minispec literal.
+        For example, 1'b1.eq(2'b1) is BooleanLiteral(True), but 1'b1.__eq__(2'b1) is False. '''
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
     @classmethod
     def untypedef(cls):  #TODO consider renaming "untypedef" to just "class" or "getClass" ...
         ''' Return the original untypedef-ed type.
@@ -218,56 +226,56 @@ class MLiteral(metaclass=MType):
         raise Exception("Not Implemented")
     '''binary operations. self is assumed to be the first operand (in subtraction, divsion, etc.)
     le, gt, ge are in terms of lt and eq. neq is in terms of eq.'''
-    def pow(self, other):
-        raise Exception("Not Implemented")
-    def mul(self, other):
-        raise Exception("Not Implemented")
-    def div(self, other):
-        raise Exception("Not implemented")
-    def mod(self, other):
-        raise Exception("Not implemented")
-    def add(self, other):
-        raise Exception("Not Implemented")
-    def sub(self, other):
-        raise Exception("Not Implemented")
-    def sleft(self, other):
-        raise Exception("Not implemented")
-    def sright(self, other):
-        raise Exception("Not implemented")
-    def lt(self, other):
-        raise Exception("Not Implemented")
-    def eq(self, other):
-        raise Exception("Not Implemented")
-    def bitand(self, other):
-        raise Exception("Not implemented")
-    def bitxor(self, other):
-        raise Exception("Not implemented")
-    def bitnor(self, other):
-        raise Exception("Not implemented")
-    def bitor(self, other):
-        raise Exception("Not implemented")
-    def booleanand(self, other):
-        raise Exception("Not implemented")
-    def booleanand(self, other):
-        raise Exception("Not Implemented")
-    def booleanor(self, other):
-        raise Exception("Not Implemented")
+    def pow(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def mul(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def div(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def mod(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def add(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def sub(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def sleft(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def sright(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def lt(self, other: 'MLiteral') -> 'BooleanLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def eq(self, other: 'MLiteral') -> 'BooleanLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def bitand(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def bitxor(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def bitnor(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def bitor(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def booleanand(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def booleanand(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def booleanor(self, other: 'MLiteral') -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
     '''unary operations. notredand is in terms of redand and inv.
     notredor is in terms of redor and inv. notredxor is in terms of redxor and inv.'''
-    def booleaninv(self):
-        raise Exception("Not Implemented")
-    def inv(self):
-        raise Exception("Not Implemented")
-    def redand(self):
-        raise Exception("Not Implemented")
-    def redor(self):
-        raise Exception("Not Implemented")
-    def redxor(self):
-        raise Exception("Not Implemented")
-    def unaryadd(self):
-        raise Exception("Not Implemented")
-    def neg(self):
-        raise Exception("Not Implemented")
+    def booleaninv(self) -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def inv(self) -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def redand(self) -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def redor(self) -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def redxor(self) -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def unaryadd(self) -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
+    def neg(self) -> 'MLiteral':
+        raise Exception(f"Not implemented on class {repr(self.__class__)}")
 
 class MLiteralOperations:
     '''class for calling operations on literals. handles typechecking and coercions.
@@ -384,6 +392,10 @@ def Enum(name: 'str', values: 'set[str]'):
             ''' Create an enum literal '''
             assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
             self.value = value
+        def __eq__(self, other):
+            if self.__class__ != other.__class__:
+                return False
+            return self.value == other.value
         def copy(self):
             c = EnumType(self.value)
             for tokenArray in self.getSourceTokensNotFlat():
@@ -820,6 +832,12 @@ def Maybe(mtype: 'MType'):
             if not self.isValid:
                 return "Invalid"
             return "Valid(" + str(self.value) + ")"
+        def __eq__(self, other):
+            if self.__class__ != other.__class__:
+                return False
+            if self.isVaild != other.isValid:
+                return False
+            return self.value == other.value
         def copy(self):
             c = MaybeType(self.value)
             for tokenArray in self.getSourceTokensNotFlat():
