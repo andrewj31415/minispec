@@ -120,11 +120,8 @@ def binaryOperationConstantFold(left: 'MLiteral', right: 'MLiteral', op: 'str') 
                 '|': MLiteralOperations.bitor,
                 '&&': MLiteralOperations.booleanand,
                 '||': MLiteralOperations.booleanor}[op](left, right)
-    if hasattr(result, 'tokensSourcedFrom'):
-        if hasattr(left, 'tokensSourcedFrom'):
-            result.tokensSourcedFrom += left.tokensSourcedFrom
-        if hasattr(right, 'tokensSourcedFrom'):
-            result.tokensSourcedFrom += right.tokensSourcedFrom
+    result.addSourceTokens(left.getSourceTokens())
+    result.addSourceTokens(right.getSourceTokens())
     return result
 
 def unaryOperationConstantFold(value: 'MLiteral', op: 'str') -> 'MLiteral':
@@ -141,9 +138,7 @@ def unaryOperationConstantFold(value: 'MLiteral', op: 'str') -> 'MLiteral':
                 '~^': MLiteralOperations.notredxor,
                 '+': MLiteralOperations.unaryadd,
                 '-': MLiteralOperations.neg}[op](value)
-    if hasattr(result, 'tokensSourcedFrom'):
-        if hasattr(value, 'tokensSourcedFrom'):
-            result.tokensSourcedFrom += value.tokensSourcedFrom
+    result.addSourceTokens(value.getSourceTokens())
     return result
 
 class MType(type):
@@ -176,7 +171,9 @@ def isMLiteral(value):
 class MLiteral(metaclass=MType):
     ''' A minispec type. Instances are minispec literals. '''
     _constructor = None
+    __slots__ = '_tokensSourcedFrom'
     def __init__(self):
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
         raise Exception("Not implemented")
     @classmethod
     def untypedef(cls):  #TODO consider renaming "untypedef" to just "class" or "getClass" ...
@@ -190,10 +187,26 @@ class MLiteral(metaclass=MType):
     def getHardware(self, globalsHandler):
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
         constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
-        if hasattr(self, 'tokensSourcedFrom'):
-            constantFunc.addSourceTokens(self.tokensSourcedFrom)
+        constantFunc.addSourceTokens(self.getSourceTokens())
         globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output
+    def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
+        ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the literal value. '''
+        assert tokens.__class__ == list, f"unexpected token class {tokens.__class__}"
+        assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
+        if not hasattr(self, '_tokensSourcedFrom'):
+            self._tokensSourcedFrom = []
+        self._tokensSourcedFrom.append(tokens.copy())
+    def getSourceTokens(self) -> 'list[tuple[str, int]]':
+        ''' Returns the source tokens of self. '''
+        if not hasattr(self, '_tokensSourcedFrom'):
+            self._tokensSourcedFrom = []
+        return sum(self._tokensSourcedFrom, [])
+    def getSourceTokensNotFlat(self) -> 'list[list[tuple[str, int]]]':
+        ''' Returns the source tokens of self. '''
+        if not hasattr(self, '_tokensSourcedFrom'):
+            self._tokensSourcedFrom = []
+        return self._tokensSourcedFrom
     def copy(self):
         ''' Returns a copy of self. Used for handling source support of constant values. '''
         print(f"Cannot copy literals of type {self.__class__}")
@@ -367,15 +380,15 @@ def Enum(name: 'str', values: 'set[str]'):
         _name = name
         _constructor = Enum
         _values = values
-        def __init__(self, value: 'str', tokensSourcedFrom = None):
+        def __init__(self, value: 'str'):
             ''' Create an enum literal '''
             assert value in values, f"Enum type may only take on the specified values {values}, not the given value {value}"
             self.value = value
-            if tokensSourcedFrom == None:
-                tokensSourcedFrom = []
-            self.tokensSourcedFrom = tokensSourcedFrom.copy()
         def copy(self):
-            return EnumType(self.value, self.tokensSourcedFrom.copy())
+            c = EnumType(self.value)
+            for tokenArray in self.getSourceTokensNotFlat():
+                c.addSourceTokens(tokenArray)
+            return c
         def numLiterals(self) -> 'int|float':
             return len(values)
         @classmethod
@@ -397,18 +410,17 @@ def Struct(name: 'str', fields: 'dict[str:MType]'):
         _name = name
         _constructor = Struct
         _fields = fields
-        def __init__(self, fieldBinds: 'dict[str:MLiteral]', tokensSourcedFrom = None):
+        def __init__(self, fieldBinds: 'dict[str:MLiteral]'):
             assert set(fieldBinds) == set(fields), f"Must specify fields {set(fields)} but instead specified fields {set(fieldBinds)}"
             for field in fieldBinds:
                 pass #TODO modify this to allow implicit conversion Integer -> Bit#(n).
                 #assert fieldBinds[field].__class__.untypedef() == fields[field].untypedef(), f"Received type {fieldBinds[field].__class__} but expected type {fields[field]}"
             self.fieldBinds = fieldBinds.copy()
-            # TODO do structs ever get source tokens?
-            if tokensSourcedFrom == None:
-                tokensSourcedFrom = []
-            self.tokensSourcedFrom = tokensSourcedFrom.copy()
         def copy(self):
-            return StructType(self.fieldBinds.copy(), self.tokensSourcedFrom.copy())
+            c = StructType(self.fieldBinds.copy())
+            for tokenArray in self.getSourceTokensNotFlat():
+                c.addSourceTokens(tokenArray)
+            return c
         def numLiterals(self) -> 'int|float':
             fieldTypeList = [ fields[field] for field in fields ]
             return math.prod([ fieldType.numLiteral() for fieldType in fieldTypeList ])
@@ -443,16 +455,17 @@ class Any(MLiteral):
 
 class Integer(MLiteral):
     '''An integer type. Has value value.'''
+    __slots__ = 'value'
     _name = "Integer"
-    def __init__(self, value, tokensSourcedFrom = None):
+    def __init__(self, value):
         ''' Create an integer literal '''
         assert value.__class__ == int, f"Expected int, not {value} which is {value.__class__}"
         self.value = value
-        if tokensSourcedFrom == None:
-            tokensSourcedFrom = []
-        self.tokensSourcedFrom = tokensSourcedFrom.copy()
     def copy(self):
-        return Integer(self.value, self.tokensSourcedFrom.copy())
+        c = Integer(self.value)
+        for tokenArray in self.getSourceTokensNotFlat():
+            c.addSourceTokens(tokenArray)
+        return c
     def numLiterals(self) -> 'int|float':
         return math.inf
     def __repr__(self):
@@ -538,7 +551,7 @@ def Bit(n: 'IntegerLiteral'):
         _name = f"Bit#({n})"
         _constructor = Bit
         _n = n
-        def __init__(self, value: 'int', tokensSourcedFrom = None):
+        def __init__(self, value: 'int'):
             ''' Create a Bit#(n) literal.
             value is an integer which will be assigned (mod 2**n) to self.value.
             Value may be any integer even though bsc requires Bit#(n) literals
@@ -546,11 +559,11 @@ def Bit(n: 'IntegerLiteral'):
             self.n = n
             assert value.__class__ == int, f"Expected int, not {value} which is {value.__class__}"
             self.value = value % (2**n.value)
-            if tokensSourcedFrom == None:
-                tokensSourcedFrom = []
-            self.tokensSourcedFrom = tokensSourcedFrom.copy()
         def copy(self):
-            return BitLiteral(self.value, self.tokensSourcedFrom.copy())
+            c = BitLiteral(self.value)
+            for tokenArray in self.getSourceTokensNotFlat():
+                c.addSourceTokens(tokenArray)
+            return c
         def numLiterals(self) -> 'int|float':
             return 2**n.value
         @classmethod
@@ -636,14 +649,14 @@ BitLiteral = Bit #useful synonym
 class Bool(MLiteral):
     '''The boolean type'''
     _name = "Bool"
-    def __init__(self, value: 'bool', tokensSourcedFrom = None):
+    def __init__(self, value: 'bool'):
         assert value.__class__ == bool, "Boolean literals must have boolean value"
         self.value = value
-        if tokensSourcedFrom == None:
-            tokensSourcedFrom = []
-        self.tokensSourcedFrom = tokensSourcedFrom.copy()
     def copy(self):
-        return Bool(self.value, self.tokensSourcedFrom.copy())
+        c = Bool(self.value)
+        for tokenArray in self.getSourceTokensNotFlat():
+            c.addSourceTokens(tokenArray)
+        return c
     def numLiterals(self) -> 'int|float':
         return 2
     def __repr__(self):
@@ -796,22 +809,22 @@ def Maybe(mtype: 'MType'):
         _name = "Maybe#(" + str(mtype) + ")"
         _constructor = Maybe
         _mtype = mtype
-        def __init__(self, value: 'mtype' = None, tokensSourcedFrom = None):
+        def __init__(self, value: 'mtype' = None):
             self.value = value
             if value == None:
                 self.isValid = False
             else:
                 self.isValid = True
                 #assert value.__class__ == mtype, "Type of value does not match type of maybe" #TODO incorporate any types
-            if tokensSourcedFrom == None:
-                tokensSourcedFrom = []
-            self.tokensSourcedFrom = tokensSourcedFrom.copy()
         def __str__(self):
             if not self.isValid:
                 return "Invalid"
             return "Valid(" + str(self.value) + ")"
         def copy(self):
-            return MaybeType(self.value, self.tokensSourcedFrom.copy())
+            c = MaybeType(self.value)
+            for tokenArray in self.getSourceTokensNotFlat():
+                c.addSourceTokens(tokenArray)
+            return c
         def eq(self, other):
             if self.__class__ != other.__class__:
                 return False
@@ -826,10 +839,8 @@ def Invalid(mtype: 'MType'):
 
 class DontCareLiteral(MLiteral):
     '''only one kind, "?" '''
-    def __init__(self, tokensSourcedFrom = None):
-        if tokensSourcedFrom == None:
-            tokensSourcedFrom = []
-        self.tokensSourcedFrom = tokensSourcedFrom.copy()
+    def __init__(self):
+        pass
     def __str__(self):
         return '?'
     # Returns itself for all binary operations

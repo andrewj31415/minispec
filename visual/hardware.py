@@ -198,7 +198,6 @@ def setPortLabel(nodeELK: 'dict[str, Any]', text: 'str', width: 'float', height:
     nodeELK['width'] = width
     nodeELK['height'] = height
 
-
 def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
     ''' Converts the node or component into the ELK JSON format as a python object. 
     See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html 
@@ -231,7 +230,18 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
             jsonObj['width'] = 15
             jsonObj['height'] = 15
-        jsonObj['i'] = {'name':item.name,
+        jsonObj['i'] = {'name': item.name,
+                        'weight': weightAdjust(item.weight()),
+                        'numSubcomponents': item.weight(),
+                        'tokensSourcedFrom': item.getSourceTokens()}
+        return jsonObj
+    if item.__class__ == Constant:
+        jsonObj = { 'id': elkID(item),
+                    'ports': [ toELK(item.output, {'port.side': 'EAST'}) ],
+                    'properties': { 'portConstraints': 'FIXED_SIDE' },
+                    'width': 15,
+                    'height': 15 }
+        jsonObj['i'] = {'name': str(item.value),
                         'weight':weightAdjust(item.weight()),
                         'numSubcomponents': item.weight(),
                         'tokensSourcedFrom':item.getSourceTokens()}
@@ -256,7 +266,7 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                         'weight': weightAdjust(item.weight()),
                         'numSubcomponents': item.weight(),
                         'isMux': True,
-                        'tokensSourcedFrom':item.getSourceTokens(),}
+                        'tokensSourcedFrom':item.getSourceTokens()}
         return jsonObj
     if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
         ports = []
@@ -431,6 +441,9 @@ class Constant(Component):
         if self.__class__ != other.__class__:
             return False
         return self.value == other.value
+    def getSourceTokens(self) -> 'list[tuple[str, int]]':
+        ''' Returns the source tokens of self. '''
+        return self._value.getSourceTokens()
 
 class Module(Component):
     ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''

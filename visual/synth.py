@@ -1981,8 +1981,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''Combining literals'''
         if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
             result = binaryOperationConstantFold(left, right, op)
-            if hasattr(result, 'tokensSourcedFrom'):
-                result.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
+            result.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
             return result
         # convert literals to hardware
         if isMLiteral(left):
@@ -2029,8 +2028,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         op = ctx.op.text
         if isMLiteral(value):
             result = unaryOperationConstantFold(value, op)
-            if hasattr(result, 'tokensSourcedFrom'):
-                result.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.op.tokenIndex))
+            result.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
             return result
         assert value.__class__ == Node, "value should be hardware"
         unopComponenet = Function(op, [], [Node("v")])
@@ -2056,9 +2054,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params)
         if value.__class__.__class__ == MType:
             # we are returning a literal value, update its source
-            if hasattr(value, 'tokensSourcedFrom'):
-                value = value.copy()  # make a copy so we don't have lots of different literals linked together
-                value.tokensSourcedFrom.append((getSourceFilename(ctx), ctx.getSourceInterval()[0]))
+            value = value.copy()  # make a copy so we don't have lots of different literals linked together
+            value.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
         self.globalsHandler.lastParameterLookup = params
         return value
 
@@ -2100,28 +2097,42 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # unsized literal, integer type
             # must check for hex values first since b and d are legitimate hex digits
             if 'h' in text: #hex value
-                return IntegerLiteral(int("0x"+text[2:], 0), tokensSourcedFrom)
+                i = IntegerLiteral(int("0x"+text[2:], 0))
+                i.addSourceTokens(tokensSourcedFrom)
+                return i
             if 'b' in text: #binary
-                return IntegerLiteral(int("0b"+text[2:], 0), tokensSourcedFrom)
+                i = IntegerLiteral(int("0b"+text[2:], 0))
+                i.addSourceTokens(tokensSourcedFrom)
+                return i
             if 'd' in text: #decimal value
-                return IntegerLiteral(int(text[2:]), tokensSourcedFrom)
+                i = IntegerLiteral(int(text[2:]))
+                i.addSourceTokens(tokensSourcedFrom)
+                return i
             raise Exception("Error: literal missing base indicator.")
         # must check for hex values first since b and d are legitimate hex digits
         if 'h' in text: #hex value
             # TODO test this branch
             width, binValue = text.split("'h")
             assert len(width) > 0 and len(binValue) > 0, f"something went wrong with parsing {text} into width {width} and value {binValue}"
-            return Bit(IntegerLiteral(int(width)))(int("0x"+binValue, 0))
+            i = Bit(IntegerLiteral(int(width)))(int("0x"+binValue, 0))
+            i.addSourceTokens(tokensSourcedFrom)
+            return i
         if 'b' in text: #binary
             width, binValue = text.split("'b")
             assert len(width) > 0 and len(binValue) > 0, f"something went wrong with parsing {text} into width {width} and value {binValue}"
-            return Bit(IntegerLiteral(int(width)))(int("0b"+binValue, 0))
+            i = Bit(IntegerLiteral(int(width)))(int("0b"+binValue, 0))
+            i.addSourceTokens(tokensSourcedFrom)
+            return i
         if 'd' in text: #decimal value
             width, decValue = text.split("'d")
             assert len(width) > 0 and len(decValue) > 0, f"something went wrong with parsing {text} into width {width} and value {decValue}"
-            return Bit(IntegerLiteral(int(width)))(int(decValue))
+            i = Bit(IntegerLiteral(int(width)))(int(decValue))
+            i.addSourceTokens(tokensSourcedFrom)
+            return i
         # else we have an ordinary decimal integer
-        return IntegerLiteral(int(text), tokensSourcedFrom)
+        i = IntegerLiteral(int(text))
+        i.addSourceTokens(tokensSourcedFrom)
+        return i
 
     @decorateForErrorCatching
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
@@ -2165,7 +2176,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     @decorateForErrorCatching
     def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
         tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
-        return DontCareLiteral(tokensSourcedFrom)
+        d = DontCareLiteral()
+        d.addSourceTokens(tokensSourcedFrom)
+        return d
 
     @decorateForErrorCatching
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
