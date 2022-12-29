@@ -171,7 +171,8 @@ def _():
     mulg1, mulg2, mulgo = Node('mulg1'), Node('mul2'), Node('mulo')
     add1, add2, addo = Node('add1'), Node('add2'), Node('addo')
     eq1, eq2, eqo = Node('eq1'), Node('eq2'), Node('eqo')
-    five, six, seven, thirteen = Function('5', [], []), Function('6', [], []), Function('7', [], []), Function('13', [], [])
+    # five, six, seven, thirteen = Function('5', [], []), Function('6', [], []), Function('7', [], []), Function('13', [], [])
+    five, six, seven, thirteen = Constant(Integer(5)), Constant(Integer(6)), Constant(Integer(7)), Constant(Integer(13))
     mulg = Function('*', [], [mulg1, mulg2], mulgo)
     add = Function('+', [], [add1, add2], addo)
     g = Function('g#(15)', [add, mulg, six, thirteen, Wire(ga, mulg1), Wire(six.output, mulg2), Wire(mulgo, add2), Wire(thirteen.output, add1), Wire(addo, go)], [ga], go)
@@ -188,9 +189,9 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-@it('''Correctly folds all constants''')
-def _():
-    assert False, "finish writing test"
+# @it('''Correctly folds all constants''')
+# def _():
+#     assert False, "finish writing test"
 
 
 describe("If and Ternary Statements")
@@ -202,8 +203,8 @@ def _():
     fa, fo = Node(), Node()
     eq = Function("==", [], [Node(), Node()])
     eq1, eq2 = eq.inputs
-    four = Function("4", [], [])
-    two = Function("2", [], [])
+    four = Constant(Integer(4))
+    two = Constant(Integer(2))
     mux1, mux2, muxc = Node(), Node(), Node()
     mux = Mux([mux1, mux2], muxc)
     f2 = Function("f#(2)", [eq, four, two, mux, Wire(fa, eq1), Wire(four.output, eq2), Wire(eq.output, muxc), Wire(fa, mux1), Wire(two.output, mux2), Wire(mux.output, fo)], [fa], fo)
@@ -217,7 +218,7 @@ def _():
     text = pull('if1')
 
     fa, fo = Node(), Node()
-    one = Function("1", [], [])
+    one = Constant(Integer(1))
     xor = Function("^", [], [Node(), Node()])
     xor1, xor2 = xor.inputs
     f0 = Function("f#(0)", [xor, one, Wire(one.output, xor1), Wire(fa, xor2), Wire(xor.output, fo)], [fa], fo)
@@ -231,8 +232,8 @@ def _():
     text = pull('if2')
 
     fa, fo = Node(), Node()
-    one = Function("1", [], [])
-    three = Function("3", [], [])
+    one = Constant(Integer(1))
+    three = Constant(Integer(3))
     mux1, mux2, muxc = Node(), Node(), Node()
     mux = Mux([mux1, mux2], muxc)
     f = Function("f", [mux, one, three, Wire(fa, muxc), Wire(one.output, mux1), Wire(three.output, mux2), Wire(mux.output, fo)], [fa], fo)
@@ -248,7 +249,7 @@ def _():
     fsel, fa, fb, fo = Node(), Node(), Node(), Node()
     eq1, eq2, eqo = Node(), Node(), Node()
     m1, m2, mc = Node(), Node(), Node()
-    zero = Function('0', [], [])
+    zero = Constant(Integer(0))
     eq = Function('==', [], [eq1, eq2], eqo)
     m = Mux([m1, m2], mc)
     f = Function('multiplexer1', [m, zero, eq, Wire(fa, m1), Wire(fb, m2), Wire(fsel, eq1), Wire(zero.output, eq2), Wire(eqo, mc), Wire(m.output, fo)], [fsel, fa, fb], fo)
@@ -267,9 +268,9 @@ def _():
 
     mux = Mux([Node(), Node()])
     eq = Function('==', [], [Node(), Node()])
-    cOne, sZero = Function('1'), Function('0')
+    cOne, sZero = Constant(Integer(1)), Constant(Integer(0))
     lowBit = Function('[0]', [], [Node()])
-    inv = Function('Invalid')
+    inv = Constant(Maybe(Any)())
     val = Function('Valid', [], [Node()])
     sftComps = []
     for i in range(1,k):
@@ -293,10 +294,10 @@ def _():
 def _():
     text = pull('returns')
 
-    five = Function('5')
+    five = Constant(Integer(5))
     eq = Function('==', [], [Node(), Node()])
     m = Mux([Node(), Node()])
-    one, zero = Function('1'), Function('0')
+    one, zero = Constant(Integer(1)), Constant(Integer(0))
     i, o = Node(), Node()
     p = Function('password', [eq, five, m, one, zero, Wire(i, eq.inputs[0]), Wire(five.output, eq.inputs[1]), Wire(eq.output, m.control), Wire(m.output, o), Wire(one.output, m.inputs[0]), Wire(zero.output, m.inputs[1])], [i], o)
 
@@ -316,22 +317,22 @@ def _():
 
     fa1, fo1 = Node(), Node()
     add = Function('+', [], [Node(), Node()])
-    one = Function('1')
+    one = Constant(Integer(1))
     f1 = Function('addFib#(1,4)', [add, one, Wire(fa1, add.inputs[0]), Wire(one.output, add.inputs[1]), Wire(add.output, fo1)], [fa1], fo1)
 
     fa2, fo2 = Node(), Node()
     add2 = Function('+', [], [Node(), Node()])
-    zero = Function('0')
+    zero = Constant(Integer(0))
     f2 = Function('addFib#(2,4)', [f0, f1, add2, zero, Wire(fa2, f1.inputs[0]), Wire(f1.output, add2.inputs[0]), Wire(zero.output, f0.inputs[0]), Wire(f0.output, add2.inputs[1]), Wire(add2.output, fo2)], [fa2], fo2)
 
     fa13, fo13 = Node(), Node()
     add13 = Function('+', [], [Node(), Node()])
-    one13 = Function('1')
+    one13 = Constant(Integer(1))
     f13 = Function('addFib#(1,4)', [add13, one13, Wire(fa13, add13.inputs[0]), Wire(one13.output, add13.inputs[1]), Wire(add13.output, fo13)], [fa13], fo13)
 
     fa3, fo3 = Node(), Node()
     add3 = Function('+', [], [Node(), Node()])
-    zero3 = Function('0')
+    zero3 = Constant(Integer(0))
     f3 = Function('addFib#(3,4)', [f2, f13, add3, zero3, Wire(fa3, f2.inputs[0]), Wire(f2.output, add3.inputs[0]), Wire(zero3.output, f13.inputs[0]), Wire(f13.output, add3.inputs[1]), Wire(add3.output, fo3)], [fa3], fo3)
 
     output = synth.parseAndSynth(text, 'addFib#(0, 4)')
@@ -413,16 +414,16 @@ def _():
 
     fa, fb, fc, fd, fe, fo = Node(), Node(), Node(), Node(), Node(), Node()
 
-    zeroA, oneA, twoA, threeA, threeA1 = Function('0'), Function('1'), Function('2'), Function('3'), Function('3')
+    zeroA, oneA, twoA, threeA, threeA1 = Constant(Integer(0)), Constant(Integer(1)), Constant(Integer(2)), Constant(Integer(3)), Constant(Integer(3))
     muxA = Mux([Node(), Node(), Node(), Node(), Node()])
     xWires = [Wire(zeroA.output, muxA.inputs[0]), Wire(twoA.output, muxA.inputs[1]), Wire(threeA.output, muxA.inputs[2]), Wire(threeA1.output, muxA.inputs[3]), Wire(oneA.output, muxA.inputs[4]), Wire(fa, muxA.control), Wire(muxA.output, fo)]
 
-    zeroY, oneY, twoY = Function('0'), Function('1'), Function('2')
+    zeroY, oneY, twoY = Constant(Integer(0)), Constant(Integer(1)), Constant(Integer(2))
     nb, nc = Function('~', [], [Node()]), Function('~', [], [Node()])
     myb, myc = Mux([Node(), Node()]), Mux([Node(), Node()])
     yWires = [Wire(fb, nb.inputs[0]), Wire(fc, nc.inputs[0]), Wire(nb.output, myb.control), Wire(nc.output, myc.control), Wire(myb.output, fo), Wire(zeroY.output, myb.inputs[0]), Wire(myc.output, myb.inputs[1]), Wire(oneY.output, myc.inputs[0]), Wire(twoY.output, myc.inputs[1])]
 
-    zeroZ, oneZ, twoZ = Function('0'), Function('1'), Function('2')
+    zeroZ, oneZ, twoZ = Constant(Integer(0)), Constant(Integer(1)), Constant(Integer(2))
     eqb, eqc = Function('==', [], [Node(), Node()]), Function('==', [], [Node(), Node()])
     mzb, mzc = Mux([Node(), Node()]), Mux([Node(), Node()])
     zWires = [Wire(fd, eqb.inputs[0]), Wire(fb, eqb.inputs[1]), Wire(eqb.output, mzb.control), Wire(fd, eqc.inputs[0]), Wire(fc, eqc.inputs[1]), Wire(eqc.output, mzc.control), Wire(mzb.output, fo), Wire(zeroZ.output, mzb.inputs[0]), Wire(mzc.output, mzb.inputs[1]), Wire(oneZ.output, mzc.inputs[0]), Wire(twoZ.output, mzc.inputs[1])]
@@ -463,7 +464,7 @@ def _():
     add = Function('+', [], [Node(), Node()])
     enable = Node()
     getCount = Node()
-    one = Function('1', [], [])
+    one = Constant(Integer(1))
     counter = Module('FourBitCounter', [count, mux, add, one, Wire(enable, mux.control), Wire(count.value, getCount), Wire(add.output, mux.inputs[0]), Wire(count.value, mux.inputs[1]), Wire(mux.output, count.input), Wire(count.value, add.inputs[0]), Wire(one.output, add.inputs[1])], {'enable': enable}, {'getCount': getCount})
     
     output = synth.parseAndSynth(text, 'FourBitCounter')
@@ -479,7 +480,7 @@ def _():
     uadd = Function('+', [], [Node(), Node()])
     uenable = Node()
     ugetCount = Node()
-    uone = Function('1', [], [])
+    uone = Constant(Integer(1))
     ucounter = Module('FourBitCounter', [ucount, umux, uadd, uone, Wire(uenable, umux.control), Wire(ucount.value, ugetCount), Wire(uadd.output, umux.inputs[0]), Wire(ucount.value, umux.inputs[1]), Wire(umux.output, ucount.input), Wire(ucount.value, uadd.inputs[0]), Wire(uone.output, uadd.inputs[1])], {'enable': uenable}, {'getCount': ugetCount})
     
     lcount = Register('Reg#(Bit#(4))')
@@ -487,11 +488,11 @@ def _():
     ladd = Function('+', [], [Node(), Node()])
     lenable = Node()
     lgetCount = Node()
-    lone = Function('1', [], [])
+    lone = Constant(Integer(1))
     lcounter = Module('FourBitCounter', [lcount, lmux, ladd, lone, Wire(lenable, lmux.control), Wire(lcount.value, lgetCount), Wire(ladd.output, lmux.inputs[0]), Wire(lcount.value, lmux.inputs[1]), Wire(lmux.output, lcount.input), Wire(lcount.value, ladd.inputs[0]), Wire(lone.output, ladd.inputs[1])], {'enable': lenable}, {'getCount': lgetCount})
     
     concat = Function('{}', [], [Node(), Node()])
-    fifteen = Function('15')
+    fifteen = Constant(Integer(15))
     eq = Function('==', [], [Node(), Node()])
     a = Function('&&', [], [Node(), Node()])
     enable = Node()
@@ -509,7 +510,7 @@ def _():
     upper1, lower1 = [ synth.parseAndSynth(text, 'Counter#(0)') for i in range(2)]
 
     enable1, getCount1 = Node(), Node()
-    and1, eq1, concat1, one1 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
+    and1, eq1, concat1, one1 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Constant(Integer(1))
     counter1 = Module('Counter#(1)', [and1, eq1, concat1, one1, upper1, lower1, Wire(enable1, lower1.inputs['enable']), Wire(lower1.methods['getCount'], eq1.inputs[0]), Wire(one1.output, eq1.inputs[1]), Wire(eq1.output, and1.inputs[1]), Wire(enable1, and1.inputs[0]), Wire(and1.output, upper1.inputs['enable']), Wire(upper1.methods['getCount'], concat1.inputs[0]), Wire(lower1.methods['getCount'], concat1.inputs[1]), Wire(concat1.output, getCount1)], {'enable': enable1}, {'getCount': getCount1})
 
     output = synth.parseAndSynth(text, 'Counter#(1)')
@@ -523,15 +524,15 @@ def _():
     upper1, lower1, upper2, lower2 = [ synth.parseAndSynth(text, 'Counter#(0)') for i in range(4)]
 
     enable1, getCount1 = Node(), Node()
-    and1, eq1, concat1, one1 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
+    and1, eq1, concat1, one1 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Constant(Integer(1))
     lower3 = Module('Counter#(1)', [lower1, upper1, and1, eq1, concat1, one1, Wire(enable1, lower1.inputs['enable']), Wire(lower1.methods['getCount'], eq1.inputs[0]), Wire(one1.output, eq1.inputs[1]), Wire(eq1.output, and1.inputs[1]), Wire(enable1, and1.inputs[0]), Wire(and1.output, upper1.inputs['enable']), Wire(upper1.methods['getCount'], concat1.inputs[0]), Wire(lower1.methods['getCount'], concat1.inputs[1]), Wire(concat1.output, getCount1)], {'enable': enable1}, {'getCount': getCount1})
 
     enable2, getCount2 = Node(), Node()
-    and2, eq2, concat2, one2 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('1')
+    and2, eq2, concat2, one2 = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Constant(Integer(1))
     upper3 = Module('Counter#(1)', [lower2, upper2, and2, eq2, concat2, one2, Wire(enable2, lower2.inputs['enable']), Wire(lower2.methods['getCount'], eq2.inputs[0]), Wire(one2.output, eq2.inputs[1]), Wire(eq2.output, and2.inputs[1]), Wire(enable2, and2.inputs[0]), Wire(and2.output, upper2.inputs['enable']), Wire(upper2.methods['getCount'], concat2.inputs[0]), Wire(lower2.methods['getCount'], concat2.inputs[1]), Wire(concat2.output, getCount2)], {'enable': enable2}, {'getCount': getCount2})
 
     enable3, getCount3 = Node(), Node()
-    and3, eq3, concat3, three = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Function('3')
+    and3, eq3, concat3, three = Function('&&', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('{}', [], [Node(), Node()]), Constant(Integer(3))
     counter2 = Module('Counter#(2)', [lower3, upper3, and3, eq3, concat3, three, Wire(enable3, lower3.inputs['enable']), Wire(lower3.methods['getCount'], eq3.inputs[0]), Wire(three.output, eq3.inputs[1]), Wire(eq3.output, and3.inputs[1]), Wire(enable3, and3.inputs[0]), Wire(and3.output, upper3.inputs['enable']), Wire(upper3.methods['getCount'], concat3.inputs[0]), Wire(lower3.methods['getCount'], concat3.inputs[1]), Wire(concat3.output, getCount3)], {'enable': enable3}, {'getCount': getCount3})
 
     output = synth.parseAndSynth(text, 'Counter#(2)')
@@ -548,12 +549,12 @@ def _():
     add = Function('+', [], [Node(), Node()])
     enable = Node()
     getStorage = Node()
-    one = Function('1', [], [])
+    one = Constant(Integer(1))
     Inner = Module('Inner', [storage, mux, add, one, Wire(enable, mux.control), Wire(storage.value, getStorage), Wire(add.output, mux.inputs[0]), Wire(storage.value, mux.inputs[1]), Wire(mux.output, storage.input), Wire(storage.value, add.inputs[0]), Wire(one.output, add.inputs[1])], {'enable': enable}, {'getStorage': getStorage})
     
     muxO = Mux([Node(), Node()])
-    true = Function('True')
-    false = Function('False')
+    true = Constant(BooleanLiteral(True))
+    false = Constant(BooleanLiteral(False))
     enableO = Node()
     getStorageO = Node()
     Outer = Module('Outer', [Inner, true, false, muxO, Wire(true.output, muxO.inputs[0]), Wire(false.output, muxO.inputs[1]), Wire(enableO, muxO.control), Wire(muxO.output, Inner.inputs['enable']), Wire(Inner.methods['getStorage'], getStorageO)], {'enable': enableO}, {'getStorage': getStorageO})
@@ -610,7 +611,7 @@ def _():
     s23 = Function('[0]', [], [Node()])
     n = Function('~', [], [Node()])
     s3 = Function('[2][3:1]', [], [Node(), Node()])
-    six = Function('6')
+    six = Constant(Integer(6))
     f = Function('f', [s1, s21, s22, s23, n, s3, six, Wire(fa, s21.inputs[0]), Wire(s21.output, s22.inputs[0]), Wire(s22.output, s23.inputs[0]), Wire(fk, s21.inputs[1]), Wire(fj, s22.inputs[1]), Wire(s23.output, n.inputs[0]), Wire(n.output, s1.inputs[4]), Wire(fa, s1.inputs[0]), Wire(fi, s1.inputs[1]), Wire(fj, s1.inputs[2]), Wire(fk, s1.inputs[3]), Wire(s1.output, s3.inputs[0]), Wire(six.output, s3.inputs[1]), Wire(s3.output, fo)], [fa, fi, fj, fk], fo)
     
     output = synth.parseAndSynth(text, 'f')
@@ -624,7 +625,7 @@ def _():
     text = pull('for')
 
     zero, one, two, three = Function('[0]', [], [Node()]), Function('[1]', [], [Node()]), Function('[2]', [], [Node()]), Function('[3]', [], [Node()])
-    output = Function('0')
+    output = Constant(Integer(0))
     xor0, xor1, xor2, xor3 = Function('^', [], [Node(), Node()]), Function('^', [], [Node(), Node()]), Function('^', [], [Node(), Node()]), Function('^', [], [Node(), Node()])
     fa, fo = Node(), Node()
     f = Function('parity#(4)', [zero, one, two, three, output, xor0, xor1, xor2, xor3, Wire(fa, zero.inputs[0]), Wire(fa, one.inputs[0]), Wire(fa, two.inputs[0]), Wire(fa, three.inputs[0]), Wire(output.output, xor0.inputs[0]), Wire(xor0.output, xor1.inputs[0]), Wire(xor1.output, xor2.inputs[0]), Wire(xor2.output, xor3.inputs[0]), Wire(xor3.output, fo), Wire(zero.output, xor0.inputs[1]), Wire(one.output, xor1.inputs[1]), Wire(two.output, xor2.inputs[1]), Wire(three.output, xor3.inputs[1])], [fa], fo)
@@ -653,11 +654,12 @@ def _():
     text = pull('enum')
 
     fa, fo = Node(), Node()
-    a2, a1, a4, a3 = Function('A2'), Function('A1'), Function('A4'), Function('A3')
+    a = Enum('Paper', {'A1', 'A2', 'A3', 'A4'})
+    a1, a2, a3, a4 = Constant(a('A1')), Constant(a('A2')), Constant(a('A3')), Constant(a('A4'))
     m1, m2, m3 = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
     eq1, eq2, eq3 = Function('==', [], [Node(), Node()]), Function('==', [], [Node(), Node()]), Function('==', [], [Node(), Node()])
-    ea1, ea2, ea3 = Function('A1'), Function('A2'), Function('A3')
-    permute = Function('permute', [a2, a1, a4, a3, m1, m2, m3, eq1, eq2, eq3, ea1, ea2, ea3, Wire(eq1.output, m1.control), Wire(eq2.output, m2.control), Wire(eq3.output, m3.control), Wire(ea1.output, eq1.inputs[1]), Wire(ea2.output, eq2.inputs[1]), Wire(ea3.output, eq3.inputs[1]), Wire(fa, eq1.inputs[0]), Wire(fa, eq2.inputs[0]), Wire(fa, eq3.inputs[0]), Wire(m1.output, fo), Wire(m2.output, m1.inputs[1]), Wire(m3.output, m2.inputs[1]), Wire(a4.output, m3.inputs[0]), Wire(a3.output, m3.inputs[1]), Wire(a1.output, m2.inputs[0]), Wire(a2.output, m1.inputs[0])], [fa], fo)
+    ea1, ea2, ea3 = Constant(a('A1')), Constant(a('A2')), Constant(a('A3'))
+    permute = Function('permute', [a1, a2, a3, a4, m1, m2, m3, eq1, eq2, eq3, ea1, ea2, ea3, Wire(eq1.output, m1.control), Wire(eq2.output, m2.control), Wire(eq3.output, m3.control), Wire(ea1.output, eq1.inputs[1]), Wire(ea2.output, eq2.inputs[1]), Wire(ea3.output, eq3.inputs[1]), Wire(fa, eq1.inputs[0]), Wire(fa, eq2.inputs[0]), Wire(fa, eq3.inputs[0]), Wire(m1.output, fo), Wire(m2.output, m1.inputs[1]), Wire(m3.output, m2.inputs[1]), Wire(a4.output, m3.inputs[0]), Wire(a3.output, m3.inputs[1]), Wire(a1.output, m2.inputs[0]), Wire(a2.output, m1.inputs[0])], [fa], fo)
 
     output = synth.parseAndSynth(text, 'permute')
     expected = permute
@@ -671,6 +673,7 @@ def _():
 
     a, b, o = Node(), Node(), Node()
     de = Function('Packet{data:1,index:1}')
+    de = Constant(Struct('Packet', {'data': Bit(Integer(32)), 'index': Bit(Integer(16))})({'data': Integer(1), 'index': Integer(1)}))
 
     output = synth.parseAndSynth(text, 'combine#(1, 1, 1, 1)')
     expected = Function('combine#(1,1,1,1)', [de, Wire(de.output, o)], [a, b], o)
@@ -728,7 +731,7 @@ def _():
     reg = Register('Reg#(Bit#(8))')
     setCount, getCount = Node(), Node()
     fm = Function('fromMaybe', [], [Node(), Node()]);
-    u, one = Function('?'), Function('1')
+    u, one = Constant(DontCareLiteral()), Constant(Integer(1))
     mux = Mux([Node(), Node()])
     add = Function('+', [], [Node(), Node()])
     isv = Function('isValid', [], [Node()])
@@ -810,7 +813,7 @@ def _():
     mux = Mux([Node(), Node()])
     add = Function('+', [], [Node(), Node()])
     enable = Node()
-    one = Function('1', [], [])
+    one = Constant(Integer(1))
     counter = Module('FourBitCounter', [count, mux, add, one, Wire(enable, mux.control), Wire(add.output, mux.inputs[0]), Wire(count.value, mux.inputs[1]), Wire(mux.output, count.input), Wire(count.value, add.inputs[0]), Wire(one.output, add.inputs[1])], {'enable': enable}, {})
 
     sumCount = Register('Reg#(Bit#(4))')
@@ -883,7 +886,7 @@ def _():
     #hardware for inputs
     mi1, mi2 = Mux([Node(), Node()]), Mux([Node(), Node()])
     eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
-    zero, one = Function('0'), Function('1')
+    zero, one = Constant(Integer(0)), Constant(Integer(1))
     iWires1 = [Wire(r[0].value, mi1.inputs[1]), Wire(d, mi1.inputs[0]), Wire(r[3].value, mi2.inputs[1]), Wire(d, mi2.inputs[0])]
     iWires2 = [Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control), Wire(mi1.output, r[0].input), Wire(mi2.output, r[3].input)]
     iWires3 = [Wire(s1, eq1.inputs[0]), Wire(s1, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
@@ -910,7 +913,7 @@ def _():
     oWires = [Wire(r1.value, mo.inputs[0]), Wire(r2.value, mo.inputs[1]), Wire(s, mo.control), Wire(mo.output, gd)]
     oComp = [mo]
     eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
-    zero, one = Function('0'), Function('1')
+    zero, one = Constant(Integer(0)), Constant(Integer(1))
     iComp = [mi1, mi2, eq1, eq2, zero, one]
     iWires1 = [Wire(d, mi1.inputs[0]), Wire(d, mi2.inputs[0]), Wire(r1.value, mi1.inputs[1]), Wire(r2.value, mi2.inputs[1])]
     iWires2 = [Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)]
@@ -932,7 +935,7 @@ def _():
         oWires = [Wire(r1.value, mo.inputs[0]), Wire(r2.value, mo.inputs[1]), Wire(s, mo.control), Wire(mo.output, gd)]
         oComp = [mo]
         eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
-        zero, one = Function('0'), Function('1')
+        zero, one = Constant(Integer(0)), Constant(Integer(1))
         iComp = [mi1, mi2, eq1, eq2, zero, one]
         iWires1 = [Wire(d, mi1.inputs[0]), Wire(d, mi2.inputs[0]), Wire(r1.value, mi1.inputs[1]), Wire(r2.value, mi2.inputs[1])]
         iWires2 = [Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)]
@@ -944,9 +947,9 @@ def _():
     r1, r2 = r
     v = VectorModule(r, 'Vector#(2,Regs)', r, {}, {})
     d, s1, s2, gd = Node(), Node(), Node(), Node()
-    two1d, two2d = Function('2'), Function('2')
-    one1s, one2s = Function('1'), Function('1')
-    zero1, zero2, one1, one2 = Function('0'), Function('0'), Function('1'), Function('1')
+    two1d, two2d = Constant(Integer(2)), Constant(Integer(2))
+    one1s, one2s = Constant(Integer(1)), Constant(Integer(1))
+    zero1, zero2, one1, one2 = Constant(Integer(0)), Constant(Integer(0)), Constant(Integer(1)), Constant(Integer(1))
     muxr1s, muxr1d = Mux([Node(), Node()]), Mux([Node(), Node()])
     muxr2s, muxr2d = Mux([Node(), Node()]), Mux([Node(), Node()])
     eq1s, eq1d = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()]),
@@ -985,7 +988,7 @@ def _():
 
     next1, next2, o1, o2 = Node(), Node(), Node(), Node()
     a1, a2 = Function('+', [], [Node(), Node()]), Function('+', [], [Node(), Node()])
-    one1, one2 = Function('1'), Function('1')
+    one1, one2 = Constant(Integer(1)), Constant(Integer(1))
     g1i, g1o, g2i, g2o = Node(), Node(), Node(), Node()
     g1 = Function('getUp', [a1, Wire(s1.value, a1.inputs[0]), Wire(g1i, a1.inputs[1]), Wire(a1.output, g1o)], [g1i], g1o)
     g2 = Function('getUp', [a2, Wire(s2.value, a2.inputs[0]), Wire(g2i, a2.inputs[1]), Wire(a2.output, g2o)], [g2i], g2o)

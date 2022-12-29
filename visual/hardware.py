@@ -375,6 +375,7 @@ class Component:
     _num_components_created = 0  #one for each component created, so each component has a unique id
     __slots__ = '_id'
     def __init__(self):
+        ''' Gives each component a unique _id '''
         self._id = Component._num_components_created
         Component._num_components_created += 1
     def getNodeListRecursive(self):
@@ -421,16 +422,18 @@ class Component:
 
 class Constant(Component):
     ''' The hardware corresponding to a constant literal value. '''
-    __slots__ = '_value', '_output'
+    __slots__ = '_value', '_output', '_tokensSourcedFrom'
     def __init__(self, value: 'MLiteral', output: 'Node' = None):
+        Component.__init__(self)
         self._value = value
         if output == None:
             output = Node()
         self._output = output
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
     @property
     def value(self) -> 'MLiteral':
         '''The value of the constant'''
-        return self.value
+        return self._value
     @property
     def output(self) -> 'Node':
         '''The output node'''
@@ -441,9 +444,19 @@ class Constant(Component):
         if self.__class__ != other.__class__:
             return False
         return self.value == other.value
+    def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
+        self._value.addSourceTokens(tokens)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
         ''' Returns the source tokens of self. '''
         return self._value.getSourceTokens()
+    def prune(self):
+        pass  # no children
+    def inputNodes(self):
+        return set()
+    def outputNodes(self):
+        return {self.output}
+    def matchStructure(self, other):
+        return self.match(other)
 
 class Module(Component):
     ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
@@ -912,7 +925,7 @@ class Mux(Component):
             return False
         return self.matchOrdered(other)
     def prune(self):
-        pass #no children
+        pass  # no children
     def inputNodes(self):
         nodes = set(self.inputs)
         nodes.add(self.control)

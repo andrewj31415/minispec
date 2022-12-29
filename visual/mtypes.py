@@ -191,10 +191,11 @@ class MLiteral(metaclass=MType):
     @classmethod
     def sameType(self, other):
         ''' Returns true if self and other are the same minispec type. Assumes self and other were created in the same type factory. '''
-        raise Exception("Not implemented, not created in a type factory.")
+        raise Exception(f"Not implemented, class {repr(self.__class__)} was not created in a type factory.")
     def getHardware(self, globalsHandler):
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
-        constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
+        # constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
+        constantFunc = hardware.Constant(self)
         constantFunc.addSourceTokens(self.getSourceTokens())
         globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output
@@ -414,7 +415,7 @@ def Enum(name: 'str', values: 'set[str]'):
             return self.value
     return EnumType
 
-def Struct(name: 'str', fields: 'dict[str:MType]'):
+def Struct(name: 'str', fields: 'dict[str, MType]'):
     ''' Returns a class which represents a struct type.
     fields is a dict[str:MType] mapping a field name to the type the field should have. '''
     class StructType(MLiteral):
@@ -422,7 +423,7 @@ def Struct(name: 'str', fields: 'dict[str:MType]'):
         _name = name
         _constructor = Struct
         _fields = fields
-        def __init__(self, fieldBinds: 'dict[str:MLiteral]'):
+        def __init__(self, fieldBinds: 'dict[str, MLiteral]'):
             assert set(fieldBinds) == set(fields), f"Must specify fields {set(fields)} but instead specified fields {set(fieldBinds)}"
             for field in fieldBinds:
                 pass #TODO modify this to allow implicit conversion Integer -> Bit#(n).
@@ -446,6 +447,12 @@ def Struct(name: 'str', fields: 'dict[str:MType]'):
             return True
         def __str__(self):
             return name + "{" + ",".join([str(field) + ":" + str(self.fieldBinds[field]) for field in self.fieldBinds]) + "}"
+        def __eq__(self, other):
+            if self.__class__ != other.__class__:
+                return False
+            if set(self.fieldBinds) != set(other.fieldBinds):
+                return False
+            return all( self.fieldBinds[field] == other.fieldBinds[field] for field in self.fieldBinds )
         def eq(self, other):
             if self.__class__ != other.__class__:
                 return Bool(False)
@@ -590,6 +597,10 @@ def Bit(n: 'IntegerLiteral'):
                 output = str(val % 2) + output
                 val //= 2
             return str(self.n) + "'b" + output
+        def __eq__(self, other):
+            if self.__class__ != other.__class__:
+                return False
+            return self.value == other.value
         def fromIntegerLiteral(self, i: 'IntegerLiteral'):
             assert -(2**(self.n-1)) <= i.toInt() < 2**self.n, "Bluespec requires Bit#(n) literals to be in range -2**(n-1),...,2**n-1."
             return Bit(self.n)(i.toInt())
@@ -827,7 +838,7 @@ def Maybe(mtype: 'MType'):
                 self.isValid = False
             else:
                 self.isValid = True
-                #assert value.__class__ == mtype, "Type of value does not match type of maybe" #TODO incorporate any types
+                #assert value.__class__ == mtype, "Type of value does not match type of maybe" #TODO incorporate Any types
         def __str__(self):
             if not self.isValid:
                 return "Invalid"
@@ -835,7 +846,7 @@ def Maybe(mtype: 'MType'):
         def __eq__(self, other):
             if self.__class__ != other.__class__:
                 return False
-            if self.isVaild != other.isValid:
+            if self.isValid != other.isValid:
                 return False
             return self.value == other.value
         def copy(self):
@@ -849,6 +860,11 @@ def Maybe(mtype: 'MType'):
             if (not self.isValid) and (not other.isValid): # both invalid
                 return True
             return self.value == other.value
+        @classmethod
+        def sameType(self, other):
+            return True
+            # TODO handle Any values
+            # return self._mtype == other._mtype
 
     return MaybeType
 
@@ -861,6 +877,8 @@ class DontCareLiteral(MLiteral):
         pass
     def __str__(self):
         return '?'
+    def __eq__(self, other):
+        return self.__class__ == other.__class__
     # Returns itself for all binary operations
     def pow(self, other):
         return self
