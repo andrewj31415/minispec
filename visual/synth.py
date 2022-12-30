@@ -1201,7 +1201,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             moduleScope.set(val, var)
             moduleCtxScope.set(val, var)
 
-        moduleComponent = Module(moduleName, [], {}, {})
+        moduleComponent = Module(moduleName)
         moduleComponent.addSourceTokens([(getSourceFilename(ctx), ctx.moduleId().getSourceInterval()[0])])
         # log the current component
         previousComponent = self.globalsHandler.currentComponent
@@ -1320,7 +1320,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         except MissingVariableException as e:
             # we have an unknown bluespec built-in module
             moduleName = ctx.typeName().getText()
-            moduleComponent = Module(moduleName, [], {}, {})
+            moduleComponent = Module(moduleName)
             self.globalsHandler.currentComponent.addChild(moduleComponent)
             moduleWithMetadata = BluespecModuleWithMetadata(moduleComponent, moduleScope)
             moduleComponent.metadata = moduleWithMetadata
@@ -1433,8 +1433,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             value = self.visit(ctx.expression())
             if isMLiteral(value):  # convert value to hardware before linking to output node
                 value = value.getHardware(self.globalsHandler)
-            setWire = Wire(value, methodOutputNode)
-            self.globalsHandler.currentComponent.addChild(setWire)
+            Wire(value, methodOutputNode)
         else:
             # the method is a multi-line sequence of statements with a return statement at the end.
             for stmt in ctx.stmt():  # evaluate the method
@@ -1683,12 +1682,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                     eq = Function('=', [Node(), Node()])
                                     regIndex = regName.split(']')[k].split('[')[1]
                                     const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
-                                    w1 = Wire(eq.output, mux.control)
-                                    w2 = Wire(indexValue, eq.inputs[0])
-                                    w3 = Wire(const, eq.inputs[1])
-                                    w4 = Wire(val, mux.inputs[0])
-                                    w5 = Wire(oldVal, mux.inputs[1])
-                                    for component in [mux, eq, w1, w2, w3, w4, w5]:
+                                    Wire(eq.output, mux.control)
+                                    Wire(indexValue, eq.inputs[0])
+                                    Wire(const, eq.inputs[1])
+                                    Wire(val, mux.inputs[0])
+                                    Wire(oldVal, mux.inputs[1])
+                                    for component in [mux, eq]:
                                         self.globalsHandler.currentComponent.addChild(component)
                                     val = mux.output
                             self.globalsHandler.currentScope.set(val, regName + inputName)
@@ -1980,8 +1979,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
         binComponent = Function(op, [Node("l"), Node("r")])
         binComponent.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-        leftWireIn = Wire(left, binComponent.inputs[0])
-        rightWireIn = Wire(right, binComponent.inputs[1])
+        Wire(left, binComponent.inputs[0])
+        Wire(right, binComponent.inputs[1])
         for component in [binComponent]:
             self.globalsHandler.currentComponent.addChild(component)
         return binComponent.output
@@ -2021,9 +2020,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert value.__class__ == Node, "value should be hardware"
         unopComponenet = Function(op, [Node("v")])
         unopComponenet.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-        wireIn = Wire(value, unopComponenet.inputs[0])
-        for component in [unopComponenet, wireIn]:
-            self.globalsHandler.currentComponent.addChild(component)
+        Wire(value, unopComponenet.inputs[0])
+        self.globalsHandler.currentComponent.addChild(unopComponenet)
         return unopComponenet.output
 
     @decorateForErrorCatching

@@ -82,7 +82,7 @@ class Node:
     def setParent(self, parent: 'Component', isInput: 'bool', label: 'Any'):
         self._parent = parent
         self._isInput = isInput
-        self._label = None
+        self._label = label
 
 def isNode(value):
     '''Returns whether or not value is a Node'''
@@ -99,7 +99,6 @@ class Wire:
     def __init__(self, src: 'Node', dst: 'Node'):
         assert isNode(src), f"Must be a node, not {src} which is {src.__class__}"
         assert isNode(dst), f"Must be a node, not {dst} which is {dst.__class__}"
-        #assert src is not dst, "wire must have distinct ends"  #TODO uncomment this line
         self._id = Wire._num_wires_created
         Wire._num_wires_created += 1
         self._src = src
@@ -126,6 +125,9 @@ class Wire:
         return "Wire(" + self.src.__repr__() + ", " + self.dst.__repr__() + ")"
     def __str__(self):
         return "wire from " + str(self.src) + " to " + str(self.dst)
+    def weight(self):
+        ''' Returns an estimate of how large a Component is. '''
+        return 1
 
 class Component:
     _num_components_created = 0  #one for each component created, so each component has a unique id
@@ -151,22 +153,35 @@ class Component:
         self._inputs: 'dict[Any, Node]' = inputs
         for nodeKey in inputs:
             node = inputs[nodeKey]
-            node.setParent(parent, True, nodeKey)
+            node.setParent(self, True, nodeKey)
         self._outputs: 'dict[Any, Node]' = outputs
         for nodeKey in outputs:
             node = outputs[nodeKey]
-            node.setParent(parent, False, nodeKey)
+            node.setParent(self, False, nodeKey)
         self._parent: 'Component' = parent
         self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
+    def __repr__(self):
+        return "Component(" + self._name + ", " + self._children.__repr__() + ", " + self._inputs.__repr__() + ", " + self._outputs.__repr__() + ")"
     def __hash__(self):
         return hash('c' + str(self._id))
     @property
     def name(self):
-        '''The name of the component, eg 'f' or 'combine#(1,1)' or '*'.'''
+        ''' The name of the component, eg 'f' or 'combine#(1,1)' or '*'. '''
         return self._name
-    @name.setter
-    def name(self, name: 'str'):
-        raise Exception("Names cannot be changed.")
+    @property
+    def children(self):
+        ''' The child Components of the Component '''
+        return self._children
+    def addInput(self, inputNode: 'Node', inputKey: 'Any'):
+        '''Add the input with the given key'''
+        assert inputNode.__class__ == Node, f"Inputs must be a Node, not {inputNode.__class__}"
+        assert inputKey not in self._inputs, f"Can't overwrite existing input {inputKey}"
+        self._inputs[inputKey] = inputNode
+    def addOutput(self, outputNode: 'Node', outputKey: 'Any'):
+        '''Add the output with the given key'''
+        assert outputNode.__class__ == Node, f"Outputs must be a Node, not {outputNode.__class__}"
+        assert outputKey not in self._outputs, f"Can't overwrite existing output {outputKey}"
+        self._outputs[outputKey] = outputNode
     def match(self, other: 'Component|None') -> bool:
         ''' Returns true if self and other represent the same hardware. '''
         assert self != other, "cannot compare a component to itself"
@@ -180,7 +195,7 @@ class Component:
         def signature(comp: 'Component', signatures: 'dict[Component, int]'):
             for child in comp._children:
                 signatures[child] = signature(child, signatures)
-            return hash((self._name, tuple(sorted(comp._inputs)), tuple(sorted(comp._outputs)), tuple(sorted(signatures[child] for child in comp._children))))
+            return hash((comp._name, tuple(sorted(comp._inputs)), tuple(sorted(comp._outputs)), tuple(sorted(signatures[child] for child in comp._children))))
         selfSignatures[self] = signature(self, selfSignatures)
         otherSignatures[other] = signature(other, otherSignatures)
 
@@ -210,12 +225,9 @@ class Component:
             # returns true if a match is found and false otherwise.
             if i >= len(selfComps):
                 return Component.orderedNodeEq(self, other, selfChildMaps, otherChildMaps)
-            if matchStep(i+1):
-                return True
             comp = selfComps[i]
             if len(comp._children) == 0:
-                if matchStep(i+1):
-                    return True
+                return matchStep(i+1)
             for j in range(len(comp._children)):
                 for k in range(j, len(comp._children)):
                     if selfSignatures[selfChildMaps[comp][j]] != selfSignatures[selfChildMaps[comp][k]]:
@@ -301,6 +313,22 @@ class Component:
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
         ''' Returns the source tokens of self. '''
         return sum(self._tokensSourcedFrom, [])
+    def getAllWires(self) -> 'set[Wire]':
+        ''' Returns the set of all wires in the data structure. '''
+        wires = set()
+        for child in self._children:
+            for wire in child.getAllWires():
+                wires.add(wire)
+        for nodeKey in self._inputs:
+            for wire in self._inputs[nodeKey]._outWires:
+                wires.add(wire)
+        for nodeKey in self._outputs:
+            for wire in self._outputs[nodeKey]._outWires:
+                wires.add(wire)
+        return wires
+    def weight(self):
+        ''' Returns an estimate of how large a Component is. '''
+        return 1 + sum([c.weight() for c in self._children])
 
 class Function(Component):
     __slots__ = '_inputList', '_output', 'inputNames'
@@ -377,14 +405,24 @@ class Constant(Component):
         return self._outputs['c0']
 
 class Module(Component):
-    __slots__ = ()
-    def __init__(self, name: 'str', children: 'list[Component]', inputs: 'dict[str, Node]', methods: 'dict[str, Node]'):
-        Component.__init__(self, name, inputs, methods, None, set(children))
+    __slots__ = 'metadata'
+    def __init__(self, name: 'str', inputs: 'dict[str, Node]' = None, methods: 'dict[str, Node]' = None, children: 'set[Component]' = None):
+        if inputs == None:
+            inputs = {}
+        if methods == None:
+            methods = {}
+        if children == None:
+            children = set()
+        Component.__init__(self, name, inputs, methods, None, children)
+    def addMethod(self, methodNode: 'Node', methodKey: 'str'):
+        self.addOutput(methodNode, methodKey)
+    def isRegister(self):
+        return False
 
 class Register(Module):
     __slots__ = ()
     def __init__(self, name: 'str'):
-        super().__init__(name, [], {'_input':Node('input')}, {'_value':Node('value')})
+        Module.__init__(self, name, {'_input':Node('input')}, {'_value':Node('value')})
     def isRegister(self):
         return True
     @property
@@ -397,7 +435,7 @@ class Register(Module):
     @property
     def value(self):
         '''The node with the value of the register'''
-        return self._methods['_value']
+        return self._outputs['_value']
     @value.setter
     def value(self, value: 'Node'):
         raise Exception("Can't directly modify this property")
@@ -478,6 +516,122 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
     componentELK = toELK(component)
 
+    # Collects edges with unique starting ports and sets ELK to prioritize having these edges go forward
+    portsFound = {}
+    portsRepeated = set()
+    def collectEdgesWithUniqueStarts(componentELK):
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                collectEdgesWithUniqueStarts(child)
+        if "edges" in componentELK:
+            for edge in componentELK["edges"]:
+                sourceNode = edge["sources"][0]
+                if sourceNode in portsRepeated:
+                    pass
+                elif sourceNode in portsFound:
+                    portsRepeated.add(sourceNode)
+                    del portsFound[sourceNode]
+                else:
+                    portsFound[sourceNode] = edge
+    collectEdgesWithUniqueStarts(componentELK)
+    for sourceNode in portsFound:
+        edge = portsFound[sourceNode]
+        if 'properties' not in edge:
+            edge['properties'] = {}
+        edge['properties']['org.eclipse.elk.layered.priority.direction'] = 10
+
+    # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
+    def eliminateVectorModules(componentELK, parentELK):
+        if "children" in componentELK:
+            for child in componentELK["children"].copy():  # copy since the children may mutate componentELK's child list
+                eliminateVectorModules(child, componentELK)
+        if 'isVectorModule' in componentELK:
+            if componentELK['isVectorModule'] and parentELK != None:
+                if 'ports' not in componentELK or len(componentELK['ports']) == 0:
+                    parentELK["children"].remove(componentELK)
+                    # lift children and edges
+                    if "children" in componentELK:
+                        parentELK["children"] += componentELK["children"]
+                    if "edges" in componentELK:
+                        parentELK["edges"] += componentELK["edges"]
+    eliminateVectorModules(componentELK, None)
+
+    # Collect all ports and mark parent pointers
+    def getPorts(componentELK, portsToComponents):
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                child["parent"] = componentELK
+                getPorts(child, portsToComponents)
+        if "ports" in componentELK:
+            for port in componentELK["ports"]:
+                portsToComponents[port["id"]] = (componentELK, port)
+    portsToComponents = {}  # Maps port ids to a tuple (corresponding component, port)
+    getPorts(componentELK, portsToComponents)
+
+    # Move nonhierarchical edges to be children of the closest common ancestor
+    def liftEdges(componentELK):
+        if "edges" in componentELK:
+            for edge in componentELK["edges"].copy():  # copies the list since we may be removing edges from it
+                assert len(edge["sources"]) == 1
+                assert len(edge["targets"]) == 1
+                sourceNode = edge["sources"][0]
+                targetNode = edge["targets"][0]
+                # determine if the edge goes from the left side of a node to the right side directly,
+                # which confuses the layouting library
+                sourceParent, sourcePort = portsToComponents[sourceNode]
+                targetParent, targetPort = portsToComponents[targetNode]
+                isDirectEdge = sourceParent == targetParent and sourcePort["properties"]["port.side"] == "WEST" and targetPort["properties"]["port.side"]
+                if isDirectEdge:
+                    # break the edge into two edges with a zero-size node in the middle
+                    middleNode = toELK(Function(""))
+                    middleNode['parent'] = componentELK
+                    middleNode['width'] = 0
+                    middleNode['height'] = 0
+                    assert len(edge['sources']) == 1, f"Unexpected edge {edge} with too many source nodes"
+                    assert len(edge['targets']) == 1, f"Unexpected edge {edge} with too many target nodes"
+                    edge1 = { 'id': 'part1_'+edge['id'], 'sources': [ edge['sources'][0] ], 'targets': [ middleNode['id'] ] }
+                    edge2 = { 'id': 'part2_'+edge['id'], 'sources': [ middleNode['id'] ], 'targets': [ edge['targets'][0] ] }
+                    componentELK['edges'].remove(edge)
+                    if "edges" not in sourceParent:
+                        sourceParent['edges'] = []
+                    sourceParent['edges'].append(edge1)
+                    sourceParent['edges'].append(edge2)
+                    if "children" not in sourceParent:
+                        sourceParent['children'] = []
+                    sourceParent['children'].append(middleNode)
+                    continue
+                # we have an ordinary edge, move it to the correct parent
+                if sourcePort["properties"]["port.side"] == "EAST":
+                    sourceParent = sourceParent["parent"]
+                # collect the parents of the source node
+                currentELK = sourceParent
+                sourceParents = [currentELK]
+                while "parent" in currentELK:
+                    currentELK = currentELK["parent"]
+                    sourceParents.append(currentELK)
+                if targetPort["properties"]["port.side"] == "WEST":
+                    targetParent = targetParent["parent"]
+                # collect the parents of the target node
+                currentELK = targetParent
+                while currentELK not in sourceParents:
+                    assert "parent" in currentELK, "Can't find common ancestor for edge source/target"
+                    currentELK = currentELK["parent"]
+                componentELK["edges"].remove(edge)
+                if "edges" not in currentELK:
+                    currentELK["edges"] = []
+                currentELK["edges"].append(edge)
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                liftEdges(child)
+    liftEdges(componentELK)
+
+    # Remove parent pointers (since JSON can't have circular references)
+    def removeParents(componentELK):
+        if "children" in componentELK:
+            for child in componentELK["children"]:
+                del child["parent"]
+                removeParents(child)
+    removeParents(componentELK)
     
     # perhaps see https://snyk.io/advisor/npm-package/elkjs/example
 
@@ -498,6 +652,8 @@ def elkID(item: 'Component|Node') -> str:
         return f'n{item._id}'
     elif issubclass(item.__class__, Component):
         return f"c{item._id}"
+    elif item.__class__ == Wire:
+        return f"w{item._id}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
 def setName(nodeELK: 'dict[str, Any]', name: 'str', height: 'float'):
@@ -536,8 +692,9 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
         ports.append( toELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
         jsonObj = { 'id': elkID(item),
                     'ports': ports,
-                    'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
-                    'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
+                    'children': [ toELK(child) for child in item.children ],
+                    'edges': [ toELK(wire) for nodeKey in item._inputs for wire in item._inputs[nodeKey]._outWires ]
+                            + [ toELK(wire) for nodeKey in item._outputs for wire in item._outputs[nodeKey]._outWires ],
                     'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
@@ -597,8 +754,9 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
             ports.append(nodeELK)
         jsonObj = { 'id': elkID(item),
                     'ports': ports,
-                    'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
-                    'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
+                    'children': [ toELK(child) for child in item.children ],
+                    'edges': [ toELK(wire) for nodeKey in item._inputs for wire in item._inputs[nodeKey]._outWires ]
+                            + [ toELK(wire) for nodeKey in item._outputs for wire in item._outputs[nodeKey]._outWires ],
                     'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0:

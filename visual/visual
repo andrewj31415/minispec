@@ -15,6 +15,7 @@ import time
 import synth
 import new_hardware as hardware
 from new_hardware import *
+import json
 
 if __name__ == '__main__':
     total_start_time = time.time()
@@ -58,6 +59,10 @@ if __name__ == '__main__':
     print('Synthesizing to hardware representation ...')
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
     print(f'Synthesis complete. Time: {time.time() - synthesisStartTime} seconds')
+
+    print(synthesizedComponent.__repr__())
+    print(synthesizedComponent.getAllWires())
+    print(len(synthesizedComponent.getAllWires()))
 
     componentJson: 'dict[str, Any]' = hardware.getELK(synthesizedComponent)
 
