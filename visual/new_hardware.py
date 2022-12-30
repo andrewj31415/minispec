@@ -62,8 +62,8 @@ class Node:
         self._mtype = mtype
         self._id = Node._num_nodes_created
         Node._num_nodes_created += 1
-        self._inWires: 'set[Wire]' = {}
-        self._outWires: 'set[Wire]' = {}
+        self._inWires: 'set[Wire]' = set()
+        self._outWires: 'set[Wire]' = set()
         self._parent: 'Component' = None
         self._isInput: bool = None
         self._label = None
@@ -92,7 +92,8 @@ def isNodeOrMLiteral(value):
     return isMLiteral(value) or isNode(value)
 
 class Wire:
-    ''' src and dst are Nodes.'''
+    ''' src and dst are Nodes.
+    Adds itself to the hardware data structure when initialized. '''
     _num_wires_created = 0  #one for each Wire created
     __slots__ = '_id', '_src', '_dst'
     def __init__(self, src: 'Node', dst: 'Node'):
@@ -130,7 +131,19 @@ class Component:
     _num_components_created = 0  #one for each component created, so each component has a unique id
     __slots__ = '_id', '_name', '_children', '_inputs', '_outputs', '_parent', '_tokensSourcedFrom'
     def __init__(self, name: 'str', inputs: 'dict[Any, Node]', outputs: 'dict[Any, Node]', parent: 'Component|None', children: 'set[Component]'):
-        ''' Gives each component a unique _id '''
+        # type assertions
+        assert name.__class__ == str, f'Component name must be a string, not {name.__class__}'
+        assert inputs.__class__ == dict, f'Component inputs must be a dictionary, not {name.__class__}'
+        for nodeKey in inputs:
+            assert inputs[nodeKey].__class__ == Node, f'Component inputs must be Nodes, not {name.__class__}'
+        assert outputs.__class__ == dict, f'Component outputs must be a dictionary, not {name.__class__}'
+        for nodeKey in outputs:
+            assert outputs[nodeKey].__class__ == Node, f'Component outputs must be Nodes, not {name.__class__}'
+        assert isinstance(parent, Component) or parent == None, f'Component parent must be a Component or None, not {name.__class__}'
+        assert children.__class__ == set, f'Component children must be a set, not {name.__class__}'
+        for child in children:
+            assert isinstance(child, Component), f'Component children must be Components, not {name.__class__}'
+        # give each component a unique _id
         self._id = Component._num_components_created
         Component._num_components_created += 1
         self._name: 'str' = name
@@ -154,7 +167,7 @@ class Component:
     @name.setter
     def name(self, name: 'str'):
         raise Exception("Names cannot be changed.")
-    def eq(self, other: 'Component|None') -> bool:
+    def match(self, other: 'Component|None') -> bool:
         ''' Returns true if self and other represent the same hardware. '''
         assert self != other, "cannot compare a component to itself"
         assert self._parent == None, "can only compare hardware structures at the root Component"
@@ -249,7 +262,7 @@ class Component:
             for nodeKey in sorted(comp._outputs):
                 nodes.append(comp._outputs[nodeKey])
             for child in childMaps[comp]:
-                getNodes(child)
+                getNodes(child, childMaps, nodes)
         getNodes(self, selfChildMaps, selfNodes)
         getNodes(other, otherChildMaps, otherNodes)
         selfNodeDict: 'dict[Node, int]' = {}
@@ -277,6 +290,7 @@ class Component:
         
         return True
     def addChild(self, component: 'Component'):
+        assert isinstance(component, Component), f"Children of a Component must be Components, not {component.__class__}"
         assert component not in self._children, "Cannot add Component to children twice"
         assert component != self, "A Component cannot be its own child"
         self._children.add(component)
@@ -289,14 +303,19 @@ class Component:
         return sum(self._tokensSourcedFrom, [])
 
 class Function(Component):
-    __slots__ = '_output'
-    def __init__(self, name: 'str', inputs: 'list[Node]', output: 'Node' = None, children: 'set[Component]' = None):
+    __slots__ = '_inputList', '_output', 'inputNames'
+    def __init__(self, name: 'str', inputs: 'list[Node]' = None, output: 'Node' = None, children: 'set[Component]' = None):
+        if inputs == None:
+            inputs = []
         if output == None:
             output = Node()
+        assert output.__class__ == Node, f"Function output must be Node, not {output.__class__}"
         self._output = output
         if children == None:
             children = set()
         Component.__init__(self, name, {i : inputs[i] for i in range(len(inputs))}, {0: output}, None, children)
+        self._inputList: 'list[Node]' = inputs
+        self.inputNames = []
     @property
     def output(self):
         '''The output Node of the function'''
@@ -304,9 +323,13 @@ class Function(Component):
     @output.setter
     def output(self, output: 'Node'):
         raise Exception("Can't directly modify this property")
+    @property
+    def inputs(self):
+        '''Returns a copy of the list of input Nodes to this function'''
+        return self._inputList.copy()
 
 class Mux(Component):
-    __slots__ = ()
+    __slots__ = '_control', '_output', '_inputNames'
     def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
         if control == None:
             control = Node('_mux_control')
@@ -318,11 +341,40 @@ class Mux(Component):
         inputDict[-1] = self._control
         Component.__init__(self, "_mux", inputDict, {0: output}, None, set())
         self._inputNames = None
+    @property
+    def inputs(self):
+        '''Returns a copy of the list of input Nodes to the mux'''
+        return [self._inputs[i] for i in range(len(self._inputs)-1)]
+    @property
+    def control(self):
+        '''The control input Node of the mux'''
+        return self._control
+    @property
+    def output(self):
+        '''The output Node of the mux'''
+        return self._output
+    @property
+    def inputNames(self):
+        return self._inputNames
+    @inputNames.setter
+    def inputNames(self, inputNames: 'list[str]'):
+        assert(len(inputNames) == len(self._inputs) - 1), f"Wrong number of mux input labels--expected {len(self._inputs) - 1}, got {len(inputNames)}"
+        self._inputNames = inputNames
 
 class Constant(Component):
     __slots__ = '_value'
     def __init__(self, value: 'MLiteral'):
+        assert isMLiteral(value), f"Value of Constant must be MLiteral, not {value.__class__}"
+        self._value = value
         Component.__init__(self, str(self.value), {}, {'c0': Node()}, None, set())
+    @property
+    def value(self) -> 'MLiteral':
+        '''The value of the constant'''
+        return self._value
+    @property
+    def output(self) -> 'Node':
+        '''The output Node of the constant'''
+        return self._outputs['c0']
 
 class Module(Component):
     __slots__ = ()
@@ -571,7 +623,7 @@ if __name__ == '__main__':
 
     c = Function('f', [Node(), Node(), Node()])
     d = Function('f', [Node(), Node(), Node()])
-    print(c.eq(d))  # True
+    print(c.match(d))  # True
 
     e = Function('f', [Node(), Node()])
-    print(c.eq(e))  # False
+    print(c.match(e))  # False

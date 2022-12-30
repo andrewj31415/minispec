@@ -13,8 +13,8 @@ import argparse, os, pathlib
 import time
 
 import synth
-import hardware
-from hardware import *
+import new_hardware as hardware
+from new_hardware import *
 
 if __name__ == '__main__':
     total_start_time = time.time()

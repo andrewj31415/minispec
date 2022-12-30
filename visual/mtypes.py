@@ -1,5 +1,5 @@
 
-import hardware
+import new_hardware as hardware
 import build
 import math # for math.inf in .numLiterals()
 
@@ -194,7 +194,6 @@ class MLiteral(metaclass=MType):
         raise Exception(f"Not implemented, class {repr(self.__class__)} was not created in a type factory.")
     def getHardware(self, globalsHandler):
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
-        # constantFunc = hardware.Function(str(self), [], [], hardware.Node(str(self), self.__class__))
         constantFunc = hardware.Constant(self)
         constantFunc.addSourceTokens(self.getSourceTokens())
         globalsHandler.currentComponent.addChild(constantFunc)

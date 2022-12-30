@@ -14,7 +14,7 @@ which may be accessed from htmlcov/index.html.
 import os, sys  # see https://stackoverflow.com/questions/16780014/import-file-from-parent-directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from hardware import *
+from new_hardware import *
 import synth
 
 import pathlib
@@ -65,8 +65,10 @@ def _():
     output = synth.parseAndSynth(text, 'f')
     fa, fb, fo = Node('fa'), Node('fb'), Node('fo')
     xfa, xfb, xfo = Node('xfa'), Node('xfb'), Node('xfo')
-    expected = Function("f", [Function("^", [], [xfa, xfb], xfo), Wire(fa, xfa),
-                                    Wire(fb, xfb), Wire(xfo, fo)], [fa, fb], fo)
+    Wire(fa, xfa)
+    Wire(fb, xfb)
+    Wire(xfo, fo)
+    expected = Function("f", [fa, fb], fo, {Function("^", [xfa, xfb], xfo)})
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''One function calling another for a three-way xor''')
@@ -77,10 +79,16 @@ def _():
     fa, fb, fo = Node('fa'), Node('fb'), Node('fo')
     xfa, xfb, xfo = Node('xfa'), Node('xfb'), Node('xfo')
     xga, xgb, xgo = Node('xga'), Node('xgb'), Node('xgo')
-    expected = Function("g", [Function("f", [Function("^", [], [xfa, xfb], xfo),
-                                            Wire(fa, xfa), Wire(fb, xfb), Wire(xfo, fo)], [fa, fb], fo),
-                            Function("^", [], [xga, xgb], xgo),
-                            Wire(ga, xga), Wire(gb, xgb), Wire(xgo, fa), Wire(gc, fb), Wire(fo, go)], [ga, gb, gc], go)
+    Wire(fa, xfa)
+    Wire(fb, xfb)
+    Wire(xfo, fo)
+    Wire(ga, xga)
+    Wire(gb, xgb)
+    Wire(xgo, fa)
+    Wire(gc, fb)
+    Wire(fo, go)
+    expected = Function("g", [ga, gb, gc], go, {Function("f", [fa, fb], fo, {Function("^", [xfa, xfb], xfo)}),
+                                                Function("^", [xga, xgb], xgo)})
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
     '''
@@ -105,24 +113,27 @@ def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
     inner1, inner2, innerOut = Node(), Node(), Node()
+    Wire(fa, inner1), Wire(fb, inner2), Wire(innerOut, fo)
+    expected = Function('f#(2,2)', [fa, fb], fo, {Function('+', [inner1, inner2], innerOut)})
     output = synth.parseAndSynth(text, 'f#(2,2)') #the original f
-    expected = Function('f#(2,2)', [Function('+', [], [inner1, inner2], innerOut), Wire(fa, inner1), Wire(fb, inner2), Wire(innerOut, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Function should correctly take parameter''')
 def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
+    Wire(fa, fo)
+    expected = Function('f#(1)', [fa, fb], fo)
     output = synth.parseAndSynth(text, 'f#(1)') #the second f
-    expected = Function('f#(1)', [Wire(fa, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Function should correctly partially specialize''')
 def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
+    Wire(fb, fo)
+    expected = Function('f#(2,1)', [fa, fb], fo)
     output = synth.parseAndSynth(text, 'f#(2,1)') #the third f
-    expected = Function('f#(2,1)', [Wire(fb, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Function should correctly fully specialize''')
@@ -130,32 +141,36 @@ def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
     inner1, inner2, innerOut = Node(), Node(), Node()
+    Wire(inner1, innerOut), Wire(fa, inner2), Wire(fb, inner1), Wire(innerOut, fo)
+    expected = Function('f#(1,1)', [fa, fb], fo, {Function('f', [inner1, inner2], innerOut)})
     output = synth.parseAndSynth(text, 'f#(1,1)') #the fourth f
-    expected = Function('f#(1,1)', [Function('f', [Wire(inner1, innerOut)], [inner1, inner2], innerOut), Wire(fa, inner2), Wire(fb, inner1), Wire(innerOut, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Function should be correctly processed''')
 def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
+    Wire(fa, fo)
+    expected  = Function('f', [fa, fb], fo)
     output = synth.parseAndSynth(text, 'f') #the fifth f
-    expected  = Function('f', [Wire(fa, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Correctly computes fixed param''')
 def _():
     text = pull('params2')
     fa, fb, fo = Node(), Node(), Node()
+    Wire(fa, fo)
+    expected  = Function('f#(10,0)', [fa, fb], fo)
     output = synth.parseAndSynth(text, 'f#(10,0)') #the second f
-    expected  = Function('f#(10,0)', [Wire(fa, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Correctly computes fixed param from constants''')
 def _():
     text = pull('params2')
     fa, fb, fo = Node(), Node(), Node()
+    Wire(fb, fo)
+    expected  = Function('f#(1,7)', [fa, fb], fo)
     output = synth.parseAndSynth(text, 'f#(1,7)') #the third f
-    expected  = Function('f#(1,7)', [Wire(fb, fo)], [fa, fb], fo)
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
@@ -171,15 +186,16 @@ def _():
     mulg1, mulg2, mulgo = Node('mulg1'), Node('mul2'), Node('mulo')
     add1, add2, addo = Node('add1'), Node('add2'), Node('addo')
     eq1, eq2, eqo = Node('eq1'), Node('eq2'), Node('eqo')
-    # five, six, seven, thirteen = Function('5', [], []), Function('6', [], []), Function('7', [], []), Function('13', [], [])
     five, six, seven, thirteen = Constant(Integer(5)), Constant(Integer(6)), Constant(Integer(7)), Constant(Integer(13))
-    mulg = Function('*', [], [mulg1, mulg2], mulgo)
-    add = Function('+', [], [add1, add2], addo)
-    g = Function('g#(15)', [add, mulg, six, thirteen, Wire(ga, mulg1), Wire(six.output, mulg2), Wire(mulgo, add2), Wire(thirteen.output, add1), Wire(addo, go)], [ga], go)
-    xor = Function('^', [], [xor1, xor2], xoro)
-    eq = Function('==', [], [eq1, eq2], eqo)
-    mulf = Function('*', [], [mulf1, mulf2], mulfo)
-    f = Function('f', [xor, eq, g, mulf, five, seven, Wire(fa, mulf1), Wire(five.output, mulf2), Wire(mulfo, xor1), Wire(fa, ga), Wire(go, xor2), Wire(xoro, eq1), Wire(seven.output, eq2), Wire(eqo, fo)], [fa], fo)
+    mulg = Function('*', [mulg1, mulg2], mulgo)
+    add = Function('+', [add1, add2], addo)
+    Wire(ga, mulg1), Wire(six.output, mulg2), Wire(mulgo, add2), Wire(thirteen.output, add1), Wire(addo, go)
+    g = Function('g#(15)', [ga], go, {add, mulg, six, thirteen})
+    xor = Function('^', [xor1, xor2], xoro)
+    eq = Function('==', [eq1, eq2], eqo)
+    mulf = Function('*', [mulf1, mulf2], mulfo)
+    Wire(fa, mulf1), Wire(five.output, mulf2), Wire(mulfo, xor1), Wire(fa, ga), Wire(go, xor2), Wire(xoro, eq1), Wire(seven.output, eq2), Wire(eqo, fo)
+    f = Function('f', [fa], fo, {xor, eq, g, mulf, five, seven})
     
     output = synth.parseAndSynth(text, 'g#(15)')
     expected = g
@@ -189,9 +205,9 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-# @it('''Correctly folds all constants''')
-# def _():
-#     assert False, "finish writing test"
+@it.skip('''Correctly folds all constants''')
+def _():
+    assert False, "finish writing test"
 
 
 describe("If and Ternary Statements")
@@ -201,13 +217,14 @@ def _():
     text = pull('if1')
 
     fa, fo = Node(), Node()
-    eq = Function("==", [], [Node(), Node()])
+    eq = Function("==", [Node(), Node()])
     eq1, eq2 = eq.inputs
     four = Constant(Integer(4))
     two = Constant(Integer(2))
     mux1, mux2, muxc = Node(), Node(), Node()
     mux = Mux([mux1, mux2], muxc)
-    f2 = Function("f#(2)", [eq, four, two, mux, Wire(fa, eq1), Wire(four.output, eq2), Wire(eq.output, muxc), Wire(fa, mux1), Wire(two.output, mux2), Wire(mux.output, fo)], [fa], fo)
+    Wire(fa, eq1), Wire(four.output, eq2), Wire(eq.output, muxc), Wire(fa, mux1), Wire(two.output, mux2), Wire(mux.output, fo)
+    f2 = Function("f#(2)", [fa], fo, {eq, four, two, mux})
 
     output = synth.parseAndSynth(text, 'f#(2)')
     expected = f2
@@ -219,9 +236,10 @@ def _():
 
     fa, fo = Node(), Node()
     one = Constant(Integer(1))
-    xor = Function("^", [], [Node(), Node()])
+    xor = Function("^", [Node(), Node()])
     xor1, xor2 = xor.inputs
-    f0 = Function("f#(0)", [xor, one, Wire(one.output, xor1), Wire(fa, xor2), Wire(xor.output, fo)], [fa], fo)
+    Wire(one.output, xor1), Wire(fa, xor2), Wire(xor.output, fo)
+    f0 = Function("f#(0)", [fa], fo, {xor, one})
 
     output = synth.parseAndSynth(text, 'f#(0)')
     expected = f0
@@ -236,7 +254,8 @@ def _():
     three = Constant(Integer(3))
     mux1, mux2, muxc = Node(), Node(), Node()
     mux = Mux([mux1, mux2], muxc)
-    f = Function("f", [mux, one, three, Wire(fa, muxc), Wire(one.output, mux1), Wire(three.output, mux2), Wire(mux.output, fo)], [fa], fo)
+    Wire(fa, muxc), Wire(one.output, mux1), Wire(three.output, mux2), Wire(mux.output, fo)
+    f = Function("f", [fa], fo, {mux, one, three})
 
     output = synth.parseAndSynth(text, 'f')
     expected = f
@@ -250,9 +269,10 @@ def _():
     eq1, eq2, eqo = Node(), Node(), Node()
     m1, m2, mc = Node(), Node(), Node()
     zero = Constant(Integer(0))
-    eq = Function('==', [], [eq1, eq2], eqo)
+    eq = Function('==', [eq1, eq2], eqo)
     m = Mux([m1, m2], mc)
-    f = Function('multiplexer1', [m, zero, eq, Wire(fa, m1), Wire(fb, m2), Wire(fsel, eq1), Wire(zero.output, eq2), Wire(eqo, mc), Wire(m.output, fo)], [fsel, fa, fb], fo)
+    Wire(fa, m1), Wire(fb, m2), Wire(fsel, eq1), Wire(zero.output, eq2), Wire(eqo, mc), Wire(m.output, fo)
+    f = Function('multiplexer1', [fsel, fa, fb], fo, {m, zero, eq})
 
     output = synth.parseAndSynth(text, 'multiplexer1')
     expected = f
@@ -267,24 +287,25 @@ def _():
     fin, fo = Node(), Node()
 
     mux = Mux([Node(), Node()])
-    eq = Function('==', [], [Node(), Node()])
+    eq = Function('==', [Node(), Node()])
     cOne, sZero = Constant(Integer(1)), Constant(Integer(0))
-    lowBit = Function('[0]', [], [Node()])
+    lowBit = Function('[0]', [Node()])
     inv = Constant(Maybe(Any)())
-    val = Function('Valid', [], [Node()])
+    val = Function('Valid', [Node()])
     sftComps = []
     for i in range(1,k):
-        sftComps.append(Function(f'[{i}]', [], [Node()])) # from input
+        sftComps.append(Function(f'[{i}]', [Node()])) # from input
     for i in range(k-1):
-        sftComps.append(Function(f'[{i}]', [], [Node(), Node()])) # collect output
-    sftWires = [Wire(sZero.output, sftComps[k-1].inputs[0]), Wire(sftComps[2*k-3].output, val.inputs[0])]
+        sftComps.append(Function(f'[{i}]', [Node(), Node()])) # collect output
+    Wire(sZero.output, sftComps[k-1].inputs[0]), Wire(sftComps[2*k-3].output, val.inputs[0])
     for i in range(0,k-1):
-        sftWires.append(Wire(fin, sftComps[i].inputs[0]))
-        sftWires.append(Wire(sftComps[i].output, sftComps[i+k-1].inputs[1]))
+        Wire(fin, sftComps[i].inputs[0])
+        Wire(sftComps[i].output, sftComps[i+k-1].inputs[1])
     for i in range(0,k-2):
-        sftWires.append(Wire(sftComps[i+k-1].output, sftComps[i+k].inputs[0]))
+        Wire(sftComps[i+k-1].output, sftComps[i+k].inputs[0])
 
-    computeHalf = Function('computeHalf#(' + str(k) + ')', [mux, eq, cOne, sZero, lowBit, inv, val] + sftComps + sftWires + [Wire(val.output, mux.inputs[1]), Wire(inv.output, mux.inputs[0]), Wire(mux.output, fo), Wire(lowBit.output, eq.inputs[0]), Wire(cOne.output, eq.inputs[1]), Wire(eq.output, mux.control), Wire(fin, lowBit.inputs[0])], [fin], fo)
+    Wire(val.output, mux.inputs[1]), Wire(inv.output, mux.inputs[0]), Wire(mux.output, fo), Wire(lowBit.output, eq.inputs[0]), Wire(cOne.output, eq.inputs[1]), Wire(eq.output, mux.control), Wire(fin, lowBit.inputs[0])
+    computeHalf = Function('computeHalf#(' + str(k) + ')', [fin], fo, set([mux, eq, cOne, sZero, lowBit, inv, val] + sftComps))
 
     output = synth.parseAndSynth(text, 'computeHalf#(' + str(k) + ')')
     expected = computeHalf
@@ -295,11 +316,12 @@ def _():
     text = pull('returns')
 
     five = Constant(Integer(5))
-    eq = Function('==', [], [Node(), Node()])
+    eq = Function('==', [Node(), Node()])
     m = Mux([Node(), Node()])
     one, zero = Constant(Integer(1)), Constant(Integer(0))
     i, o = Node(), Node()
-    p = Function('password', [eq, five, m, one, zero, Wire(i, eq.inputs[0]), Wire(five.output, eq.inputs[1]), Wire(eq.output, m.control), Wire(m.output, o), Wire(one.output, m.inputs[0]), Wire(zero.output, m.inputs[1])], [i], o)
+    Wire(i, eq.inputs[0]), Wire(five.output, eq.inputs[1]), Wire(eq.output, m.control), Wire(m.output, o), Wire(one.output, m.inputs[0]), Wire(zero.output, m.inputs[1])
+    p = Function('password', [i], o, {eq, five, m, one, zero})
 
     output = synth.parseAndSynth(text, 'password')
     expected = p
