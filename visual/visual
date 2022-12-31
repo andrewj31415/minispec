@@ -60,10 +60,6 @@ if __name__ == '__main__':
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
     print(f'Synthesis complete. Time: {time.time() - synthesisStartTime} seconds')
 
-    print(synthesizedComponent.__repr__())
-    print(synthesizedComponent.getAllWires())
-    print(len(synthesizedComponent.getAllWires()))
-
     componentJson: 'dict[str, Any]' = hardware.getELK(synthesizedComponent)
 
     if args.all:
