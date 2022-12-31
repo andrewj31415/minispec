@@ -168,6 +168,9 @@ class Component:
     def name(self):
         ''' The name of the component, eg 'f' or 'combine#(1,1)' or '*'. '''
         return self._name
+    @name.setter
+    def name(self, name: 'str'):
+        self._name = name
     @property
     def children(self):
         ''' The child Components of the Component '''
@@ -453,7 +456,7 @@ class Register(Module):
         raise Exception("Can't directly modify this property")
 
 class VectorModule(Module):
-    __slots__ = ()
+    __slots__ = 'numberedSubmodules'
     def __init__(self, numberedSubmodules: 'list[Module]', *args):
         ''' Same as initializing a module, just with an extra numberedSubmodules field at the beginning '''
         self.numberedSubmodules: 'list[Module]' = numberedSubmodules

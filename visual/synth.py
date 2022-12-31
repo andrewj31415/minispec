@@ -924,7 +924,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitVectorSubmodule(self, vectorType, params):
         ''' We have a vector submodule. We create the relevant hardware and return the corresponding vector module. '''
-        vectorComp = VectorModule([], "", [], {}, {})  # the name can't be determined until we visit the inner modules and get their name
+        vectorComp = VectorModule([], "", {}, {}, set())  # the name can't be determined until we visit the inner modules and get their name
         previousComp = self.globalsHandler.currentComponent
         self.globalsHandler.currentComponent = vectorComp
         # TODO consider entering/exiting the builtin scope here?
@@ -2429,12 +2429,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 eq = Function('=', [Node(), Node()])
                 regIndex = regName.split(']')[k].split('[')[1]
                 const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
-                w1 = Wire(eq.output, mux.control)
-                w2 = Wire(indexValue, eq.inputs[0])
-                w3 = Wire(const, eq.inputs[1])
-                w4 = Wire(val, mux.inputs[0])
-                w5 = Wire(oldVal, mux.inputs[1])
-                for component in [mux, eq, w1, w2, w3, w4, w5]:
+                Wire(eq.output, mux.control)
+                Wire(indexValue, eq.inputs[0])
+                Wire(const, eq.inputs[1])
+                Wire(val, mux.inputs[0])
+                Wire(oldVal, mux.inputs[1])
+                for component in [mux, eq]:
                     self.globalsHandler.currentComponent.addChild(component)
                 val = mux.output
                 vals[i] = val

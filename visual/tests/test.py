@@ -405,7 +405,7 @@ def _():
     add, sub, mul = Function('+', [Node(), Node()] ), Function('-', [Node(), Node()] ), Function('*', [Node(), Node()] )
     mux = Mux([Node(), Node(), Node()])
     f = Function('f#(4)', [fa, fb, fop], fo, {add, sub, mul, mux})
-    Wire(mux.output, fo), Wire(fa, add.inputs[0]), Wire(fb, add.inputs[1]), Wire(fa, sub.inputs[0]), Wire(fb, sub.inputs[1]),
+    Wire(mux.output, fo), Wire(fa, add.inputs[0]), Wire(fb, add.inputs[1]), Wire(fa, sub.inputs[0]), Wire(fb, sub.inputs[1])
     Wire(fa, mul.inputs[0]), Wire(fb, mul.inputs[1]), Wire(add.output, mux.inputs[0]), Wire(sub.output, mux.inputs[1]), Wire(mul.output, mux.inputs[2]), Wire(fop, mux.control)
 
     output = synth.parseAndSynth(text, 'f#(4)')
@@ -684,8 +684,8 @@ def _():
     xor0, xor1, xor2, xor3 = Function('^', [Node(), Node()]), Function('^', [Node(), Node()]), Function('^', [Node(), Node()]), Function('^', [Node(), Node()])
     fa, fo = Node(), Node()
     f = Function('parity#(4)', [fa], fo, {zero, one, two, three, output, xor0, xor1, xor2, xor3})
-    Wire(fa, zero.inputs[0]), Wire(fa, one.inputs[0]), Wire(fa, two.inputs[0]), Wire(fa, three.inputs[0]),
-    Wire(output.output, xor0.inputs[0]), Wire(xor0.output, xor1.inputs[0]), Wire(xor1.output, xor2.inputs[0]), Wire(xor2.output, xor3.inputs[0]), Wire(xor3.output, fo),
+    Wire(fa, zero.inputs[0]), Wire(fa, one.inputs[0]), Wire(fa, two.inputs[0]), Wire(fa, three.inputs[0])
+    Wire(output.output, xor0.inputs[0]), Wire(xor0.output, xor1.inputs[0]), Wire(xor1.output, xor2.inputs[0]), Wire(xor2.output, xor3.inputs[0]), Wire(xor3.output, fo)
     Wire(zero.output, xor0.inputs[1]), Wire(one.output, xor1.inputs[1]), Wire(two.output, xor2.inputs[1]), Wire(three.output, xor3.inputs[1])
 
     output = synth.parseAndSynth(text, 'parity#(4)')
@@ -720,10 +720,10 @@ def _():
     eq1, eq2, eq3 = Function('==', [Node(), Node()]), Function('==', [Node(), Node()]), Function('==', [Node(), Node()])
     ea1, ea2, ea3 = Constant(a('A1')), Constant(a('A2')), Constant(a('A3'))
     permute = Function('permute', [fa], fo, {a1, a2, a3, a4, m1, m2, m3, eq1, eq2, eq3, ea1, ea2, ea3})
-    Wire(eq1.output, m1.control), Wire(eq2.output, m2.control), Wire(eq3.output, m3.control),
-    Wire(ea1.output, eq1.inputs[1]), Wire(ea2.output, eq2.inputs[1]), Wire(ea3.output, eq3.inputs[1]),
-    Wire(fa, eq1.inputs[0]), Wire(fa, eq2.inputs[0]), Wire(fa, eq3.inputs[0]),
-    Wire(m1.output, fo), Wire(m2.output, m1.inputs[1]), Wire(m3.output, m2.inputs[1]),
+    Wire(eq1.output, m1.control), Wire(eq2.output, m2.control), Wire(eq3.output, m3.control)
+    Wire(ea1.output, eq1.inputs[1]), Wire(ea2.output, eq2.inputs[1]), Wire(ea3.output, eq3.inputs[1])
+    Wire(fa, eq1.inputs[0]), Wire(fa, eq2.inputs[0]), Wire(fa, eq3.inputs[0])
+    Wire(m1.output, fo), Wire(m2.output, m1.inputs[1]), Wire(m3.output, m2.inputs[1])
     Wire(a4.output, m3.inputs[0]), Wire(a3.output, m3.inputs[1]), Wire(a1.output, m2.inputs[0]), Wire(a2.output, m1.inputs[0])
 
     output = synth.parseAndSynth(text, 'permute')
@@ -757,7 +757,7 @@ def _():
     r = Function('|', [Node(), Node()])
     pack = Function('Packet{}', [Node(), Node()])
     c = Function('combine#(1,1,1,2)', [a, b], o, {inp1, ind, inp2, inp3, inpset, r, pack})
-    Wire(a, inp1.inputs[0]), Wire(b, ind.inputs[0]), Wire(inp1.output, pack.inputs[0]), Wire(ind.output, pack.inputs[1]),
+    Wire(a, inp1.inputs[0]), Wire(b, ind.inputs[0]), Wire(inp1.output, pack.inputs[0]), Wire(ind.output, pack.inputs[1])
     Wire(pack.output, inpset.inputs[0]), Wire(pack.output, inp2.inputs[0]), Wire(b, inp3.inputs[0]), Wire(inp2.output, r.inputs[0]), Wire(inp3.output, r.inputs[1]), Wire(r.output, inpset.inputs[1]), Wire(inpset.output, o)
 
     output = synth.parseAndSynth(text, 'combine#(1, 1, 1, 2)')
@@ -809,9 +809,9 @@ def _():
     add = Function('+', [Node(), Node()])
     isv = Function('isValid', [Node()])
     m = Module('SettableCounter', {'setCount': setCount}, {'getCount': getCount}, {reg, fm, u, one, mux, add, isv})
-    Wire(setCount, isv.inputs[0]), Wire(isv.output, mux.control),
-    Wire(setCount, fm.inputs[1]), Wire(u.output, fm.inputs[0]), Wire(fm.output, mux.inputs[0]),
-    Wire(reg.value, add.inputs[0]), Wire(one.output, add.inputs[1]), Wire(add.output, mux.inputs[1]),
+    Wire(setCount, isv.inputs[0]), Wire(isv.output, mux.control)
+    Wire(setCount, fm.inputs[1]), Wire(u.output, fm.inputs[0]), Wire(fm.output, mux.inputs[0])
+    Wire(reg.value, add.inputs[0]), Wire(one.output, add.inputs[1]), Wire(add.output, mux.inputs[1])
     Wire(mux.output, reg.input), Wire(reg.value, getCount)
 
     output = synth.parseAndSynth(text, 'SettableCounter')
@@ -826,17 +826,18 @@ def _():
     text = pull('moduleVector')
 
     r00, r01, r10, r11 = Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))')
-    v0, v1 = VectorModule([r00, r01], "Vector#(2,Reg#(Bit#(1)))", [r00, r01], {}, {}), VectorModule([r10, r11], "Vector#(2,Reg#(Bit#(1)))", [r10, r11], {}, {})
-    v = VectorModule([v0, v1], "Vector#(2,Vector#(2,Reg#(Bit#(1))))", [v0, v1], {}, {})
-    n0, n1, n2, n3 = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('~', [], [Node()]), Function('~', [], [Node()])
-    s0, s1, s2, s3 = Function('[0]', [], [Node()]), Function('[1]', [], [Node()]), Function('[2]', [], [Node()]), Function('[3]', [], [Node()])
-    c = Function('{}', [], [Node(), Node(), Node(), Node()])
+    v0, v1 = VectorModule([r00, r01], "Vector#(2,Reg#(Bit#(1)))", {}, {}, {r00, r01}), VectorModule([r10, r11], "Vector#(2,Reg#(Bit#(1)))", {}, {}, {r10, r11})
+    v = VectorModule([v0, v1], "Vector#(2,Vector#(2,Reg#(Bit#(1))))", {}, {}, {v0, v1})
+    n0, n1, n2, n3 = Function('~', [Node()]), Function('~', [Node()]), Function('~', [Node()]), Function('~', [Node()])
+    s0, s1, s2, s3 = Function('[0]', [Node()]), Function('[1]', [Node()]), Function('[2]', [Node()]), Function('[3]', [Node()])
+    c = Function('{}', [Node(), Node(), Node(), Node()])
     i, o = Node(), Node()
-    sWires = [Wire(i, s0.inputs[0]), Wire(i, s1.inputs[0]), Wire(i, s2.inputs[0]), Wire(i, s3.inputs[0])]
-    nWires = [Wire(s0.output, n0.inputs[0]), Wire(s1.output, n1.inputs[0]), Wire(s2.output, n2.inputs[0]), Wire(s3.output, n3.inputs[0])]
-    rWires = [Wire(n0.output, r00.input), Wire(n1.output, r01.input), Wire(n2.output, r10.input), Wire(n3.output, r11.input)]
-    cWires = [Wire(r00.value, c.inputs[0]), Wire(r01.value, c.inputs[1]), Wire(r10.value, c.inputs[2]), Wire(r11.value, c.inputs[3])]
-    rev = Module('Reverse#(1)', [v, n0, n1, n2, n3, s0, s1, s2, s3, c, Wire(c.output, o)] + sWires + nWires + rWires + cWires, {'in': i}, {'out': o})
+    Wire(i, s0.inputs[0]), Wire(i, s1.inputs[0]), Wire(i, s2.inputs[0]), Wire(i, s3.inputs[0])
+    Wire(s0.output, n0.inputs[0]), Wire(s1.output, n1.inputs[0]), Wire(s2.output, n2.inputs[0]), Wire(s3.output, n3.inputs[0])
+    Wire(n0.output, r00.input), Wire(n1.output, r01.input), Wire(n2.output, r10.input), Wire(n3.output, r11.input)
+    Wire(r00.value, c.inputs[0]), Wire(r01.value, c.inputs[1]), Wire(r10.value, c.inputs[2]), Wire(r11.value, c.inputs[3])
+    rev = Module('Reverse#(1)', {'in': i}, {'out': o}, {v, n0, n1, n2, n3, s0, s1, s2, s3, c})
+    Wire(c.output, o)
 
     output = synth.parseAndSynth(text, 'Reverse#(1)')
     expected = rev
@@ -845,29 +846,31 @@ def _():
     revs = []
     for i in range(4):
         r00, r01, r10, r11 = Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))'), Register('Reg#(Bit#(1))')
-        v0, v1 = VectorModule([r00, r01], "Vector#(2,Reg#(Bit#(1)))", [r00, r01], {}, {}), VectorModule([r10, r11], "Vector#(2,Reg#(Bit#(1)))", [r10, r11], {}, {})
-        v = VectorModule([v0, v1], "Vector#(2,Vector#(2,Reg#(Bit#(1))))", [v0, v1], {}, {})
-        n0, n1, n2, n3 = Function('~', [], [Node()]), Function('~', [], [Node()]), Function('~', [], [Node()]), Function('~', [], [Node()])
-        s0, s1, s2, s3 = Function('[0]', [], [Node()]), Function('[1]', [], [Node()]), Function('[2]', [], [Node()]), Function('[3]', [], [Node()])
-        c = Function('{}', [], [Node(), Node(), Node(), Node()])
+        v0, v1 = VectorModule([r00, r01], "Vector#(2,Reg#(Bit#(1)))", {}, {}, {r00, r01}), VectorModule([r10, r11], "Vector#(2,Reg#(Bit#(1)))", {}, {}, {r10, r11})
+        v = VectorModule([v0, v1], "Vector#(2,Vector#(2,Reg#(Bit#(1))))", {}, {}, {v0, v1})
+        n0, n1, n2, n3 = Function('~', [Node()]), Function('~', [Node()]), Function('~', [Node()]), Function('~', [Node()])
+        s0, s1, s2, s3 = Function('[0]', [Node()]), Function('[1]', [Node()]), Function('[2]', [Node()]), Function('[3]', [Node()])
+        c = Function('{}', [Node(), Node(), Node(), Node()])
         i, o = Node(), Node()
-        sWires = [Wire(i, s0.inputs[0]), Wire(i, s1.inputs[0]), Wire(i, s2.inputs[0]), Wire(i, s3.inputs[0])]
-        nWires = [Wire(s0.output, n0.inputs[0]), Wire(s1.output, n1.inputs[0]), Wire(s2.output, n2.inputs[0]), Wire(s3.output, n3.inputs[0])]
-        rWires = [Wire(n0.output, r00.input), Wire(n1.output, r01.input), Wire(n2.output, r10.input), Wire(n3.output, r11.input)]
-        cWires = [Wire(r00.value, c.inputs[0]), Wire(r01.value, c.inputs[1]), Wire(r10.value, c.inputs[2]), Wire(r11.value, c.inputs[3])]
-        rev = Module('Reverse#(1)', [v, s0, s1, s2, s3, c, n0, n1, n2, n3, Wire(c.output, o)] + sWires + nWires + rWires + cWires, {'in': i}, {'out': o})
+        Wire(i, s0.inputs[0]), Wire(i, s1.inputs[0]), Wire(i, s2.inputs[0]), Wire(i, s3.inputs[0])
+        Wire(s0.output, n0.inputs[0]), Wire(s1.output, n1.inputs[0]), Wire(s2.output, n2.inputs[0]), Wire(s3.output, n3.inputs[0])
+        Wire(n0.output, r00.input), Wire(n1.output, r01.input), Wire(n2.output, r10.input), Wire(n3.output, r11.input)
+        Wire(r00.value, c.inputs[0]), Wire(r01.value, c.inputs[1]), Wire(r10.value, c.inputs[2]), Wire(r11.value, c.inputs[3])
+        rev = Module('Reverse#(1)', {'in': i}, {'out': o}, {v, n0, n1, n2, n3, s0, s1, s2, s3, c})
+        Wire(c.output, o)
         revs.append(rev)
 
     r00, r01, r10, r11 = revs
-    v0, v1 = VectorModule([r00, r01], "Vector#(2,Reverse#(1))", [r00, r01], {}, {}), VectorModule([r10, r11], "Vector#(2,Reverse#(1))", [r10, r11], {}, {})
-    v = VectorModule([v0, v1], "Vector#(2,Vector#(2,Reverse#(1)))", [v0, v1], {}, {})
-    s0, s1, s2, s3 = Function('[3:0]', [], [Node()]), Function('[7:4]', [], [Node()]), Function('[11:8]', [], [Node()]), Function('[15:12]', [], [Node()])
-    c = Function('{}', [], [Node(), Node(), Node(), Node()])
+    v0, v1 = VectorModule([r00, r01], "Vector#(2,Reverse#(1))", {}, {}, {r00, r01}), VectorModule([r10, r11], "Vector#(2,Reverse#(1))", {}, {}, {r10, r11})
+    v = VectorModule([v0, v1], "Vector#(2,Vector#(2,Reverse#(1)))", {}, {}, {v0, v1})
+    s0, s1, s2, s3 = Function('[3:0]', [Node()]), Function('[7:4]', [Node()]), Function('[11:8]', [Node()]), Function('[15:12]', [Node()])
+    c = Function('{}', [Node(), Node(), Node(), Node()])
     i, o = Node(), Node()
-    sWires = [Wire(i, s0.inputs[0]), Wire(i, s1.inputs[0]), Wire(i, s2.inputs[0]), Wire(i, s3.inputs[0])]
-    rWires = [Wire(s0.output, r00.inputs['in']), Wire(s1.output, r01.inputs['in']), Wire(s2.output, r10.inputs['in']), Wire(s3.output, r11.inputs['in'])]
-    cWires = [Wire(r00.methods['out'], c.inputs[0]), Wire(r01.methods['out'], c.inputs[1]), Wire(r10.methods['out'], c.inputs[2]), Wire(r11.methods['out'], c.inputs[3])]
-    rev2 = Module('Reverse#(2)', [v, s0, s1, s2, s3, c, Wire(c.output, o)] + cWires + sWires + rWires, {'in': i}, {'out': o})
+    Wire(i, s0.inputs[0]), Wire(i, s1.inputs[0]), Wire(i, s2.inputs[0]), Wire(i, s3.inputs[0])
+    Wire(s0.output, r00.inputs['in']), Wire(s1.output, r01.inputs['in']), Wire(s2.output, r10.inputs['in']), Wire(s3.output, r11.inputs['in'])
+    Wire(r00.methods['out'], c.inputs[0]), Wire(r01.methods['out'], c.inputs[1]), Wire(r10.methods['out'], c.inputs[2]), Wire(r11.methods['out'], c.inputs[3])
+    rev2 = Module('Reverse#(2)', {'in': i}, {'out': o}, {v, s0, s1, s2, s3, c})
+    Wire(c.output, o)
 
     output = synth.parseAndSynth(text, 'Reverse#(2)')
     expected = rev2
@@ -880,7 +883,8 @@ def _():
     s1, s2 = Register('Reg#(Bit#(4))'), Register('Reg#(Bit#(4))')
     out = Node()
     input = Node()
-    fifo = Module('FIFO', [s1, s2, Wire(input, s1.input), Wire(s1.value, s2.input), Wire(s2.value, out)], {'in': input}, {'out': out})
+    fifo = Module('FIFO', {'in': input}, {'out': out}, {s1, s2})
+    Wire(input, s1.input), Wire(s1.value, s2.input), Wire(s2.value, out)
 
     output = synth.parseAndSynth(text, 'FIFO')
     expected = fifo
@@ -888,19 +892,25 @@ def _():
 
     count = Register('Reg#(Bit#(4))')
     mux = Mux([Node(), Node()])
-    add = Function('+', [], [Node(), Node()])
+    add = Function('+', [Node(), Node()])
     enable = Node()
     one = Constant(Integer(1))
-    counter = Module('FourBitCounter', [count, mux, add, one, Wire(enable, mux.control), Wire(add.output, mux.inputs[0]), Wire(count.value, mux.inputs[1]), Wire(mux.output, count.input), Wire(count.value, add.inputs[0]), Wire(one.output, add.inputs[1])], {'enable': enable}, {})
+    counter = Module('FourBitCounter', {'enable': enable}, {}, {count, mux, add, one})
+    Wire(enable, mux.control), Wire(add.output, mux.inputs[0])
+    Wire(count.value, mux.inputs[1]), Wire(mux.output, count.input)
+    Wire(count.value, add.inputs[0]), Wire(one.output, add.inputs[1])
 
     sumCount = Register('Reg#(Bit#(4))')
     getCount = Node()
-    sumAdd = Function('+', [], [Node(), Node()])
-    sum = Module('Sum', [sumCount, sumAdd, Wire(sumCount.value, getCount), Wire(sumAdd.output, sumCount.input), Wire(sumCount.value, sumAdd.inputs[0]), Wire(out, sumAdd.inputs[1])], {}, {'getCount': getCount})
+    sumAdd = Function('+', [Node(), Node()])
+    sum = Module('Sum', {}, {'getCount': getCount}, {sumCount, sumAdd})
+    Wire(sumCount.value, getCount), Wire(sumAdd.output, sumCount.input)
+    Wire(sumCount.value, sumAdd.inputs[0]), Wire(out, sumAdd.inputs[1])
 
     topEnable = Node()
     topGetCount = Node()
-    top = Module('TopLevel', [fifo, counter, sum, Wire(count.value, input), Wire(topEnable, enable), Wire(getCount, topGetCount)], {'enable': topEnable}, {'getCount': topGetCount})
+    top = Module('TopLevel', {'enable': topEnable}, {'getCount': topGetCount}, {fifo, counter, sum})
+    Wire(count.value, input), Wire(topEnable, enable), Wire(getCount, topGetCount)
 
     output = synth.parseAndSynth(text, 'TopLevel')
     expected = top
@@ -913,8 +923,11 @@ def _():
     m = Register('Reg#(Vector#(4,Bit#(4)))')
     mData = Node()
     mIndx = Node()
-    sliceIndx = Function('[_]', [], [Node(), Node(), Node()])
-    mem = Module('Mem', [m, sliceIndx, Wire(sliceIndx.output, m.input), Wire(m.value, sliceIndx.inputs[0]), Wire(mIndx, sliceIndx.inputs[1]), Wire(mData, sliceIndx.inputs[2])], {'data': mData, 'indx': mIndx}, {})
+    sliceIndx = Function('[_]', [Node(), Node(), Node()])
+    mem = Module('Mem', {'data': mData, 'indx': mIndx}, {}, {m, sliceIndx})
+    Wire(sliceIndx.output, m.input)
+    Wire(m.value, sliceIndx.inputs[0]), Wire(mIndx, sliceIndx.inputs[1])
+    Wire(mData, sliceIndx.inputs[2])
 
     output = synth.parseAndSynth(text, 'Mem')
     expected = mem
@@ -925,13 +938,19 @@ def _():
     sl1, sl2 = Node(), Node()
     tData, tIndx = Node(), Node()
     o1, o2 = Node(), Node()
-    sInd1 = Function('[_]', [], [Node(), Node()])
-    sInd2 = Function('[_]', [], [Node(), Node()])
+    sInd1 = Function('[_]', [Node(), Node()])
+    sInd2 = Function('[_]', [Node(), Node()])
     gd1o, gd2o = Node(), Node()
     gd1i, gd2i = Node(), Node()
-    gd1 = Function('getData', [sInd1, Wire(gd1i, sInd1.inputs[1]), Wire(m.value, sInd1.inputs[0]), Wire(sInd1.output, gd1o)], [gd1i], gd1o)
-    gd2 = Function('getData', [sInd2, Wire(gd2i, sInd2.inputs[1]), Wire(m.value, sInd2.inputs[0]), Wire(sInd2.output, gd2o)], [gd2i], gd2o)
-    top = Module('TopLevel', [mem, s1, s2, gd1, gd2, Wire(s1.value, o1), Wire(s2.value, o2), Wire(sl1, gd1.inputs[0]), Wire(sl2, gd2.inputs[0]), Wire(gd1.output, s1.input), Wire(gd2.output, s2.input), Wire(tData, mData), Wire(tIndx, mIndx)], {'selector1': sl1, 'selector2': sl2, 'dataTop': tData, 'indxTop': tIndx}, {'out1': o1, 'out2': o2})
+    gd1 = Function('getData', [gd1i], gd1o, {sInd1})
+    Wire(gd1i, sInd1.inputs[1]), Wire(m.value, sInd1.inputs[0]), Wire(sInd1.output, gd1o)
+    gd2 = Function('getData', [gd2i], gd2o, {sInd2})
+    Wire(gd2i, sInd2.inputs[1]), Wire(m.value, sInd2.inputs[0]), Wire(sInd2.output, gd2o)
+    top = Module('TopLevel', {'selector1': sl1, 'selector2': sl2, 'dataTop': tData, 'indxTop': tIndx}, {'out1': o1, 'out2': o2}, {mem, s1, s2, gd1, gd2})
+    Wire(s1.value, o1), Wire(s2.value, o2),
+    Wire(sl1, gd1.inputs[0]), Wire(sl2, gd2.inputs[0]),
+    Wire(gd1.output, s1.input), Wire(gd2.output, s2.input),
+    Wire(tData, mData), Wire(tIndx, mIndx)
 
     output = synth.parseAndSynth(text, 'TopLevel')
     expected = top
@@ -945,9 +964,9 @@ def _():
 
     # nodes and registers
     r = [Register('Reg#(Bit#(4))') for i in range(6)]
-    v0 = VectorModule([r[0],r[1],r[2]], 'Vector#(3,Reg#(Bit#(4)))', [r[0],r[1],r[2]], {}, {})
-    v1 = VectorModule([r[3],r[4],r[5]], 'Vector#(3,Reg#(Bit#(4)))', [r[3],r[4],r[5]], {}, {})
-    v = VectorModule([v0,v1], 'Vector#(2,Vector#(3,Reg#(Bit#(4))))', [v0,v1], {}, {})
+    v0 = VectorModule([r[0],r[1],r[2]], 'Vector#(3,Reg#(Bit#(4)))', {}, {}, {r[0],r[1],r[2]})
+    v1 = VectorModule([r[3],r[4],r[5]], 'Vector#(3,Reg#(Bit#(4)))', {}, {}, {r[3],r[4],r[5]})
+    v = VectorModule([v0,v1], 'Vector#(2,Vector#(3,Reg#(Bit#(4))))', {}, {}, {v0,v1})
     d = Node()
     s1, s2 = Node(), Node()
     o = Node()
@@ -957,21 +976,19 @@ def _():
     oWires1 = [Wire(s2, mo1.control), Wire(s2, mo2.control), Wire(s1, mo.control)]
     oWires2 = [Wire(mo.output, o), Wire(mo1.output, mo.inputs[0]), Wire(mo2.output, mo.inputs[1])]
     oWires3 = [Wire(r[i].value, mo1.inputs[i]) for i in (0,1,2)] + [Wire(r[3+i].value, mo2.inputs[i]) for i in (0,1,2)]
-    oWires = oWires1 + oWires2 + oWires3
     oComp = [mo, mo1, mo2]
 
     #hardware for inputs
     mi1, mi2 = Mux([Node(), Node()]), Mux([Node(), Node()])
-    eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
+    eq1, eq2 = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
     zero, one = Constant(Integer(0)), Constant(Integer(1))
     iWires1 = [Wire(r[0].value, mi1.inputs[1]), Wire(d, mi1.inputs[0]), Wire(r[3].value, mi2.inputs[1]), Wire(d, mi2.inputs[0])]
     iWires2 = [Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control), Wire(mi1.output, r[0].input), Wire(mi2.output, r[3].input)]
     iWires3 = [Wire(s1, eq1.inputs[0]), Wire(s1, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
     iWires4 = [Wire(r[i].value, r[i].input) for i in (1,2,4,5)]
-    iWires = iWires1 + iWires2 + iWires3 + iWires4
     iComp = [mi1, mi2, eq1, eq2, zero, one]
 
-    regs = Module('Regs', [v] + oWires + oComp + iWires + iComp, {'data': d, 'sel1': s1, 'sel2': s2}, {'out': o})
+    regs = Module('Regs', {'data': d, 'sel1': s1, 'sel2': s2}, {'out': o}, set([v] + oComp + iComp))
     
     expected = regs
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
@@ -983,20 +1000,20 @@ def _():
     output = synth.parseAndSynth(text, 'Regs')
 
     r1, r2 = Register('Reg#(Bit#(4))'), Register('Reg#(Bit#(4))')
-    v = VectorModule([r1, r2], 'Vector#(2,Reg#(Bit#(4)))', [r1, r2], {}, {})
+    v = VectorModule([r1, r2], 'Vector#(2,Reg#(Bit#(4)))', {}, {}, {r1, r2})
     d, s, gd = Node(), Node(), Node()
 
     mi1, mi2, mo = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
     oWires = [Wire(r1.value, mo.inputs[0]), Wire(r2.value, mo.inputs[1]), Wire(s, mo.control), Wire(mo.output, gd)]
     oComp = [mo]
-    eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
+    eq1, eq2 = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
     zero, one = Constant(Integer(0)), Constant(Integer(1))
     iComp = [mi1, mi2, eq1, eq2, zero, one]
     iWires1 = [Wire(d, mi1.inputs[0]), Wire(d, mi2.inputs[0]), Wire(r1.value, mi1.inputs[1]), Wire(r2.value, mi2.inputs[1])]
     iWires2 = [Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)]
     iWires3 = [Wire(s, eq1.inputs[0]), Wire(s, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
     iWires = iWires1 + iWires2 + iWires3
-    regs = Module('Regs', [v] + oComp + iComp + oWires + iWires, {'data': d, 'sel': s}, {'getData': gd})
+    regs = Module('Regs', {'data': d, 'sel': s}, {'getData': gd}, set([v] + oComp + iComp))
 
     expected = regs
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
@@ -1005,44 +1022,42 @@ def _():
     r = []
     for i in range(2):
         r1, r2 = Register('Reg#(Bit#(4))'), Register('Reg#(Bit#(4))')
-        v = VectorModule([r1, r2], 'Vector#(2,Reg#(Bit#(4)))', [r1, r2], {}, {})
+        v = VectorModule([r1, r2], 'Vector#(2,Reg#(Bit#(4)))', {}, {}, {r1, r2})
         d, s, gd = Node(), Node(), Node()
 
         mi1, mi2, mo = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
         oWires = [Wire(r1.value, mo.inputs[0]), Wire(r2.value, mo.inputs[1]), Wire(s, mo.control), Wire(mo.output, gd)]
         oComp = [mo]
-        eq1, eq2 = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
+        eq1, eq2 = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
         zero, one = Constant(Integer(0)), Constant(Integer(1))
         iComp = [mi1, mi2, eq1, eq2, zero, one]
         iWires1 = [Wire(d, mi1.inputs[0]), Wire(d, mi2.inputs[0]), Wire(r1.value, mi1.inputs[1]), Wire(r2.value, mi2.inputs[1])]
         iWires2 = [Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)]
         iWires3 = [Wire(s, eq1.inputs[0]), Wire(s, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])]
-        iWires = iWires1 + iWires3 + iWires2
-        regs = Module('Regs', [v] + oComp + iComp + oWires + iWires, {'data': d, 'sel': s}, {'getData': gd})
+        regs = Module('Regs', {'data': d, 'sel': s}, {'getData': gd}, set([v] + oComp + iComp))
         r.append(regs)
     
     r1, r2 = r
-    v = VectorModule(r, 'Vector#(2,Regs)', r, {}, {})
+    v = VectorModule(r, 'Vector#(2,Regs)', {}, {}, set(r))
     d, s1, s2, gd = Node(), Node(), Node(), Node()
     two1d, two2d = Constant(Integer(2)), Constant(Integer(2))
     one1s, one2s = Constant(Integer(1)), Constant(Integer(1))
     zero1, zero2, one1, one2 = Constant(Integer(0)), Constant(Integer(0)), Constant(Integer(1)), Constant(Integer(1))
     muxr1s, muxr1d = Mux([Node(), Node()]), Mux([Node(), Node()])
     muxr2s, muxr2d = Mux([Node(), Node()]), Mux([Node(), Node()])
-    eq1s, eq1d = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()]),
-    eq2s, eq2d = Function('=', [], [Node(), Node()]), Function('=', [], [Node(), Node()])
+    eq1s, eq1d = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
+    eq2s, eq2d = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
     iWires1 = [Wire(d, muxr1d.inputs[0]), Wire(d, muxr2d.inputs[0]), Wire(two1d.output, muxr1d.inputs[1]), Wire(two2d.output, muxr2d.inputs[1])]
     iWires2 = [Wire(s2, muxr1s.inputs[0]), Wire(s2, muxr2s.inputs[0]), Wire(one1s.output, muxr1s.inputs[1]), Wire(one2s.output, muxr2s.inputs[1])]
     iWires3 = [Wire(muxr1d.output, r1.inputs['data']), Wire(muxr2d.output, r2.inputs['data']), Wire(muxr1s.output, r1.inputs['sel']), Wire(muxr2s.output, r2.inputs['sel'])]
     iWires4 = [Wire(eq1d.output, muxr1d.control), Wire(eq2d.output, muxr2d.control), Wire(eq1s.output, muxr1s.control),Wire(eq2s.output, muxr2s.control)]
     iWires5 = [Wire(s1, eq1d.inputs[0]), Wire(s1, eq2d.inputs[0]), Wire(s1, eq1s.inputs[0]), Wire(s1, eq2s.inputs[0])]
     iWires6 = [Wire(zero1.output, eq1d.inputs[1]), Wire(one1.output, eq2d.inputs[1]), Wire(zero2.output, eq1s.inputs[1]), Wire(one2.output, eq2s.inputs[1])]
-    iWires = iWires6 + iWires1 + iWires2 + iWires3 + iWires4 + iWires5
     muxo = Mux([Node(), Node()])
     oWires = [Wire(muxo.output, gd), Wire(r1.methods['getData'], muxo.inputs[0]),
                 Wire(r2.methods['getData'], muxo.inputs[1]), Wire(s1, muxo.control)]
     comp = [muxo, one1, two2d, one2, two1d, one1s, one2s, muxr1s, muxr2s, muxr1d, muxr2d, eq1s, eq1d, eq2s, eq2d, zero1, zero2]
-    mr = Module('MoreRegs', [v] + comp + oWires + iWires, {'data': d, 'sel1': s1, 'sel2': s2}, {'getData': gd})
+    mr = Module('MoreRegs', {'data': d, 'sel1': s1, 'sel2': s2}, {'getData': gd}, set([v] + comp))
 
     expected = mr
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
@@ -1053,7 +1068,8 @@ def _():
 
     n1 = Node()
     s1 = Register('Reg#(Bit#(2))')
-    i1 = Module('Inner', [s1, Wire(n1, s1.input)], {'next': n1}, {})
+    i1 = Module('Inner', {'next': n1}, {}, {s1})
+    Wire(n1, s1.input)
 
     output = synth.parseAndSynth(text, 'Inner')
     expected = i1
@@ -1061,17 +1077,20 @@ def _():
 
     n2 = Node()
     s2 = Register('Reg#(Bit#(2))')
-    i2 = Module('Inner', [s2, Wire(n2, s2.input)], {'next': n2}, {})
+    i2 = Module('Inner', {'next': n2}, {}, {s2})
+    Wire(n2, s2.input)
 
     next1, next2, o1, o2 = Node(), Node(), Node(), Node()
-    a1, a2 = Function('+', [], [Node(), Node()]), Function('+', [], [Node(), Node()])
+    a1, a2 = Function('+', [Node(), Node()]), Function('+', [Node(), Node()])
     one1, one2 = Constant(Integer(1)), Constant(Integer(1))
     g1i, g1o, g2i, g2o = Node(), Node(), Node(), Node()
-    g1 = Function('getUp', [a1, Wire(s1.value, a1.inputs[0]), Wire(g1i, a1.inputs[1]), Wire(a1.output, g1o)], [g1i], g1o)
-    g2 = Function('getUp', [a2, Wire(s2.value, a2.inputs[0]), Wire(g2i, a2.inputs[1]), Wire(a2.output, g2o)], [g2i], g2o)
+    g1 = Function('getUp', [g1i], g1o, {a1})
+    Wire(s1.value, a1.inputs[0]), Wire(g1i, a1.inputs[1]), Wire(a1.output, g1o)
+    g2 = Function('getUp', [g2i], g2o, {a2})
+    Wire(s2.value, a2.inputs[0]), Wire(g2i, a2.inputs[1]), Wire(a2.output, g2o)
     wires = [Wire(one1.output, g1.inputs[0]), Wire(one2.output, g2.inputs[0])]
     wires += [Wire(g1.output, o1), Wire(g2.output, o2), Wire(next1, n1), Wire(next2, n2)]
-    out = Module('Outer', [i1, i2, g1, g2, one1, one2] + wires, {'next1': next1, 'next2': next2}, {'out1': o1, 'out2': o2})
+    out = Module('Outer', {'next1': next1, 'next2': next2}, {'out1': o1, 'out2': o2}, {i1, i2, g1, g2, one1, one2})
 
     output = synth.parseAndSynth(text, 'Outer')
     expected = out
