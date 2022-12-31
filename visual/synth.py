@@ -1866,7 +1866,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if isMLiteral(possibleOutput):
                     possibleOutputs[i] = possibleOutput.getHardware(self.globalsHandler)
             wires = [Wire(expr, mux.control)] + [ Wire(possibleOutputs[i], mux.inputs[i]) for i in range(len(possibleOutputs)) ]
-            for component in [mux] + wires:
+            for component in [mux]:
                 self.globalsHandler.currentComponent.addChild(component)
             return mux.output
         # case 3
@@ -1939,7 +1939,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 controlWires.append(Wire(controlValue, eq.inputs[1]))
                 controlWires.append(Wire(eq.output, muxControl))
                 muxes[i].inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
-        for component in muxes + nextWires + valueWires + controlWires + controlComponents:
+        for component in muxes + controlComponents:
                 self.globalsHandler.currentComponent.addChild(component)
         return muxes[0].output if len(muxes) > 0 else defaultValue
 
@@ -2055,12 +2055,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 value = value.getHardware(self.globalsHandler)
             toConcat.append(value)
         inputs = []
+        wires: 'list[tuple[Node, Node]]' = []
         for node in toConcat:
             inputNode = Node()
-            Wire(node, inputNode)
+            wires.append((node, inputNode))
             inputs.append(inputNode)
         sliceComponent = Function('{}', inputs)
         sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.expression(0).getSourceInterval()[0]-1)])
+        for src, dst in wires:
+            Wire(src, dst)
         for expr in ctx.expression():
             sliceComponent.addSourceTokens([(getSourceFilename(ctx), expr.getSourceInterval()[-1]+1)])
         self.globalsHandler.currentComponent.addChild(sliceComponent)
@@ -2195,7 +2198,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             text = "["
             inNode = Node()
             inputs = [inNode]
-            Wire(toSliceFrom, inNode)
+            wires: 'list[tuple[Node, Node]]' = [(toSliceFrom, inNode)]
             if isMLiteral(msb):
                 text += str(msb)
             else:
@@ -2203,7 +2206,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 text += '_'
                 inNode1 = Node()
                 inputs.append(inNode1)
-                Wire(msb, inNode1)
+                wires.append((msb, inNode1))
             if ctx.lsb:
                 text += ':'
                 if isMLiteral(lsb):
@@ -2213,9 +2216,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     text += '_'
                     inNode2 = Node()
                     inputs.append(inNode2)
-                    Wire(lsb, inNode2)
+                    wires.append((lsb, inNode2))
             text += "]"
             sliceComponent = Function(text, inputs)
+            for src, dst in wires:
+                Wire(src, dst)
             sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.msb.getSourceInterval()[0]-1)])
             if ctx.lsb:
                 sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.lsb.getSourceInterval()[-1]+1)])

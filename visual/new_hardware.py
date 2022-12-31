@@ -80,6 +80,7 @@ class Node:
     def addOutWire(self, wire: 'Wire'):
         self._outWires.add(wire)
     def setParent(self, parent: 'Component', isInput: 'bool', label: 'Any'):
+        assert self._parent == None, "Cannot change parent of a Node"
         self._parent = parent
         self._isInput = isInput
         self._label = label
@@ -99,6 +100,8 @@ class Wire:
     def __init__(self, src: 'Node', dst: 'Node'):
         assert isNode(src), f"Must be a node, not {src} which is {src.__class__}"
         assert isNode(dst), f"Must be a node, not {dst} which is {dst.__class__}"
+        assert src._parent != None, "Can only put Wire on Node in Component"
+        assert dst._parent != None, "Can only put Wire on Node in Component"
         self._id = Wire._num_wires_created
         Wire._num_wires_created += 1
         self._src = src
@@ -179,11 +182,13 @@ class Component:
         '''Add the input with the given key'''
         assert inputNode.__class__ == Node, f"Inputs must be a Node, not {inputNode.__class__}"
         assert inputKey not in self._inputs, f"Can't overwrite existing input {inputKey}"
+        inputNode.setParent(self, True, inputKey)
         self._inputs[inputKey] = inputNode
     def addOutput(self, outputNode: 'Node', outputKey: 'Any'):
         '''Add the output with the given key'''
         assert outputNode.__class__ == Node, f"Outputs must be a Node, not {outputNode.__class__}"
         assert outputKey not in self._outputs, f"Can't overwrite existing output {outputKey}"
+        outputNode.setParent(self, False, outputKey)
         self._outputs[outputKey] = outputNode
     @property
     def inputs(self) -> 'dict[Any, Node]':
@@ -298,8 +303,22 @@ class Component:
         for i in range(len(selfNodes)):
             selfNode = selfNodes[i]
             otherNode = otherNodes[i]
+            # check outgoing edges
             selfNodeAdjs: 'set[Node]' = {wire.dst for wire in selfNode._outWires}
             otherNodeAdjs: 'set[Node]' = {wire.dst for wire in otherNode._outWires}
+            if len(selfNodeAdjs) != len(otherNodeAdjs):
+                return False
+            for adjNode in selfNodeAdjs:
+                j = selfNodeDict[adjNode]
+                if otherNodes[j] not in otherNodeAdjs:
+                    return False
+            for adjNode in otherNodeAdjs:
+                j = otherNodeDict[adjNode]
+                if selfNodes[j] not in selfNodeAdjs:
+                    return False
+            # check incoming edges
+            selfNodeAdjs: 'set[Node]' = {wire.src for wire in selfNode._inWires}
+            otherNodeAdjs: 'set[Node]' = {wire.src for wire in otherNode._inWires}
             if len(selfNodeAdjs) != len(otherNodeAdjs):
                 return False
             for adjNode in selfNodeAdjs:
@@ -709,7 +728,9 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'ports': ports,
                     'children': [ toELK(child) for child in item.children ],
                     'edges': [ toELK(wire) for nodeKey in item._inputs for wire in item._inputs[nodeKey]._outWires ]
-                            + [ toELK(wire) for nodeKey in item._outputs for wire in item._outputs[nodeKey]._outWires ],
+                            + [ toELK(wire) for nodeKey in item._outputs for wire in item._outputs[nodeKey]._outWires ]
+                            + [ toELK(wire) for nodeKey in item._inputs for wire in item._inputs[nodeKey]._inWires ]
+                            + [ toELK(wire) for nodeKey in item._outputs for wire in item._outputs[nodeKey]._inWires ],
                     'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
@@ -771,7 +792,9 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                     'ports': ports,
                     'children': [ toELK(child) for child in item.children ],
                     'edges': [ toELK(wire) for nodeKey in item._inputs for wire in item._inputs[nodeKey]._outWires ]
-                            + [ toELK(wire) for nodeKey in item._outputs for wire in item._outputs[nodeKey]._outWires ],
+                            + [ toELK(wire) for nodeKey in item._outputs for wire in item._outputs[nodeKey]._outWires ]
+                            + [ toELK(wire) for nodeKey in item._inputs for wire in item._inputs[nodeKey]._inWires ]
+                            + [ toELK(wire) for nodeKey in item._outputs for wire in item._outputs[nodeKey]._inWires ],
                     'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0:
@@ -787,8 +810,6 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
     if item.__class__ == Wire:
         return { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
     raise Exception(f"Unrecognized class {item.__class__} of item {item}.")
-
-
 
 
 if __name__ == '__main__':
