@@ -182,6 +182,14 @@ class Component:
         assert outputNode.__class__ == Node, f"Outputs must be a Node, not {outputNode.__class__}"
         assert outputKey not in self._outputs, f"Can't overwrite existing output {outputKey}"
         self._outputs[outputKey] = outputNode
+    @property
+    def inputs(self) -> 'dict[Any, Node]':
+        ''' A copy of the inputs of the Component '''
+        return self._inputs.copy()
+    @property
+    def outputs(self) -> 'dict[Any, Node]':
+        ''' A copy of the outputs of the Component '''
+        return self._outputs.copy()
     def match(self, other: 'Component|None') -> bool:
         ''' Returns true if self and other represent the same hardware. '''
         assert self != other, "cannot compare a component to itself"
@@ -414,6 +422,10 @@ class Module(Component):
         if children == None:
             children = set()
         Component.__init__(self, name, inputs, methods, None, children)
+    @property
+    def methods(self) -> 'dict[str, Node]':
+        ''' A copy of the methods of the module '''
+        return self._outputs.copy()
     def addMethod(self, methodNode: 'Node', methodKey: 'str'):
         self.addOutput(methodNode, methodKey)
     def isRegister(self):

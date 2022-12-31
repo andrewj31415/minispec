@@ -2057,8 +2057,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         inputs = []
         for node in toConcat:
             inputNode = Node()
-            inputWire = Wire(node, inputNode)
-            self.globalsHandler.currentComponent.addChild(inputWire)
+            Wire(node, inputNode)
             inputs.append(inputNode)
         sliceComponent = Function('{}', inputs)
         sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.expression(0).getSourceInterval()[0]-1)])
