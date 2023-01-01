@@ -2794,6 +2794,7 @@ endfunction
     #     print(scope)
 
     # output.prune() #remove unused components
+    output._persistent = True
 
     return output
 

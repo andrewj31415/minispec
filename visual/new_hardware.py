@@ -140,7 +140,7 @@ class Wire:
 
 class Component:
     _num_components_created = 0  #one for each component created, so each component has a unique id
-    __slots__ = '_id', '_name', '_children', '_inputs', '_outputs', '_parent', '_tokensSourcedFrom'
+    __slots__ = '_id', '_name', '_children', '_inputs', '_outputs', '_parent', '_tokensSourcedFrom', '_persistent'
     def __init__(self, name: 'str', inputs: 'dict[Any, Node]', outputs: 'dict[Any, Node]', parent: 'Component|None', children: 'set[Component]'):
         # type assertions
         assert name.__class__ == str, f'Component name must be a string, not {name.__class__}'
@@ -169,6 +169,7 @@ class Component:
             node.setParent(self, False, nodeKey)
         self._parent: 'Component|None' = parent
         self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
+        self._persistent: 'bool' = False
     def __repr__(self):
         return "Component(" + self._name + ", " + self._children.__repr__() + ", " + self._inputs.__repr__() + ", " + self._outputs.__repr__() + ")"
     def __hash__(self):
@@ -258,10 +259,9 @@ class Component:
         for i in range(len(selfComps)):
             selfCompsIndices[selfComps[i]] = i
 
-        # selfComps: 'list[Component]' = list(selfChildMaps)
         def matchStep(i):
-            # try to match self to other by reordering the children of selfComps[i], ..., selfComps[-1].
-            # returns true if a match is found and false otherwise.
+            ''' try to match self to other by reordering the children of selfComps[i], ..., selfComps[-1].
+            returns true if a match is found and false otherwise. '''
             if i >= len(selfComps):
                 return Component.orderedNodeEq(self, other, selfChildMaps, otherChildMaps)
             comp = selfComps[i]
@@ -270,9 +270,9 @@ class Component:
             return matchRemainder(i, 0)
 
         def matchRemainder(i, j):
-            # try to match self by reordering the children of selfComps[i+1], ..., selfComps[-1]
-            # and reordering selfComps[i][j+1], ..., selfComps[i][-1].
-            # returns true if a match is found and false otherwise.
+            ''' try to match self by reordering the children of selfComps[i+1], ..., selfComps[-1]
+            and reordering selfComps[i][j+1], ..., selfComps[i][-1].
+            returns true if a match is found and false otherwise. '''
             assert i < len(selfComps), "out of range"
             comp = selfComps[i]
             if j >= len(comp.children):
@@ -281,12 +281,7 @@ class Component:
                 if selfSignatures[selfChildMaps[comp][j]] != selfSignatures[selfChildMaps[comp][k]]:
                     break
                 c1, c2 = selfChildMaps[comp][j], selfChildMaps[comp][k]
-                # c1i, c2i = selfCompsIndices[c1], selfCompsIndices[c2]
                 selfChildMaps[comp][j], selfChildMaps[comp][k] = c2, c1
-                # selfComps[c1i] = c2
-                # selfComps[c2i] = c1
-                # selfCompsIndices[c1] = c2i
-                # selfCompsIndices[c2] = c1i
 
                 # check and see if the node lists are consistent so far
                 selfNodes: 'list[Node]' = []
@@ -303,7 +298,7 @@ class Component:
                     getNodes(selfComp, selfNodes)
                     getNodes(otherComp, otherNodes)
                     if selfComp in compsPlaced:
-                        assert len(selfChildMaps[selfComp]) == len(otherChildMaps[otherComp])
+                        assert len(selfChildMaps[selfComp]) == len(otherChildMaps[otherComp]), 'might fail if a hash collision occurs--if this assert fails, the trees do not match.'
                         for i in range(len(selfChildMaps[selfComp])):
                             selfChild = selfChildMaps[selfComp][i]
                             otherChild = otherChildMaps[otherComp][i]
@@ -314,26 +309,10 @@ class Component:
                             otherChild = otherChildMaps[otherComp][i]
                             getPlacedComponentsNodes(selfChild, otherChild)
                 getPlacedComponentsNodes(self, other)
-                # for c in range(i):
-                #     getNodes(selfComps[c], selfNodes)
-                #     getNodes(otherComps[c], otherNodes)
-                # for c in range(i):
-                #     # for child in selfComps[c]:
-                #     #     getNodes(child, selfNodes)
-                #     # for child in otherComps[c]:
-                #     #     getNodes(child, otherNodes)
-                #     for child in selfChildMaps[selfComps[c]]:
-                #         getNodes(child, selfNodes)
-                #     for child in otherChildMaps[otherComps[c]]:
-                #         getNodes(child, otherNodes)
                 if self.testNodes(selfNodes, otherNodes):
                     if matchRemainder(i, j+1):
                         return True
                 selfChildMaps[comp][j], selfChildMaps[comp][k] = c1, c2
-                # selfComps[c1i] = c1
-                # selfComps[c2i] = c2
-                # selfCompsIndices[c1] = c1i
-                # selfCompsIndices[c2] = c2i
             return False
         return matchStep(0)
 
@@ -401,7 +380,6 @@ class Component:
         if not verifyTree(self, other):
             return False
         # at this point, we have confirmed that the tree structures match.
-        # print('matching tree')
 
         # collect nodes in a deterministic order so we can determine if the graph structure matches
         selfNodes: 'list[Node]' = []
@@ -596,7 +574,7 @@ class Splitter(Component):
 def garbageCollection1(root: 'Component'):
     ''' Garbage collection version 1: removes inaccessible combinatorial logic.
     - A Node is garbage collected if
-        - its out-degree is zero, it is the output of its parent Component, and its parent
+        - its out-degree is zero, it is an output of its parent Component, and its parent
           Component's `_persistant` flag is not set
         - its parent component is garbage collected
     - A Wire is garbage collected if
@@ -605,27 +583,30 @@ def garbageCollection1(root: 'Component'):
         - a Node or child Component of the Component is garbage collected, no Node of the
           component is the source of a Wire, and the Component has no child components
         - it has no Nodes or child Components '''
-    for nodeKey in root._outputs:
-        node = root._outputs[nodeKey]
-        if len(node.outWires) == 0:
-            gc1node(node)
-    for child in root.children:
-        if len(child.children) == 0 and len(child._inputs) == 0 and len(child._outputs) == 0:
-            root.children.remove(child)
-        else:
-            garbageCollection1(child)
+    if not root._persistent:
+        for nodeKey in root._outputs.copy():
+            node = root._outputs[nodeKey]
+            if len(node.outWires) == 0:
+                gc1node(node)
+    for child in root.children.copy():
+        # if len(child.children) == 0 and len(child._inputs) == 0 and len(child._outputs) == 0:
+        #     root.children.remove(child)
+        # else:
+        #     garbageCollection1(child)
+        garbageCollection1(child)
 
 def gc1component(component: 'Component'):
-    for nodeKey, node in component._inputs.items():
+    for nodeKey, node in component._inputs.copy().items():
         assert len(node.outWires) == 0, "Cannot garbage collect a Component with Nodes which are sources"
-    for nodeKey, node in component._outputs.items():
+    for nodeKey, node in component._outputs.copy().items():
         assert len(node.outWires) == 0, "Cannot garbage collect a Component with Nodes which are sources"
     assert len(component.children) == 0, "Cannot garbage collect a Component with children"
     assert component.parent != None, "Cannot remove the root Component"
     component.parent.children.remove(component)
-    for nodeKey, node in component._inputs.items():
+    component._parent = None
+    for nodeKey, node in component._inputs.copy().items():
         gc1node(node)
-    for nodeKey, node in component._outputs.items():
+    for nodeKey, node in component._outputs.copy().items():
         gc1node(node)
 
 def gc1wire(wire: 'Wire'):
@@ -647,7 +628,7 @@ def gc1node(node: 'Node'):
     if component.parent != None:
         if all(len(node.outWires) == 0 for nodeKey, node in component._inputs.items()):
             if all(len(node.outWires) == 0 for nodeKey, node in component._outputs.items()):
-                if len(component.children == 0):
+                if len(component.children) == 0:
                     gc1component(component)
 
 '''

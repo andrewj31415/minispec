@@ -258,7 +258,8 @@ def _():
     Wire(fa, muxc), Wire(one.output, mux1), Wire(three.output, mux2), Wire(mux.output, fo)
 
     output = synth.parseAndSynth(text, 'f')
-    expected = garbageCollection1(f)
+    garbageCollection1(output)
+    expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 @it('''Correctly handles ternary ? operator''')
@@ -512,6 +513,7 @@ def _():
     Wire(fe, ne.inputs[0]), Wire(ne.output, fo)
 
     output = synth.parseAndSynth(text, 'f4')
+    garbageCollection1(output)
     expected = f4
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
