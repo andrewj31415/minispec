@@ -675,7 +675,6 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
     
     componentELKs: 'dict[Component, dict[str, Any]]' = {}  # maps components to the corresponding json object
     componentELK = toELK(component, componentELKs)
-
     
     # Place edges with closest common ancestor of their src/dst Nodes
     for wire in component.getAllWires():
@@ -684,8 +683,6 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
         targetNode: 'Node' = wire.dst
         # determine if the edge goes from the left side of a node to the right side directly,
         # which confuses the layouting library
-        # sourceParent, sourcePort = portsToComponents[sourceNode]
-        # targetParent, targetPort = portsToComponents[targetNode]
         sourceParent: 'Component' = sourceNode.parent
         targetParent: 'Component' = targetNode.parent
         isDirectEdge = sourceParent == targetParent and sourceNode._isInput and not targetNode._isInput
@@ -726,31 +723,6 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
         if "edges" not in elk:
             elk["edges"] = []
         elk["edges"].append(edge)
-
-
-    # # Collects edges with unique starting ports and sets ELK to prioritize having these edges go forward
-    # portsFound = {}
-    # portsRepeated = set()
-    # def collectEdgesWithUniqueStarts(componentELK):
-    #     if "children" in componentELK:
-    #         for child in componentELK["children"]:
-    #             collectEdgesWithUniqueStarts(child)
-    #     if "edges" in componentELK:
-    #         for edge in componentELK["edges"]:
-    #             sourceNode = edge["sources"][0]
-    #             if sourceNode in portsRepeated:
-    #                 pass
-    #             elif sourceNode in portsFound:
-    #                 portsRepeated.add(sourceNode)
-    #                 del portsFound[sourceNode]
-    #             else:
-    #                 portsFound[sourceNode] = edge
-    # collectEdgesWithUniqueStarts(componentELK)
-    # for sourceNode in portsFound:
-    #     edge = portsFound[sourceNode]
-    #     if 'properties' not in edge:
-    #         edge['properties'] = {}
-    #     edge['properties']['org.eclipse.elk.layered.priority.direction'] = 10
 
     # # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
     # def eliminateVectorModules(componentELK, parentELK):
@@ -829,7 +801,12 @@ def nodeToELK(item: 'Node', properties: 'dict[str, Any]' = None) -> 'dict[str, A
 
 def wireToELK(item: 'Wire'):
     assert item.__class__ == Wire, "Requires a Wire"
-    return { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
+    jsonObj = { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
+    assert item in item.src.outWires, "Expected Wire to be in the outWires of its src"
+    if len(item.src.outWires) == 1:
+        jsonObj['properties'] = {}
+        jsonObj['properties']['org.eclipse.elk.layered.priority.direction'] = 10
+    return jsonObj
 
 def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
     ''' Converts the node or component into the ELK JSON format as a python object. 
