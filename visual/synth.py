@@ -253,12 +253,17 @@ class Scope:
         visitor.globalsHandler.lastParameterLookup = parameters
         if varName in self.temporaryScope.temporaryValues:
             return self.temporaryScope.temporaryValues[varName]
+        best: 'None|tuple' = None
         if varName in self.permanentValues:
-            for storedParams, ctx in self.permanentValues[varName][::-1]: #iterate backwards through the stored values, looking for the most recent match.
+            for storedParams, ctx in self.permanentValues[varName]: #iterate through the stored values, looking for the earliest, most specialized match.
                 d = Scope.matchParams(visitor, parameters, storedParams)
                 if d != None:
-                    self.globalsHandler.parameterBindings = d
-                    return ctx
+                    if best == None or len(d) < len(best[0]):
+                        best = (d, ctx)
+        if best != None:
+            d, ctx = best
+            self.globalsHandler.parameterBindings = d
+            return ctx
         for parent in self.parents:
             output = parent.get(visitor, varName, parameters)
             if output != None:

@@ -149,7 +149,7 @@ def _():
 def _():
     text = pull('params1')
     fa, fb, fo = Node(), Node(), Node()
-    expected  = Function('f', [fa, fb], fo)
+    expected = Function('f', [fa, fb], fo)
     Wire(fa, fo)
     output = synth.parseAndSynth(text, 'f') #the fifth f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
@@ -158,7 +158,7 @@ def _():
 def _():
     text = pull('params2')
     fa, fb, fo = Node(), Node(), Node()
-    expected  = Function('f#(10,0)', [fa, fb], fo)
+    expected = Function('f#(10,0)', [fa, fb], fo)
     Wire(fa, fo)
     output = synth.parseAndSynth(text, 'f#(10,0)') #the second f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
@@ -167,9 +167,29 @@ def _():
 def _():
     text = pull('params2')
     fa, fb, fo = Node(), Node(), Node()
-    expected  = Function('f#(1,7)', [fa, fb], fo)
+    expected = Function('f#(1,7)', [fa, fb], fo)
     Wire(fb, fo)
     output = synth.parseAndSynth(text, 'f#(1,7)') #the third f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly prefers more specialized parameters''')
+def _():
+    text = pull('params3')
+    fa, fb, fo = Node(), Node(), Node()
+    inner1, inner2, innerOut = Node(), Node(), Node()
+    expected = Function('f#(2,2)', [fa, fb], fo, {Function('*', [inner1, inner2], innerOut)})
+    Wire(fa, inner1), Wire(fb, inner2), Wire(innerOut, fo)
+    output = synth.parseAndSynth(text, 'f#(2, 2)')
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly prefers earlier of equally specialized parameters''')
+def _():
+    text = pull('params3')
+    fa, fb, fo = Node(), Node(), Node()
+    inner1, inner2, innerOut = Node(), Node(), Node()
+    expected = Function('f#(1,1)', [fa, fb], fo, {Function('+', [inner1, inner2], innerOut)})
+    Wire(fa, inner1), Wire(fb, inner2), Wire(innerOut, fo)
+    output = synth.parseAndSynth(text, 'f#(1, 1)')
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
