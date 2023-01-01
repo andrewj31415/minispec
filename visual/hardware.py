@@ -74,6 +74,7 @@ class Node:
         return self._outWires
     def addInWire(self, wire: 'Wire'):
         ''' inWires is the set of Wires with this Node as their dst. '''
+        assert len(self._inWires) == 0, "A Node can only be the dst of at most one Wire."
         self.inWires.add(wire)
     def addOutWire(self, wire: 'Wire'):
         ''' outWires the set of Wires with this Node as their src. '''
@@ -83,6 +84,8 @@ class Node:
         ''' The parent Component of the Node. '''
         return self._parent
     def setParent(self, parent: 'Component', isInput: 'bool', label: 'Any'):
+        ''' Sets the parent of the Node, as well as its label and whether it is an input or output.
+        Used when creating a Component. '''
         assert self._parent == None, "Cannot change parent of a Node"
         self._parent = parent
         self._isInput = isInput
@@ -98,8 +101,8 @@ def isNodeOrMLiteral(value):
 class Wire:
     ''' src and dst are Nodes.
     Adds itself to the hardware data structure when initialized. '''
-    _num_wires_created = 0  #one for each Wire created
-    __slots__ = '_id', '_src', '_dst'
+    _num_wires_created = 0  # one for each Wire created
+    __slots__ = '_id', '_src', '_dst', '_tokensSourcedFrom'
     def __init__(self, src: 'Node', dst: 'Node'):
         assert isNode(src), f"Must be a node, not {src} which is {src.__class__}"
         assert isNode(dst), f"Must be a node, not {dst} which is {dst.__class__}"
@@ -111,6 +114,7 @@ class Wire:
         src.addOutWire(self)
         self._dst = dst
         dst.addInWire(self)
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
     def __hash__(self):
         return hash('w' + str(self._id))
     @property
@@ -131,6 +135,12 @@ class Wire:
         return "Wire(" + self.src.__repr__() + ", " + self.dst.__repr__() + ")"
     def __str__(self):
         return "wire from " + str(self.src) + " to " + str(self.dst)
+    def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
+        ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the component. '''
+        self._tokensSourcedFrom.append(tokens)
+    def getSourceTokens(self) -> 'list[tuple[str, int]]':
+        ''' Returns the source tokens of self. '''
+        return sum(self._tokensSourcedFrom, [])
     def weight(self):
         ''' Returns an estimate of how large a Component is. '''
         return 1
