@@ -559,6 +559,7 @@ class BluespecModuleWithMetadata:
             self.module.addMethod(Node(), '_'+fieldToAccess)
         methodComponent = Function(fieldToAccess, [Node() for i in range(1+len(functionArgs))])
         methodComponent.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
+        methodComponent._persistent = True
         for i in range(len(functionArgs)):
             exprValue = functionArgs[i]
             if isMLiteral(exprValue):

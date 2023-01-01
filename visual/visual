@@ -27,6 +27,7 @@ if __name__ == '__main__':
     parser.add_argument("--all", "-a", default=False, action="store_true", help="Layout all components recursively")
     parser.add_argument("--java", "-jv", default=False, action="store_true", help="Use the java version of elk")
     parser.add_argument("--canvas", "-c", default=False, action="store_true", help="Use the canvas element instead of the svg approach")
+    parser.add_argument("--no_garbage_collection", "-ng", default=False, action="store_true", help="Do not remove unused hardware")
     args = parser.parse_args()
 
     if not os.path.exists(args.visualdir):
@@ -58,6 +59,8 @@ if __name__ == '__main__':
     sourceFilesCollect = []
     print('Synthesizing to hardware representation ...')
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
+    if not args.no_garbage_collection:
+        hardware.garbageCollection1(synthesizedComponent)
     print(f'Synthesis complete. Time: {time.time() - synthesisStartTime} seconds')
 
     componentJson: 'dict[str, Any]' = hardware.getELK(synthesizedComponent)
