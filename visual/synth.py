@@ -6,7 +6,7 @@ import build.MinispecPythonLexer
 import build.MinispecPythonListener
 import build.MinispecPythonVisitor
 
-from new_hardware import *
+from hardware import *
 from mtypes import *
 
 #sets up parser for use in debugging:

@@ -13,8 +13,8 @@ import argparse, os, pathlib
 import time
 
 import synth
-import new_hardware as hardware
-from new_hardware import *
+import hardware
+from hardware import *
 import json
 
 if __name__ == '__main__':

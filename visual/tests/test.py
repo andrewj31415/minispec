@@ -14,7 +14,7 @@ which may be accessed from htmlcov/index.html.
 import os, sys  # see https://stackoverflow.com/questions/16780014/import-file-from-parent-directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from new_hardware import *
+from hardware import *
 import synth
 
 import pathlib

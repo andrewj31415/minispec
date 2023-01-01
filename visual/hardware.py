@@ -1,7 +1,621 @@
 
-
 from mtypes import *
-import json
+
+''' The hardware rep.
+The hardware representation consists of two data structures:
+    1. A graph of Wire and Node objects, with Wires as edges, Nodes as vertices, and each vertex having in-degree 1.
+    2. A tree of Component objects.
+    4. Each Component has a dictionary mapping labels to input nodes and a dictionary mapping labels to output nodes.
+    4. Each Node is either an input of some Component or an output of some Component, and that component is its unique parent Component.
+The graph represents the low-level structure of the hardware, while the tree represents the object-oriented minspec-hdl structure.
+
+Notes:
+    - The graph need not be connected. For instance, built-in Components such as binary operators are treated
+    as black boxes, hence do not have Wires connecting their input Node(s) to their output Node.
+    - The tree must be connected, with a unique root corresponding to the function or module being synthesized.
+    - Every Node must have a unique parent component.
+    - A Component's child Components are unordered, that is, the tree is an unordered tree.
+    - The label of a Node should be something like a string or int--immutable, sortable, and hashable.
+
+Garbage collection. We have two variations of hardware garbage collection.
+    Version 1. Remove inaccessible combinatorial logic, such as functions with unused outputs.
+    Version 2. Remove all unused hardware, including e.g. internal counters which are not exposed through methods.
+Version 1 uses a graph search to recursively find and remove unused nodes and their associated wires+components
+Version 2 uses mark-and-sweep as described below:
+    - A Node is in use if
+        - it is an output Node of the root Component
+    - A Wire is in use if
+        - its destination Node is in use
+    - A Component is in use if
+        - any output Node of the Component is in use
+    - Any Node, Wire, or Component which is not in use is be removed.
+'''
+
+
+''' Private methods/fields begin with a single underscore. Type help(property) in python3 for details
+of setters/getters. Slots are used to enforce which fields may be set. '''
+
+class Node:
+    ''' name: Nodes can be given a name for debugging convenience.
+    mtype: Nodes may be given a type. This will eventually be used for type-related manipulations.
+    _id: each Node has a unique id. 
+    inWires: the set of Wires with this Node as their dst.
+    outWires: the set of Wires with this Node as their src.
+    parent: the Component with this Node as an input or output.
+    isInput: true if the parent Component has this Node as an input, false otherwise.
+    label: the label of the Node in its parent Component. '''
+    _num_nodes_created = 0  # one for each node created
+    __slots__ = '_name', '_mtype', '_id', '_inWires', '_outWires', '_parent', '_isInput', '_label'
+    def __init__(self, name: 'str' = "", mtype: 'MType' = Any):
+        self._name = name
+        self._mtype = mtype
+        self._id = Node._num_nodes_created
+        Node._num_nodes_created += 1
+        self._inWires: 'set[Wire]' = set()
+        self._outWires: 'set[Wire]' = set()
+        self._parent: 'Component' = None
+        self._isInput: bool = None
+        self._label = None
+    def __hash__(self):
+        return hash('n' + str(self._id))
+    def __repr__(self):
+        return "Node(" + str(self._id) + ": " + str(self._mtype) + ")"
+    def __str__(self):
+        return "Node(" + str(self._name) + ": " + str(self._mtype) + ")"
+    def setMType(self, value):
+        self._mtype = value
+    @property
+    def inWires(self) -> 'set[Wire]':
+        ''' The set of Wires with this Node as their dst. Mutable. '''
+        return self._inWires
+    @property
+    def outWires(self) -> 'set[Wire]':
+        ''' The set of Wires with this Node as their src. Mutable. '''
+        return self._outWires
+    def addInWire(self, wire: 'Wire'):
+        ''' inWires is the set of Wires with this Node as their dst. '''
+        self.inWires.add(wire)
+    def addOutWire(self, wire: 'Wire'):
+        ''' outWires the set of Wires with this Node as their src. '''
+        self.outWires.add(wire)
+    @property
+    def parent(self) -> 'Component|None':
+        ''' The parent Component of the Node. '''
+        return self._parent
+    def setParent(self, parent: 'Component', isInput: 'bool', label: 'Any'):
+        assert self._parent == None, "Cannot change parent of a Node"
+        self._parent = parent
+        self._isInput = isInput
+        self._label = label
+
+def isNode(value):
+    '''Returns whether or not value is a Node'''
+    return value.__class__ == Node
+def isNodeOrMLiteral(value):
+    '''Returns whether or not value is a literal or a node.'''
+    return isMLiteral(value) or isNode(value)
+
+class Wire:
+    ''' src and dst are Nodes.
+    Adds itself to the hardware data structure when initialized. '''
+    _num_wires_created = 0  #one for each Wire created
+    __slots__ = '_id', '_src', '_dst'
+    def __init__(self, src: 'Node', dst: 'Node'):
+        assert isNode(src), f"Must be a node, not {src} which is {src.__class__}"
+        assert isNode(dst), f"Must be a node, not {dst} which is {dst.__class__}"
+        assert src._parent != None, "Can only put Wire on Node in Component"
+        assert dst._parent != None, "Can only put Wire on Node in Component"
+        self._id = Wire._num_wires_created
+        Wire._num_wires_created += 1
+        self._src = src
+        src.addOutWire(self)
+        self._dst = dst
+        dst.addInWire(self)
+    def __hash__(self):
+        return hash('w' + str(self._id))
+    @property
+    def src(self):
+        '''The source node of the wire'''
+        return self._src
+    @src.setter
+    def src(self, src: 'Node'):
+        raise Exception("Can't directly modify this property")
+    @property
+    def dst(self):
+        '''The source node of the wire'''
+        return self._dst
+    @dst.setter
+    def dst(self, dst: 'Node'):
+        raise Exception("Can't directly modify this property")
+    def __repr__(self):
+        return "Wire(" + self.src.__repr__() + ", " + self.dst.__repr__() + ")"
+    def __str__(self):
+        return "wire from " + str(self.src) + " to " + str(self.dst)
+    def weight(self):
+        ''' Returns an estimate of how large a Component is. '''
+        return 1
+
+class Component:
+    _num_components_created = 0  #one for each component created, so each component has a unique id
+    __slots__ = '_id', '_name', '_children', '_inputs', '_outputs', '_parent', '_tokensSourcedFrom', '_persistent'
+    def __init__(self, name: 'str', inputs: 'dict[Any, Node]', outputs: 'dict[Any, Node]', parent: 'Component|None', children: 'set[Component]'):
+        # type assertions
+        assert name.__class__ == str, f'Component name must be a string, not {name.__class__}'
+        assert inputs.__class__ == dict, f'Component inputs must be a dictionary, not {name.__class__}'
+        for nodeKey in inputs:
+            assert inputs[nodeKey].__class__ == Node, f'Component inputs must be Nodes, not {name.__class__}'
+        assert outputs.__class__ == dict, f'Component outputs must be a dictionary, not {name.__class__}'
+        for nodeKey in outputs:
+            assert outputs[nodeKey].__class__ == Node, f'Component outputs must be Nodes, not {name.__class__}'
+        assert isinstance(parent, Component) or parent == None, f'Component parent must be a Component or None, not {name.__class__}'
+        assert children.__class__ == set, f'Component children must be a set, not {name.__class__}'
+        for child in children:
+            assert isinstance(child, Component), f'Component children must be Components, not {name.__class__}'
+        # give each component a unique _id
+        self._id = Component._num_components_created
+        Component._num_components_created += 1
+        self._name: 'str' = name
+        self._children: 'set[Component]' = children
+        self._inputs: 'dict[Any, Node]' = inputs
+        for nodeKey in inputs:
+            node = inputs[nodeKey]
+            node.setParent(self, True, nodeKey)
+        self._outputs: 'dict[Any, Node]' = outputs
+        for nodeKey in outputs:
+            node = outputs[nodeKey]
+            node.setParent(self, False, nodeKey)
+        self._parent: 'Component|None' = parent
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
+        self._persistent: 'bool' = False
+    def __repr__(self):
+        return "Component(" + self._name + ", " + self._children.__repr__() + ", " + self._inputs.__repr__() + ", " + self._outputs.__repr__() + ")"
+    def __hash__(self):
+        return hash('c' + str(self._id))
+    @property
+    def name(self):
+        ''' The name of the component, eg 'f' or 'combine#(1,1)' or '*'. '''
+        return self._name
+    @name.setter
+    def name(self, name: 'str'):
+        self._name = name
+    @property
+    def children(self):
+        ''' The child Components of the Component '''
+        return self._children
+    def addInput(self, inputNode: 'Node', inputKey: 'Any'):
+        '''Add the input with the given key'''
+        assert inputNode.__class__ == Node, f"Inputs must be a Node, not {inputNode.__class__}"
+        assert inputKey not in self._inputs, f"Can't overwrite existing input {inputKey}"
+        inputNode.setParent(self, True, inputKey)
+        self._inputs[inputKey] = inputNode
+    def addOutput(self, outputNode: 'Node', outputKey: 'Any'):
+        '''Add the output with the given key'''
+        assert outputNode.__class__ == Node, f"Outputs must be a Node, not {outputNode.__class__}"
+        assert outputKey not in self._outputs, f"Can't overwrite existing output {outputKey}"
+        outputNode.setParent(self, False, outputKey)
+        self._outputs[outputKey] = outputNode
+    @property
+    def inputs(self) -> 'dict[Any, Node]':
+        ''' A copy of the inputs of the Component '''
+        return self._inputs.copy()
+    @property
+    def outputs(self) -> 'dict[Any, Node]':
+        ''' A copy of the outputs of the Component '''
+        return self._outputs.copy()
+    @property
+    def output(self):
+        ''' The output Node of the Component, if it is unique.
+        Used by variants with one output, such as Function or Mux. '''
+        assert len(self._outputs) == 1, "Can only return output if it is unique"
+        return next(iter(self._outputs.values()))
+    @property
+    def parent(self) -> 'Component|None':
+        ''' The parent of the component. '''
+        return self._parent
+    def match(self, other: 'Component|None') -> bool:
+        ''' Returns true if self and other represent the same hardware. '''
+        assert self != other, "cannot compare a component to itself"
+        assert self._parent == None, "can only compare hardware structures at the root Component"
+        assert other._parent == None, "can only compare hardware structures at the root Component"
+
+        # we give each component a signature corresponding to the Component tree with the component as its root.
+        # isomorphic trees have the same signature.
+        selfSignatures: 'dict[Component, int]' = {}
+        otherSignatures: 'dict[Component, int]' = {}
+        def signature(comp: 'Component', signatures: 'dict[Component, int]'):
+            for child in comp._children:
+                signatures[child] = signature(child, signatures)
+            return hash((comp._name, tuple(sorted(comp._inputs)), tuple(sorted(comp._outputs)), tuple(sorted(signatures[child] for child in comp._children))))
+        selfSignatures[self] = signature(self, selfSignatures)
+        otherSignatures[other] = signature(other, otherSignatures)
+
+        if selfSignatures[self] != otherSignatures[other]:
+            # the tree parts of self and other have distinct signatures, hence are not isomorphic.
+            # most failing comparison tests should fail here.
+            return False
+
+        # now we try to match the trees
+        selfChildMaps: 'dict[Component, list[Component]]' = {}
+        otherChildMaps: 'dict[Component, list[Component]]' = {}
+        # we will put the children in a convenient order, then try to match self to other by reordering self's children.
+        # for each match, we will check for equality using orderedNodeEq.
+        # if no matches pass orderedNodeEq, the components are different.
+        def orderChildren(comp: 'Component', childMaps: 'dict[Component, list[Component]]', signatures: 'dict[Component, int]'):
+            for child in comp._children:
+                orderChildren(child, childMaps, signatures)
+            # sort the children first by number of children with matching signiture, then by signiture (so children with the same signiture are adjacent and children with a unique signiture are first).
+            # note that sorted is a stable sort.
+            childMaps[comp] = sorted(sorted(comp._children, key=lambda child: signatures[child]), key=lambda child: len([c for c in comp._children if signatures[c] == signatures[child]]))
+        orderChildren(self, selfChildMaps, selfSignatures)
+        orderChildren(other, otherChildMaps, otherSignatures)
+
+        selfComps: 'list[Component]' = [self]
+        otherComps: 'list[Component]' = [self]
+        def getAllComponents(root: 'Component', childMaps: 'dict[Component, list[Component]]', comps: 'list[Component]'):
+            for child in childMaps[root]:
+                comps.append(child)
+                getAllComponents(child, childMaps, comps)
+        getAllComponents(self, selfChildMaps, selfComps)
+        getAllComponents(other, otherChildMaps, otherComps)
+
+        selfCompsIndices: 'dict[Component, int]' = {}
+        for i in range(len(selfComps)):
+            selfCompsIndices[selfComps[i]] = i
+
+        def matchStep(i):
+            ''' try to match self to other by reordering the children of selfComps[i], ..., selfComps[-1].
+            returns true if a match is found and false otherwise. '''
+            if i >= len(selfComps):
+                return Component.orderedNodeEq(self, other, selfChildMaps, otherChildMaps)
+            comp = selfComps[i]
+            if len(comp._children) == 0:
+                return matchStep(i+1)
+            return matchRemainder(i, 0)
+
+        def matchRemainder(i, j):
+            ''' try to match self by reordering the children of selfComps[i+1], ..., selfComps[-1]
+            and reordering selfComps[i][j+1], ..., selfComps[i][-1].
+            returns true if a match is found and false otherwise. '''
+            assert i < len(selfComps), "out of range"
+            comp = selfComps[i]
+            if j >= len(comp.children):
+                return matchStep(i+1)
+            for k in range(j, len(comp._children)):
+                if selfSignatures[selfChildMaps[comp][j]] != selfSignatures[selfChildMaps[comp][k]]:
+                    break
+                c1, c2 = selfChildMaps[comp][j], selfChildMaps[comp][k]
+                selfChildMaps[comp][j], selfChildMaps[comp][k] = c2, c1
+
+                # check and see if the node lists are consistent so far
+                selfNodes: 'list[Node]' = []
+                otherNodes: 'list[Node]' = []
+                def getNodes(comp: 'Component', nodes: 'list[Node]'):
+                    for nodeKey in sorted(comp._inputs):
+                        nodes.append(comp._inputs[nodeKey])
+                    for nodeKey in sorted(comp._outputs):
+                        nodes.append(comp._outputs[nodeKey])
+                compsPlaced = set()
+                for c in range(i):
+                    compsPlaced.add(selfComps[c])
+                def getPlacedComponentsNodes(selfComp: 'Component', otherComp: 'Component'):
+                    getNodes(selfComp, selfNodes)
+                    getNodes(otherComp, otherNodes)
+                    if selfComp in compsPlaced:
+                        assert len(selfChildMaps[selfComp]) == len(otherChildMaps[otherComp]), 'might fail if a hash collision occurs--if this assert fails, the trees do not match.'
+                        for i in range(len(selfChildMaps[selfComp])):
+                            selfChild = selfChildMaps[selfComp][i]
+                            otherChild = otherChildMaps[otherComp][i]
+                            getPlacedComponentsNodes(selfChild, otherChild)
+                    elif selfComp == comp:
+                        for i in range(j+1):
+                            selfChild = selfChildMaps[selfComp][i]
+                            otherChild = otherChildMaps[otherComp][i]
+                            getPlacedComponentsNodes(selfChild, otherChild)
+                getPlacedComponentsNodes(self, other)
+                if self.testNodes(selfNodes, otherNodes):
+                    if matchRemainder(i, j+1):
+                        return True
+                selfChildMaps[comp][j], selfChildMaps[comp][k] = c1, c2
+            return False
+        return matchStep(0)
+
+    def testNodes(self, selfNodes: 'list[Node]', otherNodes: 'list[Node]'):
+        ''' Returns true if the graph structure of the nodes matches and false otherwise. '''
+        selfNodeDict: 'dict[Node, int]' = {}
+        otherNodeDict: 'dict[Node, int]' = {}
+        for i in range(len(selfNodes)):
+            selfNodeDict[selfNodes[i]] = i
+            otherNodeDict[otherNodes[i]] = i
+        # determine if the graph structure matches
+        for i in range(len(selfNodes)):
+            selfNode = selfNodes[i]
+            otherNode = otherNodes[i]
+            # check outgoing edges
+            selfNodeAdjs: 'set[Node]' = {wire.dst for wire in selfNode.outWires if wire.dst in selfNodeDict}
+            otherNodeAdjs: 'set[Node]' = {wire.dst for wire in otherNode.outWires if wire.dst in otherNodeDict}
+            if len(selfNodeAdjs) != len(otherNodeAdjs):
+                return False
+            for adjNode in selfNodeAdjs:
+                j = selfNodeDict[adjNode]
+                if otherNodes[j] not in otherNodeAdjs:
+                    return False
+            for adjNode in otherNodeAdjs:
+                j = otherNodeDict[adjNode]
+                if selfNodes[j] not in selfNodeAdjs:
+                    return False
+            # check incoming edges
+            selfNodeAdjs: 'set[Node]' = {wire.src for wire in selfNode.inWires if wire.src in selfNodeDict}
+            otherNodeAdjs: 'set[Node]' = {wire.src for wire in otherNode.inWires if wire.src in otherNodeDict}
+            if len(selfNodeAdjs) != len(otherNodeAdjs):
+                return False
+            for adjNode in selfNodeAdjs:
+                j = selfNodeDict[adjNode]
+                if otherNodes[j] not in otherNodeAdjs:
+                    return False
+            for adjNode in otherNodeAdjs:
+                j = otherNodeDict[adjNode]
+                if selfNodes[j] not in selfNodeAdjs:
+                    return False
+        return True
+
+    def orderedNodeEq(self, other, selfChildMaps: 'dict[Component, list[Component]]', otherChildMaps: 'dict[Component, list[Component]]'):
+        ''' Returns true if the map sending one tree to the other preserves the graph+tree structure. '''
+        def verifyTree(selfComp: 'Component', otherComp: 'Component'):
+            # returns True if the Component trees rooted at selfComp and otherComp are the same, including Node labels and Component names.
+            if selfComp._name != otherComp._name:
+                return False
+            if len(selfComp._inputs) != len(otherComp._inputs):
+                return False
+            if len(selfComp._outputs) != len(otherComp._outputs):
+                return False
+            if len(selfComp._children) != len(otherComp._children):
+                return False
+            if set(selfComp._inputs) != set(otherComp._inputs):
+                return False
+            if set(selfComp._outputs) != set(otherComp._outputs):
+                return False
+            selfChildren = selfChildMaps[selfComp]
+            otherChildren = otherChildMaps[otherComp]
+            for i in range(len(selfChildren)):
+                if not verifyTree(selfChildren[i], otherChildren[i]):
+                    return False
+            return True
+        if not verifyTree(self, other):
+            return False
+        # at this point, we have confirmed that the tree structures match.
+
+        # collect nodes in a deterministic order so we can determine if the graph structure matches
+        selfNodes: 'list[Node]' = []
+        otherNodes: 'list[Node]' = []
+        def getNodes(comp: 'Component', childMaps: 'dict[Component, list[Component]]', nodes: 'list[Node]'):
+            for nodeKey in sorted(comp._inputs):
+                nodes.append(comp._inputs[nodeKey])
+            for nodeKey in sorted(comp._outputs):
+                nodes.append(comp._outputs[nodeKey])
+            for child in childMaps[comp]:
+                getNodes(child, childMaps, nodes)
+        getNodes(self, selfChildMaps, selfNodes)
+        getNodes(other, otherChildMaps, otherNodes)
+
+        return self.testNodes(selfNodes, otherNodes)
+    def addChild(self, component: 'Component'):
+        assert isinstance(component, Component), f"Children of a Component must be Components, not {component.__class__}"
+        assert component not in self._children, "Cannot add Component to children twice"
+        assert component != self, "A Component cannot be its own child"
+        self._children.add(component)
+        component._parent = self
+    def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
+        ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the component. '''
+        self._tokensSourcedFrom.append(tokens)
+    def getSourceTokens(self) -> 'list[tuple[str, int]]':
+        ''' Returns the source tokens of self. '''
+        return sum(self._tokensSourcedFrom, [])
+    def getAllWires(self) -> 'set[Wire]':
+        ''' Returns the set of all wires in the data structure. '''
+        wires = set()
+        for child in self._children:
+            for wire in child.getAllWires():
+                wires.add(wire)
+        for nodeKey in self._inputs:
+            for wire in self._inputs[nodeKey].outWires:
+                wires.add(wire)
+        for nodeKey in self._outputs:
+            for wire in self._outputs[nodeKey].outWires:
+                wires.add(wire)
+        return wires
+    def weight(self):
+        ''' Returns an estimate of how large a Component is. '''
+        return 1 + sum([c.weight() for c in self._children])
+
+class Function(Component):
+    __slots__ = '_inputList', 'inputNames'
+    def __init__(self, name: 'str', inputs: 'list[Node]' = None, output: 'Node' = None, children: 'set[Component]' = None):
+        if inputs == None:
+            inputs = []
+        if output == None:
+            output = Node()
+        assert output.__class__ == Node, f"Function output must be Node, not {output.__class__}"
+        if children == None:
+            children = set()
+        Component.__init__(self, name, {i : inputs[i] for i in range(len(inputs))}, {0: output}, None, children)
+        self._inputList: 'list[Node]' = inputs
+        self.inputNames = []
+    @property
+    def inputs(self):
+        '''Returns a copy of the list of input Nodes to this function'''
+        return self._inputList.copy()
+
+class Mux(Component):
+    __slots__ = '_control', '_inputNames'
+    def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
+        if control == None:
+            control = Node('_mux_control')
+        self._control = control
+        if output == None:
+            output = Node('_mux_output')
+        inputDict = {i : inputs[i] for i in range(len(inputs))}
+        inputDict[-1] = self._control
+        Component.__init__(self, "_mux", inputDict, {0: output}, None, set())
+        self._inputNames = None
+    @property
+    def inputs(self):
+        '''Returns a copy of the list of input Nodes to the mux'''
+        return [self._inputs[i] for i in range(len(self._inputs)-1)]
+    @property
+    def control(self):
+        '''The control input Node of the mux'''
+        return self._control
+    @property
+    def inputNames(self):
+        return self._inputNames
+    @inputNames.setter
+    def inputNames(self, inputNames: 'list[str]'):
+        assert(len(inputNames) == len(self._inputs) - 1), f"Wrong number of mux input labels--expected {len(self._inputs) - 1}, got {len(inputNames)}"
+        self._inputNames = inputNames
+
+class Constant(Component):
+    __slots__ = '_value'
+    def __init__(self, value: 'MLiteral'):
+        assert isMLiteral(value), f"Value of Constant must be MLiteral, not {value.__class__}"
+        self._value = value
+        Component.__init__(self, str(self.value), {}, {'c0': Node()}, None, set())
+    @property
+    def value(self) -> 'MLiteral':
+        '''The value of the constant'''
+        return self._value
+
+class Module(Component):
+    __slots__ = 'metadata'
+    def __init__(self, name: 'str', inputs: 'dict[str, Node]' = None, methods: 'dict[str, Node]' = None, children: 'set[Component]' = None):
+        if inputs == None:
+            inputs = {}
+        if methods == None:
+            methods = {}
+        if children == None:
+            children = set()
+        Component.__init__(self, name, inputs, methods, None, children)
+    @property
+    def methods(self) -> 'dict[str, Node]':
+        ''' A copy of the methods of the module '''
+        return self._outputs.copy()
+    def addMethod(self, methodNode: 'Node', methodKey: 'str'):
+        self.addOutput(methodNode, methodKey)
+    def isRegister(self):
+        return False
+
+class Register(Module):
+    __slots__ = ()
+    def __init__(self, name: 'str'):
+        Module.__init__(self, name, {'_input':Node('input')}, {'_value':Node('value')})
+    def isRegister(self):
+        return True
+    @property
+    def input(self):
+        '''The input node to the register'''
+        return self._inputs['_input']
+    @input.setter
+    def input(self, value: 'Node'):
+        raise Exception("Can't directly modify this property")
+    @property
+    def value(self):
+        '''The node with the value of the register'''
+        return self._outputs['_value']
+    @value.setter
+    def value(self, value: 'Node'):
+        raise Exception("Can't directly modify this property")
+
+class VectorModule(Module):
+    __slots__ = 'numberedSubmodules'
+    def __init__(self, numberedSubmodules: 'list[Module]', *args):
+        ''' Same as initializing a module, just with an extra numberedSubmodules field at the beginning '''
+        self.numberedSubmodules: 'list[Module]' = numberedSubmodules
+        super().__init__(*args)
+    def addNumberedSubmodule(self, submodule: 'Module'):
+        self.numberedSubmodules.append(submodule)
+    def getNumberedSubmodule(self, num: 'int'):
+        ''' Returns the nth submodule of a vector of submodules (possibly a register) '''
+        return self.numberedSubmodules[num]
+    def depth(self) -> int:
+        ''' Returns the number of layers of vectors of submodules. '''
+        if self.numberedSubmodules[0].__class__ == VectorModule:
+            return 1 + self.numberedSubmodules[0].depth()
+        return 1
+    def isVectorOfRegisters(self) -> bool:
+        ''' Returns true if the innermost modules of this vector of modules are registers. '''
+        if self.numberedSubmodules[0].__class__ == VectorModule:
+            return self.numberedSubmodules[0].isVectorOfRegisters
+        return self.numberedSubmodules[0].isRegister()
+
+class Demux(Component):
+    # currently unused
+    __slots__ = ()
+    pass
+
+class Splitter(Component):
+    # currently unused
+    __slots__ = ()
+    pass
+
+
+def garbageCollection1(root: 'Component'):
+    ''' Garbage collection version 1: removes inaccessible combinatorial logic.
+    - A Node is garbage collected if
+        - its out-degree is zero, it is an output of its parent Component, and its parent
+          Component's `_persistant` flag is not set
+        - its parent component is garbage collected
+    - A Wire is garbage collected if
+        - its destination Node is garbage collected
+    - A Component is garbage collected if
+        - a Node or child Component of the Component is garbage collected, no Node of the
+          component is the source of a Wire, and the Component has no child components
+        - it has no Nodes or child Components '''
+    if not root._persistent:
+        for nodeKey in root._outputs.copy():
+            node = root._outputs[nodeKey]
+            if len(node.outWires) == 0:
+                gc1node(node)
+    for child in root.children.copy():
+        # if len(child.children) == 0 and len(child._inputs) == 0 and len(child._outputs) == 0:
+        #     root.children.remove(child)
+        # else:
+        #     garbageCollection1(child)
+        garbageCollection1(child)
+
+def gc1component(component: 'Component'):
+    for nodeKey, node in component._inputs.copy().items():
+        assert len(node.outWires) == 0, "Cannot garbage collect a Component with Nodes which are sources"
+    for nodeKey, node in component._outputs.copy().items():
+        assert len(node.outWires) == 0, "Cannot garbage collect a Component with Nodes which are sources"
+    assert len(component.children) == 0, "Cannot garbage collect a Component with children"
+    assert component.parent != None, "Cannot remove the root Component"
+    component.parent.children.remove(component)
+    component._parent = None
+    for nodeKey, node in component._inputs.copy().items():
+        gc1node(node)
+    for nodeKey, node in component._outputs.copy().items():
+        gc1node(node)
+
+def gc1wire(wire: 'Wire'):
+    node = wire.src
+    node.outWires.remove(wire)
+    if len(node.outWires) == 0:
+        if not node._isInput:
+            gc1node(node)
+
+def gc1node(node: 'Node'):
+    assert len(node.outWires) == 0, "Cannot garbage collect a Node which is a source"
+    if node._isInput:
+        del node.parent._inputs[node._label]
+    else:
+        del node.parent._outputs[node._label]
+    for wire in node.inWires:
+        gc1wire(wire)
+    component = node.parent
+    if component.parent != None:
+        if all(len(node.outWires) == 0 for nodeKey, node in component._inputs.items()):
+            if all(len(node.outWires) == 0 for nodeKey, node in component._outputs.items()):
+                if len(component.children) == 0:
+                    gc1component(component)
 
 '''
 Some helpful ELK examples:
@@ -44,50 +658,73 @@ json, which somewhat reduces the file size.
 
 def getELK(component: 'Component') -> 'dict[str, Any]':
     ''' Converts given component into the ELK JSON format, see https://rtsys.informatik.uni-kiel.de/elklive/json.html '''
-    componentELK = toELK(component)
+    
+    componentELKs: 'dict[Component, dict[str, Any]]' = {}  # maps components to the corresponding json object
+    componentELK = toELK(component, componentELKs)
+    
+    # Place edges with closest common ancestor of their src/dst Nodes
+    for wire in component.getAllWires():
+        edge = wireToELK(wire)
+        sourceNode: 'Node' = wire.src
+        targetNode: 'Node' = wire.dst
+        # determine if the edge goes from the left side of a node to the right side directly,
+        # which confuses the layouting library
+        sourceParent: 'Component' = sourceNode.parent
+        targetParent: 'Component' = targetNode.parent
+        isDirectEdge = sourceParent == targetParent and sourceNode._isInput and not targetNode._isInput
+        if isDirectEdge:
+            # break the edge into two edges with a zero-size node in the middle
+            middleNode = toELK(Function(""))
+            middleNode['width'] = 0
+            middleNode['height'] = 0
+            assert len(edge['sources']) == 1, f"Unexpected edge {edge} with too many source nodes"
+            assert len(edge['targets']) == 1, f"Unexpected edge {edge} with too many target nodes"
+            edge1 = { 'id': 'part1_'+edge['id'], 'sources': [ edge['sources'][0] ], 'targets': [ middleNode['id'] ] }
+            edge2 = { 'id': 'part2_'+edge['id'], 'sources': [ middleNode['id'] ], 'targets': [ edge['targets'][0] ] }
+            if "edges" not in sourceParent:
+                sourceParent['edges'] = []
+            sourceParent['edges'].append(edge1)
+            sourceParent['edges'].append(edge2)
+            if "children" not in sourceParent:
+                sourceParent['children'] = []
+            sourceParent['children'].append(middleNode)
+            continue
+        # we have an ordinary edge, move it to the correct parent
+        if not sourceNode._isInput:
+            sourceParent = sourceParent.parent
+        # collect the parents of the source node
+        currentELK: 'Component' = sourceParent
+        sourceParents: 'list[Component]' = [currentELK]
+        while currentELK.parent != None:
+            currentELK = currentELK.parent
+            sourceParents.append(currentELK)
+        if targetNode._isInput:
+            targetParent = targetParent.parent
+        # collect the parents of the target node
+        currentELK = targetParent
+        while currentELK not in sourceParents:
+            assert currentELK.parent != None, "Can't find common ancestor for edge source/target"
+            currentELK = currentELK.parent
+        elk = componentELKs[currentELK]
+        if "edges" not in elk:
+            elk["edges"] = []
+        elk["edges"].append(edge)
 
-    # consider a pass to set certain edges to go forwards:
-    # https://eclipse.org/elk/reference/options/org-eclipse-elk-layered-priority-direction.html
-
-    # Collects edges with unique starting ports and sets ELK to prioritize having these edges go forward
-    portsFound = {}
-    portsRepeated = set()
-    def collectEdgesWithUniqueStarts(componentELK):
-        if "children" in componentELK:
-            for child in componentELK["children"]:
-                collectEdgesWithUniqueStarts(child)
-        if "edges" in componentELK:
-            for edge in componentELK["edges"]:
-                sourceNode = edge["sources"][0]
-                if sourceNode in portsRepeated:
-                    pass
-                elif sourceNode in portsFound:
-                    portsRepeated.add(sourceNode)
-                    del portsFound[sourceNode]
-                else:
-                    portsFound[sourceNode] = edge
-    collectEdgesWithUniqueStarts(componentELK)
-    for sourceNode in portsFound:
-        edge = portsFound[sourceNode]
-        if 'properties' not in edge:
-            edge['properties'] = {}
-        edge['properties']['org.eclipse.elk.layered.priority.direction'] = 10
-
-    # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
-    def eliminateVectorModules(componentELK, parentELK):
-        if "children" in componentELK:
-            for child in componentELK["children"].copy():  # copy since the children may mutate componentELK's child list
-                eliminateVectorModules(child, componentELK)
-        if 'isVectorModule' in componentELK:
-            if componentELK['isVectorModule'] and parentELK != None:
-                if 'ports' not in componentELK or len(componentELK['ports']) == 0:
-                    parentELK["children"].remove(componentELK)
-                    # lift children and edges
-                    if "children" in componentELK:
-                        parentELK["children"] += componentELK["children"]
-                    if "edges" in componentELK:
-                        parentELK["edges"] += componentELK["edges"]
-    eliminateVectorModules(componentELK, None)
+    # # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
+    # def eliminateVectorModules(componentELK, parentELK):
+    #     if "children" in componentELK:
+    #         for child in componentELK["children"].copy():  # copy since the children may mutate componentELK's child list
+    #             eliminateVectorModules(child, componentELK)
+    #     if 'isVectorModule' in componentELK:
+    #         if componentELK['isVectorModule'] and parentELK != None:
+    #             if 'ports' not in componentELK or len(componentELK['ports']) == 0:
+    #                 parentELK["children"].remove(componentELK)
+    #                 # lift children and edges
+    #                 if "children" in componentELK:
+    #                     parentELK["children"] += componentELK["children"]
+    #                 if "edges" in componentELK:
+    #                     parentELK["edges"] += componentELK["edges"]
+    # eliminateVectorModules(componentELK, None)
 
     # Collect all ports and mark parent pointers
     def getPorts(componentELK, portsToComponents):
@@ -101,63 +738,6 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
     portsToComponents = {}  # Maps port ids to a tuple (corresponding component, port)
     getPorts(componentELK, portsToComponents)
 
-    # Move nonhierarchical edges to be children of the closest common ancestor
-    def liftEdges(componentELK):
-        if "edges" in componentELK:
-            for edge in componentELK["edges"].copy():  # copies the list since we may be removing edges from it
-                assert len(edge["sources"]) == 1
-                assert len(edge["targets"]) == 1
-                sourceNode = edge["sources"][0]
-                targetNode = edge["targets"][0]
-                # determine if the edge goes from the left side of a node to the right side directly,
-                # which confuses the layouting library
-                sourceParent, sourcePort = portsToComponents[sourceNode]
-                targetParent, targetPort = portsToComponents[targetNode]
-                isDirectEdge = sourceParent == targetParent and sourcePort["properties"]["port.side"] == "WEST" and targetPort["properties"]["port.side"]
-                if isDirectEdge:
-                    # break the edge into two edges with a zero-size node in the middle
-                    middleNode = toELK(Function(""))
-                    middleNode['parent'] = componentELK
-                    middleNode['width'] = 0
-                    middleNode['height'] = 0
-                    assert len(edge['sources']) == 1, f"Unexpected edge {edge} with too many source nodes"
-                    assert len(edge['targets']) == 1, f"Unexpected edge {edge} with too many target nodes"
-                    edge1 = { 'id': 'part1_'+edge['id'], 'sources': [ edge['sources'][0] ], 'targets': [ middleNode['id'] ] }
-                    edge2 = { 'id': 'part2_'+edge['id'], 'sources': [ middleNode['id'] ], 'targets': [ edge['targets'][0] ] }
-                    componentELK['edges'].remove(edge)
-                    if "edges" not in sourceParent:
-                        sourceParent['edges'] = []
-                    sourceParent['edges'].append(edge1)
-                    sourceParent['edges'].append(edge2)
-                    if "children" not in sourceParent:
-                        sourceParent['children'] = []
-                    sourceParent['children'].append(middleNode)
-                    continue
-                # we have an ordinary edge, move it to the correct parent
-                if sourcePort["properties"]["port.side"] == "EAST":
-                    sourceParent = sourceParent["parent"]
-                # collect the parents of the source node
-                currentELK = sourceParent
-                sourceParents = [currentELK]
-                while "parent" in currentELK:
-                    currentELK = currentELK["parent"]
-                    sourceParents.append(currentELK)
-                if targetPort["properties"]["port.side"] == "WEST":
-                    targetParent = targetParent["parent"]
-                # collect the parents of the target node
-                currentELK = targetParent
-                while currentELK not in sourceParents:
-                    assert "parent" in currentELK, "Can't find common ancestor for edge source/target"
-                    currentELK = currentELK["parent"]
-                componentELK["edges"].remove(edge)
-                if "edges" not in currentELK:
-                    currentELK["edges"] = []
-                currentELK["edges"].append(edge)
-        if "children" in componentELK:
-            for child in componentELK["children"]:
-                liftEdges(child)
-    liftEdges(componentELK)
-
     # Remove parent pointers (since JSON can't have circular references)
     def removeParents(componentELK):
         if "children" in componentELK:
@@ -165,7 +745,7 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
                 del child["parent"]
                 removeParents(child)
     removeParents(componentELK)
-
+    
     # perhaps see https://snyk.io/advisor/npm-package/elkjs/example
 
     return { 'id': 'root',
@@ -185,6 +765,8 @@ def elkID(item: 'Component|Node') -> str:
         return f'n{item._id}'
     elif issubclass(item.__class__, Component):
         return f"c{item._id}"
+    elif item.__class__ == Wire:
+        return f"w{item._id}"
     raise Exception(f"Unrecognized class {item.__class__}.")
 
 def setName(nodeELK: 'dict[str, Any]', name: 'str', height: 'float'):
@@ -198,7 +780,21 @@ def setPortLabel(nodeELK: 'dict[str, Any]', text: 'str', width: 'float', height:
     nodeELK['width'] = width
     nodeELK['height'] = height
 
-def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
+def nodeToELK(item: 'Node', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
+    assert item.__class__ == Node, "Requires a Node"
+    jsonObj = { 'id': elkID(item), 'width': 0, 'height': 0, 'properties': properties }
+    return jsonObj
+
+def wireToELK(item: 'Wire'):
+    assert item.__class__ == Wire, "Requires a Wire"
+    jsonObj = { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
+    assert item in item.src.outWires, "Expected Wire to be in the outWires of its src"
+    if len(item.src.outWires) == 1:
+        jsonObj['properties'] = {}
+        jsonObj['properties']['org.eclipse.elk.layered.priority.direction'] = 10
+    return jsonObj
+
+def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
     ''' Converts the node or component into the ELK JSON format as a python object. 
     See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html 
     See https://github.com/kieler/elkjs/issues/27 for some examples.
@@ -206,25 +802,23 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
     for information about the ELK coordinate system. '''
     if not properties:
         properties = {}
-    if item.__class__ == Node:
-        jsonObj = { 'id': elkID(item), 'width': 0, 'height': 0, 'properties': properties }
-        return jsonObj
+    assert item.__class__ != Node, "Use nodeToELK instead"
+    assert item.__class__ != Wire, "Use wireToELK instead"
     itemWeightAdjusted = weightAdjust(item.weight())
     if item.__class__ == Function:
         ports = []
         ind = len(item.inputs)
         for i in range(len(item.inputs)):
             node = item.inputs[i]
-            nodeELK = toELK(node, {'port.side': 'WEST', 'port.index': ind})
+            nodeELK = nodeToELK(node, {'port.side': 'WEST', 'port.index': ind})
             if item.inputNames:
                 setPortLabel(nodeELK, item.inputNames[i], itemWeightAdjusted, 0.5*itemWeightAdjusted)
             ports.append(nodeELK)
             ind -= 1  # elk indexes nodes clockwise from the top, so the index decrements.
-        ports.append( toELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
+        ports.append( nodeToELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
         jsonObj = { 'id': elkID(item),
                     'ports': ports,
-                    'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
-                    'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
+                    'children': [ toELK(child, componentELKs) for child in item.children ],
                     'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
@@ -234,10 +828,9 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                         'weight': weightAdjust(item.weight()),
                         'numSubcomponents': item.weight(),
                         'tokensSourcedFrom': item.getSourceTokens()}
-        return jsonObj
-    if item.__class__ == Constant:
+    elif item.__class__ == Constant:
         jsonObj = { 'id': elkID(item),
-                    'ports': [ toELK(item.output, {'port.side': 'EAST'}) ],
+                    'ports': [ nodeToELK(item.output, {'port.side': 'EAST'}) ],
                     'properties': { 'portConstraints': 'FIXED_SIDE' },
                     'width': 15,
                     'height': 15 }
@@ -245,17 +838,16 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                         'weight':weightAdjust(item.weight()),
                         'numSubcomponents': item.weight(),
                         'tokensSourcedFrom':item.getSourceTokens()}
-        return jsonObj
-    if item.__class__ == Mux:
+    elif item.__class__ == Mux:
         ports = []
         for i in range(len(item.inputs)):
             node = item.inputs[i]
-            nodeELK = toELK(node, {'port.side': 'WEST'})
+            nodeELK = nodeToELK(node, {'port.side': 'WEST'})
             if item.inputNames:
                 setPortLabel(nodeELK, item.inputNames[i], 0, 0)
             ports.append(nodeELK)
-        ports.append( toELK(item.control, {'port.side': 'SOUTH'}) )
-        ports.append( toELK(item.output, {'port.side': 'EAST'}) )
+        ports.append( nodeToELK(item.control, {'port.side': 'SOUTH'}) )
+        ports.append( nodeToELK(item.output, {'port.side': 'EAST'}) )
         jsonObj = { 'id': elkID(item),
                     'ports': ports,
                     'width': 10,
@@ -267,25 +859,23 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                         'numSubcomponents': item.weight(),
                         'isMux': True,
                         'tokensSourcedFrom':item.getSourceTokens()}
-        return jsonObj
-    if item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
+    elif item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
         ports = []
         for nodeName in item.inputs:
             node = item.inputs[nodeName]
-            nodeELK = toELK(node, {'port.side': 'WEST'})
+            nodeELK = nodeToELK(node, {'port.side': 'WEST'})
             if item.__class__ == Module:
                 setPortLabel(nodeELK, nodeName, itemWeightAdjusted, 0.5*itemWeightAdjusted)
             ports.append(nodeELK)
         for nodeName in item.methods:
             node = item.methods[nodeName]
-            nodeELK = toELK(node, {'port.side': 'EAST'})
+            nodeELK = nodeToELK(node, {'port.side': 'EAST'})
             if item.__class__ == Module:
                 setPortLabel(nodeELK, nodeName, itemWeightAdjusted, 0.5*itemWeightAdjusted)
             ports.append(nodeELK)
         jsonObj = { 'id': elkID(item),
                     'ports': ports,
-                    'children': [ toELK(child) for child in item.children if child.__class__ != Wire ],
-                    'edges': [ toELK(child) for child in item.children if child.__class__ == Wire ],
+                    'children': [ toELK(child, componentELKs) for child in item.children ],
                     'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0:
@@ -297,760 +887,18 @@ def toELK(item: 'Component|Node', properties: 'dict[str, Any]' = None) -> 'dict[
                         'weight':weightAdjust(item.weight()),
                         'numSubcomponents': item.weight(),
                         'tokensSourcedFrom':item.getSourceTokens()}
-        return jsonObj
-    if item.__class__ == Wire:
-        return { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
-    raise Exception(f"Unrecognized class {item.__class__} of item {item}.")
-
-'''Private methods/fields begin with a single underscore. See help(property) for details.
-Slots are used to enforce which fields may be set.'''
-
-class Node:
-    '''name is just for convenience.
-    mtype is the minispec type of the value that the node corresponds to.
-    id is a unique id number for each node created.'''
-    _num_nodes_created = 0  #one for each node created
-    __slots__ = '_name', '_mtype', '_id'
-    def __init__(self, name: 'str' = "", mtype: 'MType' = Any):
-        self._name = name
-        self._mtype = mtype
-        self._id = Node._num_nodes_created
-        Node._num_nodes_created += 1
-    def __repr__(self):
-        return "Node(" + str(self._id) + ": " + str(self._mtype) + ")"
-    def __str__(self):
-        return "Node(" + str(self._name) + ": " + str(self._mtype) + ")"
-    def setMType(self, value):
-        self._mtype = value
-    def isNode(self):
-        return True
-
-def isNode(value):
-    '''Returns whether or not value is a Node'''
-    return value.__class__ == Node
-def isNodeOrMLiteral(value):
-    '''Returns whether or not value is a literal or a node.'''
-    return isMLiteral(value) or isNode(value)
-
-class Component:
-    '''
-    Component = Function(children: list[Component], inputs: list[Node], output: Node)
-                + Wire(src: Node, dst: Node)
-                + Mux(inputs: list[Node], control: Node, output: Node)
-                + Module(children: list[Component], inputs: dict[str -> Node], methods: dict[str -> Node])
-
-    TODO big change: Node object names no longer matter and are just for debugging.
-    Thus hardware may be the same without matching node names.
-    Note that function names still matter.
-
-    Requirements:
-        - No wire or function object may be reused. This does not apply two nodes.
-        - A node may only be the dst of exactly one wire
-        - A node must be in at most one function (as an input or output) and may appear at most once.
-        - A wire's src and dst must be distinct
-
-    Two components are the same hardware if:
-        - They have the same structure
-            - Wire:
-            always
-            - Function:
-            inputs have matching names
-            children may be permuted such that matching children represent the same hardware
-        - Within a fixed permutation of children:
-            - a pair of nodes are the same object in one if and only if they are the same object in the other.
-    
-    Testing for equality of hardware:
-        1. Permute the children of the functions so that the nodes match
-        2. Compare pairs of nodes for same-object property.
-        If step 2 fails, choose a different valid permutation in step 1.
-    These steps should be implemented recursively.
-    eg, for step 1, compare each of the components of the second object with the first
-    component of the first object; if one matches, keep going until they all match, then
-    do step 2; if step 2 fails, try another first/second/etc. object.
-
-    Note that testing for equality may mutate the second object by permuting the components.
-    This should not matter since the order of the components should not matter.
-
-    '''
-    _num_components_created = 0  #one for each component created, so each component has a unique id
-    __slots__ = '_id'
-    def __init__(self):
-        ''' Gives each component a unique _id '''
-        self._id = Component._num_components_created
-        Component._num_components_created += 1
-    def getNodeListRecursive(self):
-        '''returns a list of all nodes in self in a deterministic order'''
-        raise Exception("Not implemented")
-    def matchStructure(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
-        raise Exception("Not implemented")
-    def matchOrdered(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
-        raise Exception("Not implemented")
-    def match(self, other) -> Bool:
-        '''returns true if self and other represent the same hardware.'''
-        raise Exception("Not implemented")
-    ''' Pruning. Removes unused hardware from the component. '''
-    def prune(self):
-        '''Removes all unused hardware.'''
-        raise Exception("Not implemented")
-    def inputNodes(self):
-        '''Returns the set of all input nodes in self, eg a wire's src or a function's inputs.'''
-        raise Exception("Not implemented")
-    def outputNodes(self):
-        '''Returns the set of all output nodes in self, eg a wire's dst or a function's output.'''
-        raise Exception("Not implemented")
-    def isRegister(self) -> Bool:
-        '''Return true if self is a register. This is used when a register's value is used in an expression,
-        since most modules' methods can only be accessed by name while a register's output may be accessed
-        by referring to the register itself (so we need to determine when a module is actually a register).'''
-        return False
-    def isComponent(self) -> Bool:
-        '''Used by assert statements'''
-        return True
-    def weight(self):
-        ''' Returns an estimate of how large a component is. '''
-        if hasattr(self, 'children'):
-            return 1 + sum([c.weight() for c in self.children])
-        return 0
-    def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
-        ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the component. '''
-        self._tokensSourcedFrom.append(tokens)
-    def getSourceTokens(self) -> 'list[tuple[str, int]]':
-        ''' Returns the source tokens of self. '''
-        return sum(self._tokensSourcedFrom, [])
-
-class Constant(Component):
-    ''' The hardware corresponding to a constant literal value. '''
-    __slots__ = '_value', '_output', '_tokensSourcedFrom'
-    def __init__(self, value: 'MLiteral', output: 'Node' = None):
-        Component.__init__(self)
-        self._value = value
-        if output == None:
-            output = Node()
-        self._output = output
-        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
-    @property
-    def value(self) -> 'MLiteral':
-        '''The value of the constant'''
-        return self._value
-    @property
-    def output(self) -> 'Node':
-        '''The output node'''
-        return self._output
-    def getNodeListRecursive(self):
-        return [self._output]
-    def match(self, other):
-        if self.__class__ != other.__class__:
-            return False
-        return self.value == other.value
-    def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
-        self._value.addSourceTokens(tokens)
-    def getSourceTokens(self) -> 'list[tuple[str, int]]':
-        ''' Returns the source tokens of self. '''
-        return self._value.getSourceTokens()
-    def prune(self):
-        pass  # no children
-    def inputNodes(self):
-        return set()
-    def outputNodes(self):
-        return {self.output}
-    def matchStructure(self, other):
-        return self.match(other)
-
-class Module(Component):
-    ''' A minispec module. methods is a dict mapping the name of a method to the node with the method output. '''
-    __slots__ = '_name', '_children', '_inputs', '_methods', 'metadata', '_tokensSourcedFrom'
-    def __init__(self, name: 'str', children: 'list[Component]', inputs: 'dict[str, Node]', methods: 'dict[str, Node]'):
-        Component.__init__(self)
-        self.name = name
-        self._children = children.copy() #copy the array but not the children themselves
-        self._inputs = inputs.copy()
-        self._methods = methods.copy()
-        self.metadata = None
-        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
-    @property
-    def name(self):
-        '''The name of the module'''
-        return self._name
-    @name.setter
-    def name(self, name: 'str'):
-        self._name = name
-    @property
-    def children(self):
-        '''The hardware inside the module'''
-        return self._children.copy()
-    @children.setter
-    def children(self, children: 'list[Component]'):
-        raise Exception("Can't directly modify this property")
-    def addChild(self, child: 'Component'):
-        '''Adds the given hardware to the current module'''
-        assert child.isComponent(), "Only components can be children of a module"
-        self._children.append(child)
-    @property
-    def inputs(self):
-        '''Returns a copy of the dict of input Nodes to this module'''
-        return self._inputs.copy()
-    @inputs.setter
-    def inputs(self, inputs: 'dict[str, Node]'):
-        raise Exception("Can't directly modify this property")
-    def addInput(self, inputNode: 'Node', inputName: 'str'):
-        '''Add the input with the given name'''
-        assert inputName not in self.inputs, f"Can't overwrite existing input {inputName}"
-        self._inputs[inputName] = inputNode
-    @property
-    def methods(self):
-        '''Returns a copy of the dict of method output Nodes of this module'''
-        return self._methods.copy()
-    @methods.setter
-    def methods(self, methods: 'dict[str, Node]'):
-        raise Exception("Can't directly modify this property")
-    def addMethod(self, methodNode: 'Node', methodName: 'str'):
-        '''Add the method output node. Used when a method has no arguments.'''
-        assert methodName not in self.methods, f"Can't overwrite existing input {methodName}"
-        self._methods[methodName] = methodNode
-    def __repr__(self):
-        return "Module(" + self.name + ", " + self.children.__repr__() + ", " + self.inputs.__repr__() + ", " + self.methods.__repr__() + ")"
-    def getNodeListRecursive(self):
-        nodes = []
-        inputNameList = list(self._inputs)
-        inputNameList.sort()
-        for inputName in inputNameList:
-            nodes.append(self._inputs[inputName])
-        methodNameList = list(self._methods)
-        methodNameList.sort()
-        for methodName in methodNameList:
-            nodes.append(self._methods[methodName])
-        for child in self._children:
-            nodes = nodes + child.getNodeListRecursive()
-        return nodes
-    def matchStructure(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
-        if self.__class__ != other.__class__:
-            return False
-        if self.name != other.name:
-            return False
-        if len(self._inputs) != len(other._inputs):
-            return False
-        if len(self._methods) != len(other._methods):
-            return False
-        if len(self._children) != len(other._children):
-            return False
-        for i in range(len(self._children)):
-            if not self._children[i].matchStructure(other._children[i]):
-                return False
-        return True
-    def matchOrdered(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
-        if not self.matchStructure(other):
-            return False
-        selfnodes = self.getNodeListRecursive()
-        othernodes = other.getNodeListRecursive()
-        if len(selfnodes) != len(othernodes):
-            return False
-        for i in range(len(selfnodes)):
-            for j in range(i):
-                if selfnodes[i] is selfnodes[j] and othernodes[i] is not othernodes[j]:
-                    return False
-                if selfnodes[i] is not selfnodes[j] and othernodes[i] is othernodes[j]:
-                    return False
-        return True
-    def matchStep(self, other, i):
-        '''tries to make self and other match by permuting other[i],...,other[-1].
-        assumes self and other have the same length of children lists.
-        mutates other to have matching order in children lists, even if the comparison fails.'''
-        if i >= len(self._children):
-            return self.matchOrdered(other)
-        for j in range(i, len(self._children)):
-            if other._children[j].match(self._children[i]):
-                other._children[i], other._children[j] = other._children[j], other._children[i]
-                #see if the nodes set up so far are the same graph
-                #checking this now improves matching speed when there are lots of wires, since issues with
-                #wire ordering can only be detected by looking at nodes--without partial node checks, we
-                #would have to try every permutation of the wires.
-                selfNodesSoFar = []
-                for k in range(i+1):
-                    selfNodesSoFar += self._children[k].getNodeListRecursive()
-                otherNodesSoFar = []
-                for k in range(i+1):
-                    otherNodesSoFar += other._children[k].getNodeListRecursive()
-                failed = False
-                for ii in range(len(selfNodesSoFar)):
-                    for jj in range(ii):
-                        if selfNodesSoFar[ii] is selfNodesSoFar[jj] and otherNodesSoFar[ii] is not otherNodesSoFar[jj]:
-                            failed = True
-                        if selfNodesSoFar[ii] is not selfNodesSoFar[jj] and otherNodesSoFar[ii] is otherNodesSoFar[jj]:
-                            failed = True
-                        if failed:
-                            break
-                    if failed:
-                        break
-                if not failed:
-                    #recursively try to match the rest
-                    if self.matchStep(other, i+1):
-                        return True
-                other._children[i], other._children[j] = other._children[j], other._children[i]
-        return False
-    def match(self, other):
-        '''returns true if self and other represent the same hardware.
-        mutates other to have matching order in children lists.'''
-        if self.__class__ != other.__class__:
-            return False
-        if self.name != other.name:
-            return False
-        if len(self._children) != len(other._children):
-            return False
-        if set(self._inputs) != set(other._inputs):
-            return False
-        if set(self._methods) != set(other._methods):
-            return False
-        return self.matchStep(other, 0)
-    def prune(self):
-        pass
-        #TODO
-
-class Register(Module):
-    '''A module corresponding to a register'''
-    def __init__(self, name: 'str'):
-        super().__init__(name, [], {'_input':Node('input')}, {'_value':Node('value')})
-        self.name = name
-    def isRegister(self):
-        return True
-    @property
-    def input(self):
-        '''The input node to the register'''
-        return self._inputs['_input']
-    @input.setter
-    def input(self, value: Node()):
-        raise Exception("Can't directly modify this property")
-    @property
-    def value(self):
-        '''The node with the value of the register'''
-        return self._methods['_value']
-    @value.setter
-    def value(self, value: Node()):
-        raise Exception("Can't directly modify this property")
-   
+    else:
+        raise Exception(f"Unrecognized class {item.__class__} of item {item}.")
+    componentELKs[item] = jsonObj
+    return jsonObj
 
 
-class VectorModule(Module):
-    def __init__(self, numberedSubmodules: 'list[Module]', *args):
-        ''' Same as initializing a module, just with an extra numberedSubmodules field at the beginning '''
-        self.numberedSubmodules: 'list[Module]' = numberedSubmodules
-        super().__init__(*args)
-    def addNumberedSubmodule(self, submodule: 'Module'):
-        self.numberedSubmodules.append(submodule)
-    def getNumberedSubmodule(self, num: 'int'):
-        ''' Returns the nth submodule of a vector of submodules (possibly a register) '''
-        return self.numberedSubmodules[num]
-    def depth(self) -> int:
-        ''' Returns the number of layers of vectors of submodules. '''
-        if self.numberedSubmodules[0].__class__ == VectorModule:
-            return 1 + self.numberedSubmodules[0].depth()
-        return 1
-    def isVectorOfRegisters(self) -> bool:
-        ''' Returns true if the innermost modules of this vector of modules are registers. '''
-        if self.numberedSubmodules[0].__class__ == VectorModule:
-            return self.numberedSubmodules[0].isVectorOfRegisters
-        return self.numberedSubmodules[0].isRegister()
+if __name__ == '__main__':
+    print("hi")
 
-class Function(Component):
-    ''' children is a list of components.
-    tokensSourcedFrom is an array of arrays of tuples (filename, token) where filename is the name of a source file
-    and token is a token index (int) in that source file such that clicking on that token in the given source file should jump
-    to this function.
-    inputNames is either None or a list[str] of length equal to len(_inputs). The ith entry of inputNames is
-    the name of the argument to the function which corresponds to the ith node of _inputs. '''
-    __slots__ = '_name', '_children', '_inputs', '_output', '_tokensSourcedFrom', 'inputNames'
-    def __init__(self, name: 'str', children: 'list[Component]'=None, inputs: 'list[Node]'=None, output: 'Node'=None):
-        Component.__init__(self)
-        self.name = name
-        if children == None:
-            children = []
-        self._children = children.copy() #copy the array but not the children themselves
-        if inputs == None:
-            inputs = []
-        assert inputs.__class__ == list, f"Function input list must be list['Node'], not {inputs} which is {inputs.__class__}"
-        for input in inputs:
-            assert input.isNode(), f"Function input node must be a Node, not {input} which is {input.__class__}"
-        self._inputs = inputs
-        if output == None:
-            output = Node('_' + self.name + '_output')
-        assert output.isNode(), f"Function output node must be a Node, not {output} which is {output.__class__}"
-        self._output = output
-        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
-        self.inputNames = None
-    @property
-    def name(self):
-        '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
-        return self._name
-    @name.setter
-    def name(self, name: 'str'):
-        self._name = name
-    @property
-    def children(self):
-        '''The hardware inside the function'''
-        return self._children.copy()
-    @children.setter
-    def children(self, children: 'list[Component]'):
-        raise Exception("Can't directly modify this property")
-    def addChild(self, child: 'Component'):
-        '''Adds the given hardware to the current function'''
-        assert child.isComponent(), "Only components can be children of a function"
-        self._children.append(child)
-    @property
-    def inputs(self):
-        '''Returns a copy of the list of input Nodes to this function'''
-        return self._inputs.copy()
-    @inputs.setter
-    def inputs(self, inputs: 'list[Node]'):
-        raise Exception("Can't directly modify this property")
-    @property
-    def output(self):
-        '''The output Node of the function'''
-        return self._output
-    @output.setter
-    def output(self, output: 'Node'):
-        raise Exception("Can't directly modify this property")
-    def __repr__(self):
-        return "Function(" + self.name + ", " + self._children.__repr__() + ", " + self._inputs.__repr__() + ", " + self.output.__repr__() + ")"
-    def __str__(self):
-        if (len(self._children) == 0):
-            return "Function " + self.name
-        return "Function " + self.name + " with children " + " | ".join(str(x) for x in self._children)
-    def getNodeListRecursive(self):
-        nodes = self.inputs.copy()
-        nodes.append(self.output)
-        for child in self._children:
-            nodes = nodes + child.getNodeListRecursive()
-        return nodes
-    def matchStructure(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
-        if self.__class__ != other.__class__:
-            return False
-        if self.name != other.name:
-            return False
-        if len(self.inputs) != len(other.inputs):
-            return False
-        if len(self._children) != len(other._children):
-            return False
-        for i in range(len(self._children)):
-            if not self._children[i].matchStructure(other._children[i]):
-                return False
-        return True
-    def matchOrdered(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
-        if not self.matchStructure(other):
-            return False
-        selfnodes = self.getNodeListRecursive()
-        othernodes = other.getNodeListRecursive()
-        if len(selfnodes) != len(othernodes):
-            return False
-        for i in range(len(selfnodes)):
-            for j in range(i):
-                if selfnodes[i] is selfnodes[j] and othernodes[i] is not othernodes[j]:
-                    return False
-                if selfnodes[i] is not selfnodes[j] and othernodes[i] is othernodes[j]:
-                    return False
-        return True
-    def matchStep(self, other, i):
-        '''tries to make self and other match by permuting other[i],...,other[-1].
-        assumes self and other have the same length of children lists.
-        mutates other to have matching order in children lists, even if the comparison fails.'''
-        if i >= len(self._children):
-            return self.matchOrdered(other)
-        for j in range(i, len(self._children)):
-            if other._children[j].match(self._children[i]):
-                other._children[i], other._children[j] = other._children[j], other._children[i]
-                #see if the nodes set up so far are the same graph
-                #checking this now improves matching speed when there are lots of wires, since issues with
-                #wire ordering can only be detected by looking at nodes--without partial node checks, we
-                #would have to try every permutation of the wires.
-                selfNodesSoFar = []
-                for k in range(i+1):
-                    selfNodesSoFar += self._children[k].getNodeListRecursive()
-                otherNodesSoFar = []
-                for k in range(i+1):
-                    otherNodesSoFar += other._children[k].getNodeListRecursive()
-                failed = False
-                for ii in range(len(selfNodesSoFar)):
-                    for jj in range(ii):
-                        if selfNodesSoFar[ii] is selfNodesSoFar[jj] and otherNodesSoFar[ii] is not otherNodesSoFar[jj]:
-                            failed = True
-                        if selfNodesSoFar[ii] is not selfNodesSoFar[jj] and otherNodesSoFar[ii] is otherNodesSoFar[jj]:
-                            failed = True
-                        if failed:
-                            break
-                    if failed:
-                        break
-                if not failed:
-                    #recursively try to match the rest
-                    if self.matchStep(other, i+1):
-                        return True
-                other._children[i], other._children[j] = other._children[j], other._children[i]
-        return False
-    def match(self, other):
-        '''returns true if self and other represent the same hardware.
-        mutates other to have matching order in children lists.'''
-        if self.__class__ != other.__class__:
-            return False
-        if self.name != other.name:
-            return False
-        if len(self._children) != len(other._children):
-            return False
-        return self.matchStep(other, 0)
-    def prune(self):
-        # graph search backwards from the output node
-        inputs = {}  #maps nodes to the hardware for which they are an input
-        outputs = {}
-        for child in [self] + self.children:
-            for node in child.inputNodes():
-                if node not in inputs:
-                    inputs[node] = set()
-                if node not in outputs:
-                    outputs[node] = set()
-                inputs[node].add(child)
-            for node in child.outputNodes():
-                if node not in outputs:
-                    outputs[node] = set()
-                if node not in inputs:
-                    inputs[node] = set()
-                outputs[node].add(child)
-        childrenToKeep = set()
-        currentlyKeepingChildren = outputs[self.output].copy()
-        nextChildren = set()
-        while len(currentlyKeepingChildren) > 0:
-            for child in currentlyKeepingChildren:
-                for node in child.inputNodes():
-                    for nextChild in outputs[node]:
-                        nextChildren.add(nextChild)
-            for child in currentlyKeepingChildren:
-                childrenToKeep.add(child)
-            currentlyKeepingChildren = nextChildren
-            nextChildren = set()
-        self._children = [child for child in self._children if child in childrenToKeep]
-        for child in self.children:
-            child.prune()
-    def inputNodes(self):
-        return set(self.inputs)
-    def outputNodes(self):
-        return {self.output}
+    c = Function('f', [Node(), Node(), Node()])
+    d = Function('f', [Node(), Node(), Node()])
+    print(c.match(d))  # True
 
-
-class Mux(Component):
-    __slots__ = '_inputs', '_control', '_output', '_tokensSourcedFrom', '_inputNames'
-    def __init__(self, inputs: 'list[Node]', control: 'Node'=None, output: 'Node'=None):
-        Component.__init__(self)
-        self._inputs = inputs
-        if control == None:
-            control = Node('_mux_control')
-        self._control = control
-        if output == None:
-            output = Node('_mux_output')
-        self._output = output
-        self._inputNames = None
-        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
-    @property
-    def name(self):
-        '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
-        return self._name
-    @name.setter
-    def name(self, name: 'str'):
-        self._name = name
-    @property
-    def inputs(self):
-        '''Returns a copy of the list of input Nodes to this mux'''
-        return self._inputs.copy()
-    @inputs.setter
-    def inputs(self, inputs: 'list[Node]'):
-        raise Exception("Can't directly modify this property")
-    @property
-    def control(self):
-        '''The control input Node of the mux'''
-        return self._control
-    @control.setter
-    def control(self, control: 'Node'):
-        raise Exception("Can't directly modify this property")
-    @property
-    def output(self):
-        '''The output Node of the mux'''
-        return self._output
-    @output.setter
-    def output(self, output: 'Node'):
-        raise Exception("Can't directly modify this property")
-    @property
-    def inputNames(self):
-        return self._inputNames
-    @inputNames.setter
-    def inputNames(self, inputNames: 'str'):
-        assert(len(inputNames) == len(self._inputs)), f"Wrong number of mux input labels--expected {len(self._inputs)}, got {len(inputNames)}"
-        self._inputNames = inputNames
-    def __repr__(self):
-        return "Mux(" + self.inputs.__repr__() + ", " + self.control.__repr__() + ", " + self.output.__repr__() + ")"
-    def __str__(self):
-        return "Mux"
-    def getNodeListRecursive(self):
-        nodes = self.inputs.copy()
-        nodes.append(self.output)
-        nodes.append(self.control)
-        return nodes
-    def matchStructure(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
-        if self.__class__ != other.__class__:
-            return False
-        if len(self.inputs) != len(other.inputs):
-            return False
-        return True
-    def matchOrdered(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
-        if not self.matchStructure(other):
-            return False
-        selfnodes = self.getNodeListRecursive()
-        othernodes = other.getNodeListRecursive()
-        if len(selfnodes) != len(othernodes):
-            return False
-        for i in range(len(selfnodes)):
-            for j in range(i):
-                if selfnodes[i] is selfnodes[j] and othernodes[i] is not othernodes[j]:
-                    return False
-                if selfnodes[i] is not selfnodes[j] and othernodes[i] is othernodes[j]:
-                    return False
-        return True
-    def match(self, other):
-        '''returns true if self and other represent the same hardware.
-        mutates other to have matching order in children lists.'''
-        if self.__class__ != other.__class__:
-            return False
-        if len(self.inputs) != len(other.inputs):
-            return False
-        return self.matchOrdered(other)
-    def prune(self):
-        pass  # no children
-    def inputNodes(self):
-        nodes = set(self.inputs)
-        nodes.add(self.control)
-        return nodes
-    def outputNodes(self):
-        return {self.output}
-
-class Demux(Component):
-    ''' Used for variable assignments to a vector of submodules.
-    Has an input value, a control value, and a list of outputs.
-    Each output node is a valid signal. TODO redesign. '''
-    pass
-
-#not currently used for anything--consider removing.
-class Splitter(Component):
-    ''' For assignments {a, b, c} = some_bitstring '''
-    __slots__ = '_input', '_outputs'
-    def __init__(self, input: 'Node', outputs: 'list[Node]'):
-        Component.__init__(self)
-        self._input = input
-        self._outputs = outputs
-    @property
-    def name(self):
-        '''The name of the function, eg 'f' or 'combine#(1,1)' or '*'.'''
-        return self._name
-    @name.setter
-    def name(self, name: 'str'):
-        self._name = name
-    @property
-    def input(self):
-        ''' The input Node '''
-        return self._input
-    @input.setter
-    def inputs(self, input: 'Node'):
-        raise Exception("Can't directly modify this property")
-    @property
-    def outputs(self):
-        '''Return a copy of the list of output Nodes'''
-        return self._outputs.copy()
-    @outputs.setter
-    def outputs(self, outputs: 'list[Node]'):
-        raise Exception("Can't directly modify this property")
-    def __repr__(self):
-        return "Splitter(" + self.input.__repr__() + ", " + self.outputs.__repr__() + ")"
-    def __str__(self):
-        return "Splitter"
-    def getNodeListRecursive(self):
-        return [self._input] + self._outputs.copy()
-    def matchStructure(self, other):
-        if self.__class__ != other.__class__:
-            return False
-        if len(self.outputs) != len(other.outputs):
-            return False
-        return True
-    def matchOrdered(self, other):
-        if not self.matchStructure(other):
-            return False
-        selfnodes = self.getNodeListRecursive()
-        othernodes = other.getNodeListRecursive()
-        if len(selfnodes) != len(othernodes):
-            return False
-        for i in range(len(selfnodes)):
-            for j in range(i):
-                if selfnodes[i] is selfnodes[j] and othernodes[i] is not othernodes[j]:
-                    return False
-                if selfnodes[i] is not selfnodes[j] and othernodes[i] is othernodes[j]:
-                    return False
-        return True
-    def match(self, other):
-        if self.__class__ != other.__class__:
-            return False
-        if len(self.outputs) != len(other.outputs):
-            return False
-        return self.matchOrdered(other)
-    def prune(self):
-        pass #no children
-    def inputNodes(self):
-        return {self.input}
-    def outputNodes(self):
-        return set(self.outputs)
-
-
-class Wire(Component):
-    ''' src and dst are Nodes.'''
-    __slots__ = "_src", "_dst"
-    def __init__(self, src: 'Node', dst: 'Node'):
-        Component.__init__(self)
-        assert isNode(src), f"Must be a node, not {src} which is {src.__class__}"
-        assert isNode(dst), f"Must be a node, not {dst} which is {dst.__class__}"
-        #assert src is not dst, "wire must have distinct ends"  #TODO uncomment this line
-        self._src = src
-        self._dst = dst
-    @property
-    def src(self):
-        '''The source node of the wire'''
-        return self._src
-    @src.setter
-    def src(self, src: 'Node'):
-        raise Exception("Can't directly modify this property")
-    @property
-    def dst(self):
-        '''The source node of the wire'''
-        return self._dst
-    @dst.setter
-    def dst(self, dst: 'Node'):
-        raise Exception("Can't directly modify this property")
-    def __repr__(self):
-        return "Wire(" + self.src.__repr__() + ", " + self.dst.__repr__() + ")"
-    def __str__(self):
-        return "wire from " + str(self.src) + " to " + str(self.dst)
-    def getNodeListRecursive(self):
-        return [self.src, self.dst]
-    def matchStructure(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components but not necessarily matching node identity structure'''
-        return self.__class__ == other.__class__
-    def matchOrdered(self, other):
-        '''returns true if self and other represent the same hardware, with the same ordering of components and the same node organization'''
-        return self.matchStructure(other)
-    def match(self, other):
-        '''returns true if self and other represent the same hardware.'''
-        return self.matchOrdered(other)
-    def prune(self):
-        pass #no children
-    def inputNodes(self):
-        return {self.src}
-    def outputNodes(self):
-        return {self.dst}
-
+    e = Function('f', [Node(), Node()])
+    print(c.match(e))  # False

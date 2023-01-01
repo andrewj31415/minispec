@@ -1,5 +1,5 @@
 
-import new_hardware as hardware
+import hardware
 import build
 import math # for math.inf in .numLiterals()
 
