@@ -215,7 +215,7 @@ class MLiteral(metaclass=MType):
         if not hasattr(self, '_tokensSourcedFrom'):
             self._tokensSourcedFrom = []
         return self._tokensSourcedFrom
-    def copy(self):
+    def copy(self) -> 'MLiteral':
         ''' Returns a copy of self. Used for handling source support of constant values. '''
         print(f"Cannot copy literals of type {self.__class__}")
         raise Exception("Not implemented")
