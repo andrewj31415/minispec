@@ -195,6 +195,8 @@ class MValue:
         return self._value
     def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
         ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the component. '''
+        assert tokens.__class__ == list, f"unexpected token class {tokens.__class__}"
+        assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
         self._tokensSourcedFrom.append(tokens)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
         ''' Returns the source tokens of self. '''
@@ -931,6 +933,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     '''Each method returns a component (module/function/etc.)
     nodes of type exprPrimary return the node corresponding to their value.
     stmt do not return anything; they mutate the current scope and the current hardware.'''
+
+    def visit(self, ctx) -> 'MValue':
+        value = ctx.accept(self)
+        # assert value.__class__ == MValue, f"Visited {ctx.__class__} and unexpectedly received value of type {value.__class__}"
+        return value
 
     def visitModuleForSynth(self, moduleCtx, params: 'list[MLiteral|MType]', args: 'list[MLiteral|Module]') -> 'ModuleWithMetadata':
         ''' Redirects to one of visitModuleDef, visitRegister, or visitVectorSubmodule as apporpriate.

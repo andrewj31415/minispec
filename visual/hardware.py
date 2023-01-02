@@ -137,6 +137,8 @@ class Wire:
         return "wire from " + str(self.src) + " to " + str(self.dst)
     def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
         ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the component. '''
+        assert tokens.__class__ == list, f"unexpected token class {tokens.__class__}"
+        assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
         self._tokensSourcedFrom.append(tokens)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
         ''' Returns the source tokens of self. '''
@@ -736,26 +738,7 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
     #                     parentELK["edges"] += componentELK["edges"]
     # eliminateVectorModules(componentELK, None)
 
-    # Collect all ports and mark parent pointers
-    def getPorts(componentELK, portsToComponents):
-        if "children" in componentELK:
-            for child in componentELK["children"]:
-                child["parent"] = componentELK
-                getPorts(child, portsToComponents)
-        if "ports" in componentELK:
-            for port in componentELK["ports"]:
-                portsToComponents[port["id"]] = (componentELK, port)
-    portsToComponents = {}  # Maps port ids to a tuple (corresponding component, port)
-    getPorts(componentELK, portsToComponents)
 
-    # Remove parent pointers (since JSON can't have circular references)
-    def removeParents(componentELK):
-        if "children" in componentELK:
-            for child in componentELK["children"]:
-                del child["parent"]
-                removeParents(child)
-    removeParents(componentELK)
-    
     # perhaps see https://snyk.io/advisor/npm-package/elkjs/example
 
     return { 'id': 'root',
