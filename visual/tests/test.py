@@ -225,9 +225,20 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-@it.skip('''Correctly folds all constants''')
+@it('''Correctly folds all constants''')
 def _():
-    assert False, "finish writing test"
+    text = pull('literals2')
+
+    for n in range(3):
+        t = Function(f't{n}', [Node()])
+        inv = Function('!', [Node()])
+        t.addChild(inv)
+        Wire(t.inputs[0], inv.inputs[0]), Wire(inv.output, t.output)
+
+        output = synth.parseAndSynth(text, f't{n}')
+        expected = t
+        assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 
 
 describe("If and Ternary Statements")

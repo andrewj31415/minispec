@@ -607,7 +607,7 @@ def Bit(n: 'IntegerLiteral'):
         def pow(self, other):
             raise Exception("Not implemented")
         def mul(self, other):
-            raise Exception("Not implemented")
+            return Bit(self.n)(self.value * other.value)
         def div(self, other):
             raise Exception("Not implemented")
         def mod(self, other):
@@ -615,7 +615,7 @@ def Bit(n: 'IntegerLiteral'):
         def add(self, other):
             return Bit(IntegerLiteral(max(self.n.value, other.n.value)))(self.value + other.value)
         def sub(self, other):
-            raise Exception("Not implemented")
+            return Bit(self.n)(self.value - other.value)
         def sleft(self, other):
             raise Exception("Not implemented")
         def sright(self, other):
