@@ -735,8 +735,21 @@ def _():
 def _():
     text = pull('bits4')
 
-    f = Function('f', [Node(), Node()])
-    #TODO finish writing test
+    fa, fc, fo = Node(), Node(), Node()
+    b = Constant(Bit(Integer(4))(6))
+    b1 = Constant(Bit(Integer(3))(6))
+    b2 = Constant(Bit(Integer(1))(0))
+    s1 = Function('[_]', [Node(), Node()])
+    s2 = Function('[_]', [Node(), Node()])
+    concat = Function('{}', [Node(), Node(), Node(), Node()])
+    f = Function('f', [fa, fc], fo, {b, b1, b2, s1, s2, concat})
+    Wire(concat.output, fo)
+    Wire(b1.output, concat.inputs[0])
+    Wire(b2.output, concat.inputs[1])
+    Wire(s1.output, concat.inputs[2])
+    Wire(s2.output, concat.inputs[3])
+    Wire(b.output, s1.inputs[0]), Wire(fa, s1.inputs[1])
+    Wire(fa, s2.inputs[0]), Wire(fc, s2.inputs[1])
 
     output = synth.parseAndSynth(text, 'f')
     expected = f
@@ -746,8 +759,18 @@ def _():
 def _():
     text = pull('bits5')
 
-    f = Function('f', [Node(), Node()])
-    #TODO finish writing test
+    fa, fc, fo = Node(), Node(), Node()
+    b1 = Constant(Bit(Integer(4))(6))
+    b2 = Constant(Bit(Integer(4))(6))
+    s1 = Function('[3:_]', [Node(), Node()])
+    s2 = Function('[_:_]', [Node(), Node(), Node()])
+    concat = Function('{}', [Node(), Node()])
+    f = Function('f', [fa, fc], fo, {b1, b2, s1, s2, concat})
+    Wire(concat.output, fo)
+    Wire(s1.output, concat.inputs[0])
+    Wire(s2.output, concat.inputs[1])
+    Wire(b1.output, s1.inputs[0]), Wire(fa, s1.inputs[1])
+    Wire(b2.output, s2.inputs[0]), Wire(fa, s2.inputs[1]), Wire(fc, s2.inputs[2])
 
     output = synth.parseAndSynth(text, 'f')
     expected = f

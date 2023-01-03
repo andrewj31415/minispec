@@ -2232,7 +2232,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             else:
                 return MValue(toSliceFrom.slice(msb))
         if isMLiteral(toSliceFrom):
-            toSliceFrom = toSliceFrom.getHardware(self.globalsHandler)
+            toSliceFrom = MValue(toSliceFrom).getHardware(self.globalsHandler)
         # TODO refactor assert we have a node at this point
         if isNode(toSliceFrom):  # we are slicing into an ordinary variable
             text = "["

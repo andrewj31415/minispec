@@ -505,10 +505,11 @@ def Bit(n: 'IntegerLiteral'):
             return Bit(self.n)(-self.value)
         ''' other operations '''
         def slice(self, msb, lsb=None):
-            if lsb:
-                raise Exception("Not implemented")
-            else:
-                return Bit(IntegerLiteral(1))((self.value//(2**msb.value)) % 2)
+            if lsb != None:
+                assert msb.value >= lsb.value, f"Values msb={msb} and lsb={lsb} are of range"
+                width = msb.value - lsb.value + 1
+                return Bit(IntegerLiteral(width))((self.value >> lsb.value) % 2**(width))
+            return Bit(IntegerLiteral(1))((self.value//(2**msb.value)) % 2)
     return BitLiteral
 BitLiteral = Bit #useful synonym
 
