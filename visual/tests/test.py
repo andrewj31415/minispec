@@ -1191,6 +1191,18 @@ def _():
     expected = b
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Handles unasigned literal default input''')
+def _():
+    text = pull('moduleDefault2')
+
+    inv = Constant(Bool(False))
+    inner = Module('Inner', {'enable': Node()}, {}, set())
+    outer = Module('Outer', {}, {}, {inner, inv})
+    Wire(inv.output, inner.inputs['enable'])
+
+    output = synth.parseAndSynth(text, 'Outer')
+    expected = outer
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 describe('''Handles built-ins''')
 
