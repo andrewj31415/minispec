@@ -41,31 +41,10 @@ Typedef synonyms. Every minispec class maintains an "untypedef" class method whi
 '''
 #TODO reexamine literal arithmetic for type conversions
 
-A list of minispec operations and the names used in code:
+A list of minispec literal operations:
 
 Binary operators:
 '**','*', '/', '%', '+', '-', '<<', '>>', '<', '<=', '>', '>=', '==', '!=', '&', '^', '^~', '~^', '|', '&&', '||'
-Names for methods in code:
-** is pow.
-* is mul.
-/ is div.
-% is mod.
-+ is add.
-- is sub.
-<< is sleft.
->> is sright.
-< is lt.
-<= is le, in terms of lt, eq
-> is gt, in terms of lt
->= is ge, in terms of lt, eq
-== is eq.
-!= is neq, in terms of eq
-& is bitand.
-^ is bitxor.
-^~, ~^ is bitnor.
-| is bitor.
-&& is booleanand.
-|| is booleanor.
 
 Unary operators:
 '!', '~', '&', '~&', '|', '~|', '^', '^~', '~^', '+', '-'
@@ -249,7 +228,8 @@ class MLiteral(metaclass=MType):
         Two literals compare equally under eq if they would compare equal in minispec, while
         two literals compare equally under __eq__ if they are the same literal. Also, __eq__
         returns a python boolean, while eq returns a minispec literal.
-        For example, 1'b1.eq(2'b1) is BooleanLiteral(True), but 1'b1.__eq__(2'b1) is False. '''
+        For example, 1'b1.eq(2'b1) is BooleanLiteral(True), but 1'b1.__eq__(2'b1) is False.
+        Furthermore, eq may return a DontCareLiteral if either of the operands is a DontCareLiteral. '''
         raise Exception(f"Not implemented on class {repr(self.__class__)}")
     @classmethod
     def untypedef(cls):  #TODO consider renaming "untypedef" to just "class" or "getClass" ...
@@ -295,7 +275,10 @@ class MLiteral(metaclass=MType):
         distinct is defined by minispec's "==" operator.
         Used in case statements to determine when all cases are covered. '''
         raise Exception("Not Implemented")
-    def eq(self, other: 'MLiteral') -> 'BooleanLiteral':
+    def eq(self, other: 'MLiteral') -> 'BooleanLiteral|DontCareLiteral':
+        ''' Returns Bool(True) if self and other represent the same minispec value.
+        Returns DontCareLiteral() if either self or other is a DontCareLiteral.
+        Requires self and other to have the same class. '''
         raise Exception(f"Not implemented on class {repr(self.__class__)}")
     '''unary operations. notredand is in terms of redand and inv.
     notredor is in terms of redor and inv. notredxor is in terms of redxor and inv.'''
@@ -393,9 +376,8 @@ def Enum(name: 'str', values: 'set[str]'):
         def sameType(self, other):
             return self._values == other._values
         def eq(self, other):
-            if self.__class__ != other.__class__:
-                return False
-            return self.value == other.value
+            assert self.__class__ == other.__class__, f"Can only compare values of the same type, found {self.__class__} and {other.__class__}"
+            return Bool(self.value == other.value)
         def __str__(self):
             return self.value
     return EnumType
@@ -439,10 +421,7 @@ def Struct(name: 'str', fields: 'dict[str, MType]'):
                 return False
             return all( self.fieldBinds[field] == other.fieldBinds[field] for field in self.fieldBinds )
         def eq(self, other):
-            if self.__class__ != other.__class__:
-                return Bool(False)
-            if set(self.fieldBinds) != set(other.fieldBinds):
-                return Bool(False)
+            assert self.__class__ == other.__class__, f"Can only compare values of the same type, found {self.__class__} and {other.__class__}"
             for field in self.fieldBinds:
                 if self.fieldBinds[field].eq(other.fieldBinds[field]) == Bool(False):
                     return Bool(False)
@@ -487,6 +466,7 @@ class Integer(MLiteral):
         '''Returns the python integer represented by self'''
         return self.value
     def eq(self, other):
+        assert self.__class__ == other.__class__, f"Can only compare values of the same type, found {self.__class__} and {other.__class__}"
         return BooleanLiteral(self.value == other.value)
     '''unary operations'''
     def booleaninv(self):
@@ -553,6 +533,7 @@ def Bit(n: 'IntegerLiteral'):
             assert -(2**(self.n-1)) <= i.toInt() < 2**self.n, "Bluespec requires Bit#(n) literals to be in range -2**(n-1),...,2**n-1."
             return Bit(self.n)(i.toInt())
         def eq(self, other):
+            assert self.__class__ == other.__class__, f"Can only compare values of the same type, found {self.__class__} and {other.__class__}"
             return BooleanLiteral(self.value == other.value)
         '''unary operations'''
         def booleaninv(self):
@@ -600,8 +581,10 @@ class Bool(MLiteral):
             return False
         return self.value == other.value
     def __bool__(self):
+        # raise Exception("Minispec Boolean values cannot be converted implicitly to python bool values since any occurrence of a minispec Boolean value could contain a DontCareLiteral instead")
         return self.value
     def eq(self, other):
+        assert self.__class__ == other.__class__, f"Can only compare values of the same type, found {self.__class__} and {other.__class__}"
         return self == other
     '''Unary operations'''
     def booleaninv(self):
@@ -726,11 +709,10 @@ def Maybe(mtype: 'MType'):
                 c.addSourceTokens(tokenArray)
             return c
         def eq(self, other):
-            if self.__class__ != other.__class__:
-                return False
+            assert self.__class__ == other.__class__, f"Can only compare values of the same type, found {self.__class__} and {other.__class__}"
             if (not self.isValid) and (not other.isValid): # both invalid
-                return True
-            return self.value == other.value
+                return Bool(True)
+            return Bool(self.value == other.value)
         @classmethod
         def sameType(self, other):
             return True
@@ -752,6 +734,7 @@ class DontCareLiteral(MLiteral):
         return self.__class__ == other.__class__
     def eq(self, other):
         # TODO figure out what happens to ? values in case/if statements/expressions
+        assert self.__class__ == other.__class__, f"Can only compare values of the same type, found {self.__class__} and {other.__class__}"
         return self
     '''unary operations'''
     def booleaninv(self):
