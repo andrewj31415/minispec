@@ -225,11 +225,11 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-@it('''Correctly folds all constants''')
-def _():
-    text = pull('literals2')
 
-    for n in range(3):
+def testn(n):
+    def test():
+        text = pull('literals2')
+
         t = Function(f't{n}', [Node()])
         inv = Function('!', [Node()])
         t.addChild(inv)
@@ -238,8 +238,11 @@ def _():
         output = synth.parseAndSynth(text, f't{n}')
         expected = t
         assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+    return test
 
-
+for n in range(1,5):
+    it(f'''Correctly folds all constants {n}''')(testn(n))
+    
 
 describe("If and Ternary Statements")
 
