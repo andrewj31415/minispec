@@ -19,10 +19,6 @@ MType: metaclass.
 
 MLiteral: base class. Has metaclass MType. All minispec types inherit from MLiteral.
 
-MLiteralOperations: A class used to handle type checking/coercions before performing literal operations.
-    Calls to literal operations outside of mtypes.py should go to MLiteralOperations. Also redirects some
-    operations in terms of others--for instance, != is defined in terms of ==.
-
 Any: used for types which are not known, such as return types of bluespec builtins.
 
 Parameterized types are created by factory functions. Equality of parameterized types is
@@ -39,8 +35,6 @@ Typedef synonyms. Every minispec class maintains an "untypedef" class method whi
 
 
 '''
-#TODO reexamine literal arithmetic for type conversions
-
 A list of minispec literal operations:
 
 Binary operators:
@@ -68,11 +62,6 @@ relational_binary = set(['<', '>', '<=', '>='])
 equality_binary = set(['==', '!='])
 logical_binary = set(['&', '^', '^~', '~^', '|'])
 boolean_binary = set(['&&', '||'])
-
-boolean_unary = set(['!'])
-logical_unary = set(['~'])
-arithmetic_unary = set(['+', '-'])
-reduction_unary = set(['&', '|', '^'])
 
 def numericalBinaryOperation(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'MLiteral':
     assert left.__class__ == Integer or left.isBitLiteral(), f"Expected Integer or Bit, not {left.__class__}"
@@ -152,8 +141,11 @@ def booleanBinaryOperation(left: 'Bool', right: 'Bool', op: 'str') -> 'Bool':
     raise Exception(f"Unrecognized binary operation {op}")
 
 def binaryOperation(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'MLiteral':
+    ''' Performs the specified binary operation on two literal values.
+    For typechecking specs, see, page ~170, "Type Classes for Bit" etc.
+        http://csg.csail.mit.edu/6.375/6_375_2019_www/resources/bsv-reference-guide.pdf '''
     if left.__class__ == DontCareLiteral or right.__class__ == DontCareLiteral:
-        return DontCareLiteral()
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     if op in boolean_binary:
         return booleanBinaryOperation(left, right, op)
     if op in arithmetic_binary or op in relational_binary or op in logical_binary:
@@ -161,6 +153,30 @@ def binaryOperation(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'MLiteral
     if op in equality_binary:
         return equalityBinaryOperation(left, right, op)
     raise Exception(f"Unrecognized binary operation {op}")
+
+def unaryOperation(value: 'MLiteral', op: 'str') -> 'MLiteral':
+    if op == '!':
+        return value.booleaninv()
+    if op == '~':
+        return value.inv()
+    if op == '&':
+        return value.redand(),
+    if op == '~&':
+        return value.redand().inv(),
+    if op == '|':
+        return value.redor(),
+    if op == '~|':
+        return value.redor().inv(),
+    if op == '^':
+        return value.redxor(),
+    if op == '^~':
+        return value.redxor().inv(),
+    if op == '~^':
+        return value.redxor().inv(),
+    if op == '+':
+        return value.unaryadd(),
+    if op == '-':
+        return value.neg()
 
 def binaryOperationConstantFold(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'MLiteral':
     ''' Returns the MLiteral corresponding to the operation `left` `op` `right`. '''
@@ -174,17 +190,7 @@ def binaryOperationConstantFold(left: 'MLiteral', right: 'MLiteral', op: 'str') 
 def unaryOperationConstantFold(value: 'MLiteral', op: 'str') -> 'MLiteral':
     ''' Returns the MLiteral corresponding to the operation `op` `value`. '''
     assert isMLiteral(value)
-    result = {'!': MLiteralOperations.booleaninv,
-                '~': MLiteralOperations.inv,
-                '&': MLiteralOperations.redand,
-                '~&': MLiteralOperations.notredand,
-                '|': MLiteralOperations.redor,
-                '~|': MLiteralOperations.notredor,
-                '^': MLiteralOperations.redxor,
-                '^~': MLiteralOperations.notredxor,
-                '~^': MLiteralOperations.notredxor,
-                '+': MLiteralOperations.unaryadd,
-                '-': MLiteralOperations.neg}[op](value)
+    result = unaryOperation(value, op)
     result.addSourceTokens(value.getSourceTokens())
     return result
 
@@ -267,6 +273,8 @@ class MLiteral(metaclass=MType):
         ''' Returns a copy of self. Used for handling source support of constant values. '''
         print(f"Cannot copy literals of type {self.__class__}")
         raise Exception("Not implemented")
+    def __bool__(self):
+        raise Exception("Minispec literal values cannot be converted implicitly to python bool values since a DontCareLiteral could be present.")
     def isBitLiteral(self):
         ''' used for type checking '''
         return False
@@ -296,44 +304,6 @@ class MLiteral(metaclass=MType):
         raise Exception(f"Not implemented on class {repr(self.__class__)}")
     def neg(self) -> 'MLiteral':
         raise Exception(f"Not implemented on class {repr(self.__class__)}")
-
-class MLiteralOperations:
-    '''class for calling operations on literals. handles typechecking and coercions.
-    also redirects some operations to others, eg >= in terms of > and ==.
-    For typechecking specs, see, page ~170, "Type Classes for Bit" etc.
-        http://csg.csail.mit.edu/6.375/6_375_2019_www/resources/bsv-reference-guide.pdf
-    '''
-    def coerceArithmetic(first, second):
-        if first.__class__ == IntegerLiteral and second.__class__ == BooleanLiteral:
-            first = second.fromIntegerLiteral(first)
-        elif first.__class__ == BooleanLiteral and second.__class__ == IntegerLiteral:
-            second = first.fromIntegerLiteral(second)
-        return (first, second)
-    def coerceBoolean(first, second):
-        assert first.__class__ == BooleanLiteral and second.__class__ == BooleanLiteral, "Boolean arithmetic requires boolean values"
-        return first, second
-    '''unary operations'''
-    def booleaninv(first):
-        return first.booleaninv()
-    def inv(first):
-        return first.inv()
-    def redand(first):
-        return first.redand()
-    def notredand(first):
-        return first.redand().inv()
-    def redor(first):
-        return first.redor()
-    def notredor(first):
-        return first.redor().inv()
-    def redxor(first):
-        return first.redxor()
-    def notredxor(first):
-        return first.redxor().inv()
-    def unaryadd(first):
-        return first.unaryadd()
-    def neg(first):
-        return first.neg()
-
 
 def Synonym(mtype: 'MType', newName: 'str'):
     ''' Returns a class which is a synonym of the given class, with the appropriate name.
@@ -539,7 +509,7 @@ def Bit(n: 'IntegerLiteral'):
         def booleaninv(self):
             raise Exception("Not implemented")
         def inv(self):
-            raise Exception("Not implemented")
+            return Bit(self.n)(~self.value)
         def redand(self):
             raise Exception("Not implemented")
         def redor(self):
@@ -624,21 +594,6 @@ def Vector(k: 'int', typeValue: 'MType'):
         def accept(cls, visitor):  #note that accept is called on Vector the class, not an instance of vector.
             ''' If the vector is being visited as a type, redirect it to synthesizing a vector. '''
             return visitor.visitVectorSubmodule(cls)
-        '''unary operations'''
-        def booleaninv(self):
-            raise Exception("Not implemented")
-        def inv(self):
-            raise Exception("Not implemented")
-        def redand(self):
-            raise Exception("Not implemented")
-        def redor(self):
-            raise Exception("Not implemented")
-        def redxor(self):
-            raise Exception("Not implemented")
-        def unaryadd(self):
-            raise Exception("Not implemented")
-        def neg(self):
-            raise Exception("Not implemented")
     VectorType._moduleCtx = BuiltinVectorCtx(typeValue)  # since this is also a ModuleType object
     VectorType._params = [k, typeValue]
     # TODO refactor the vector type into a separate type object and ctx parse node object
@@ -735,22 +690,22 @@ class DontCareLiteral(MLiteral):
     def eq(self, other):
         # TODO figure out what happens to ? values in case/if statements/expressions
         assert self.__class__ == other.__class__, f"Can only compare values of the same type, found {self.__class__} and {other.__class__}"
-        return self
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     '''unary operations'''
     def booleaninv(self):
-        return self
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     def inv(self):
-        return self
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     def redand(self):
-        return self
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     def redor(self):
-        return self
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     def redxor(self):
-        return self
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     def unaryadd(self):
-        return self
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     def neg(self):
-        return self
+        raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
 
 if __name__ == '__main__':
     # #Create a synonym of Bit#(32). For testing purposes.

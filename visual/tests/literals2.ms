@@ -39,3 +39,12 @@ function Bool t4(Bool a);
     else
         return False;
 endfunction
+
+function Bool t5(Bool a);
+    Bit#(8) v = ~8'b10010011;  // 0
+    Bool w = False && False; // False
+    if (!((v != 8'b01101100) || w))
+        return !a;
+    else
+        return False;
+endfunction

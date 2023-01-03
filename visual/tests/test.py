@@ -240,9 +240,9 @@ def testn(n):
         assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
     return test
 
-for n in range(1,5):
+for n in range(1,5+1):
     it(f'''Correctly folds all constants {n}''')(testn(n))
-    
+
 
 describe("If and Ternary Statements")
 
@@ -853,7 +853,7 @@ def _():
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
-describe('''Maybe Types''')
+describe('''Maybe Types and Don't-care Values''')
 
 @it('''Handles maybe input to module''')
 def _():
