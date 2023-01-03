@@ -95,31 +95,99 @@ logical_unary = set(['~'])
 arithmetic_unary = set(['+', '-'])
 reduction_unary = set(['&', '|', '^'])
 
+def numericalBinaryOperation(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'MLiteral':
+    assert left.__class__ == Integer or left.isBitLiteral(), f"Expected Integer or Bit, not {left.__class__}"
+    assert right.__class__ == Integer or right.isBitLiteral(), f"Expected Integer or Bit, not {right.__class__}"
+    
+    leftVal, rightVal = left.value, right.value
+    assert leftVal.__class__ == int, f"Expected int, not {leftVal.__class__}"
+    assert rightVal.__class__ == int, f"Expected int, not {leftVal.__class__}"
+    if left.isBitLiteral() and right.isBitLiteral():
+        assert left.n == right.n, f"Bit literals must have same width to operate, found widths {left.n} and {right.n}"
+    if left.isBitLiteral():
+        n = left.n
+    if right.isBitLiteral():
+        n = right.n
+    value = None
+    if op == '**':
+        value = leftVal ** rightVal
+    elif op == '*':
+        value = leftVal * rightVal
+    elif op == '/':
+        value = leftVal // rightVal
+    elif op == '%':
+        value = leftVal % rightVal
+    elif op == '+':
+        value = leftVal + rightVal
+    elif op == '-':
+        value = leftVal - rightVal
+    elif op == '<<':
+        value = leftVal << rightVal
+    elif op == '>>':
+        value = leftVal >> rightVal
+    elif op == '<':
+        return Bool(leftVal < rightVal)
+    elif op == '>':
+        return Bool(leftVal > rightVal)
+    elif op == '<=':
+        return Bool(leftVal <= rightVal)
+    elif op == '>=':
+        return Bool(leftVal >= rightVal)
+    elif op == '==':
+        return Bool(leftVal == rightVal)
+    elif op == '!=':
+        return Bool(leftVal != rightVal)
+    elif op == '&':
+        raise Exception("Not implemented")
+    elif op == '^':
+        raise Exception("Not implemented")
+    elif op == '^~' or op == '~^':
+        raise Exception("Not implemented")
+    elif op == '|':
+        raise Exception("Not implemented")
+    else:
+        raise Exception(f"Unrecognized binary operation {op}")
+    
+    if left.isBitLiteral() or right.isBitLiteral():
+        return Bit(n)(value % (2**n.value))
+    return Integer(value)
+
+def equalityBinaryOperation(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'Bool':
+    if (left.__class__ == Integer or left.isBitLiteral()) and (right.__class__ == Integer or right.isBitLiteral()):
+        # perform type coercions for integer/bit values
+        return numericalBinaryOperation(left, right, op)
+    if op == '==':
+        assert left.__class__ == right.__class__, f"Can only compare values of the same type, found {left.__class__} and {right.__class__}"
+        return left.eq(right)
+    if op == '!=':
+        return Bool(not equalityBinaryOperation(left, right, '==').value)
+    raise Exception(f"Unrecognized binary operation {op}")
+
+def booleanBinaryOperation(left: 'Bool', right: 'Bool', op: 'str') -> 'Bool':
+    assert left.__class__ == Bool, f"Expected Bool for binary operation {op}, not {left.__class__}"
+    assert right.__class__ == Bool, f"Expected Bool for binary operation {op}, not {right.__class__}"
+    if op == '&&':
+        return BooleanLiteral(left.value and right.value)
+    if op == '||':
+        return BooleanLiteral(left.value or right.value)
+    raise Exception(f"Unrecognized binary operation {op}")
+
+def binaryOperation(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'MLiteral':
+    if left.__class__ == DontCareLiteral or right.__class__ == DontCareLiteral:
+        return DontCareLiteral()
+    if op in boolean_binary:
+        return booleanBinaryOperation(left, right, op)
+    if op in arithmetic_binary or op in relational_binary or op in logical_binary:
+        return numericalBinaryOperation(left, right, op)
+    if op in equality_binary:
+        return equalityBinaryOperation(left, right, op)
+    raise Exception(f"Unrecognized binary operation {op}")
+
 def binaryOperationConstantFold(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 'MLiteral':
     ''' Returns the MLiteral corresponding to the operation `left` `op` `right`. '''
     assert isMLiteral(left)
     assert isMLiteral(right)
-    result =  {'**': MLiteralOperations.pow,
-                '*': MLiteralOperations.mul,
-                '/': MLiteralOperations.div,
-                '%': MLiteralOperations.mod,
-                '+': MLiteralOperations.add,
-                '-': MLiteralOperations.sub,
-                '<<': MLiteralOperations.sleft,
-                '>>': MLiteralOperations.sright,
-                '<': MLiteralOperations.lt,
-                '<=': MLiteralOperations.le,
-                '>': MLiteralOperations.gt,
-                '>=': MLiteralOperations.ge,
-                '==': MLiteralOperations.eq,
-                '!=': MLiteralOperations.neq,
-                '&': MLiteralOperations.bitand,
-                '^': MLiteralOperations.bitxor,
-                '^~': MLiteralOperations.bitnor,
-                '~^': MLiteralOperations.bitnor,
-                '|': MLiteralOperations.bitor,
-                '&&': MLiteralOperations.booleanand,
-                '||': MLiteralOperations.booleanor}[op](left, right)
+    result = binaryOperation(left, right, op)
     result.addSourceTokens(left.getSourceTokens())
     result.addSourceTokens(right.getSourceTokens())
     return result
@@ -219,46 +287,15 @@ class MLiteral(metaclass=MType):
         ''' Returns a copy of self. Used for handling source support of constant values. '''
         print(f"Cannot copy literals of type {self.__class__}")
         raise Exception("Not implemented")
+    def isBitLiteral(self):
+        ''' used for type checking '''
+        return False
     def numLiterals(self) -> 'int|float':
         ''' Returns the number of possible distinct literals of this type (or math.inf), where
         distinct is defined by minispec's "==" operator.
         Used in case statements to determine when all cases are covered. '''
         raise Exception("Not Implemented")
-    '''binary operations. self is assumed to be the first operand (in subtraction, divsion, etc.)
-    le, gt, ge are in terms of lt and eq. neq is in terms of eq.'''
-    def pow(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def mul(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def div(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def mod(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def add(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def sub(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def sleft(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def sright(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def lt(self, other: 'MLiteral') -> 'BooleanLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
     def eq(self, other: 'MLiteral') -> 'BooleanLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def bitand(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def bitxor(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def bitnor(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def bitor(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def booleanand(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def booleanand(self, other: 'MLiteral') -> 'MLiteral':
-        raise Exception(f"Not implemented on class {repr(self.__class__)}")
-    def booleanor(self, other: 'MLiteral') -> 'MLiteral':
         raise Exception(f"Not implemented on class {repr(self.__class__)}")
     '''unary operations. notredand is in terms of redand and inv.
     notredor is in terms of redor and inv. notredxor is in terms of redxor and inv.'''
@@ -292,57 +329,6 @@ class MLiteralOperations:
     def coerceBoolean(first, second):
         assert first.__class__ == BooleanLiteral and second.__class__ == BooleanLiteral, "Boolean arithmetic requires boolean values"
         return first, second
-    '''binary operations'''
-    def pow(first, second):
-        assert first.__class__ == IntegerLiteral and second.__class__ == IntegerLiteral, "pow can only be done with integer literals"
-        return first.pow(second)
-    def mul(first, second):
-        first, second = MLiteralOperations.coerceArithmetic(first, second)
-        return first.mul(second)
-    def div(first, second):
-        first, second = MLiteralOperations.coerceArithmetic(first, second)
-        return first.div(second)
-    def mod(first, second):
-        raise Exception("Not implemented")
-    def add(first, second):
-        first, second = MLiteralOperations.coerceArithmetic(first, second)
-        return first.add(second)
-    def sub(first, second):
-        first, second = MLiteralOperations.coerceArithmetic(first, second)
-        return first.sub(second)
-    def sleft(first, second):
-        first, second = MLiteralOperations.coerceArithmetic(first, second)
-        return first.sleft(second)
-    def sright(first, second):
-        first, second = MLiteralOperations.coerceArithmetic(first, second)
-        return first.sright(second)
-    def lt(first, second):
-        first, second = MLiteralOperations.coerceArithmetic(first, second)
-        return first.lt(second)
-    def le(first, second):
-        return MLiteralOperations.lt(first, second).booleanor(MLiteralOperations.eq(first, second))
-    def gt(first, second):
-        return MLiteralOperations.lt(second, first)
-    def ge(first, second):
-        return MLiteralOperations.lt(second, first).booleanor(MLiteralOperations.eq(first, second))
-    def eq(first, second):
-        return first.eq(second)
-    def neq(first, second):
-        return MLiteralOperations.booleaninv(MLiteralOperations.eq(first, second))
-    def bitand(first, second):
-        raise Exception("Not implemented")
-    def bitxor(first, second):
-        raise Exception("Not implemented")
-    def bitnor(first, second):
-        raise Exception("Not implemented")
-    def bitor(first, second):
-        raise Exception("Not implemented")
-    def booleanand(first, second):
-        first, second = MLiteralOperations.coerceBoolean(first, second)
-        return first.booleanand(second)
-    def booleanor(first, second):
-        first, second = MLiteralOperations.coerceBoolean(first, second)
-        return first.booleanand(second)
     '''unary operations'''
     def booleaninv(first):
         return first.booleaninv()
@@ -500,47 +486,8 @@ class Integer(MLiteral):
     def toInt(self) -> int:
         '''Returns the python integer represented by self'''
         return self.value
-    '''binary operations'''
-    def pow(self, other):
-        return IntegerLiteral(self.value ** other.value)
-    def mul(self, other):
-        return IntegerLiteral(self.value * other.value)
-    def div(self, other):
-        return IntegerLiteral(self.value // other.value)
-    def mod(self, other):
-        return IntegerLiteral(self.value % other.value)
-    def add(self, other):
-        return IntegerLiteral(self.value + other.value)
-    def sub(self, other):
-        return IntegerLiteral(self.value - other.value)
-    def sleft(self, other):
-        return IntegerLiteral(self.value << other.value)
-    def sright(self, other):
-        return IntegerLiteral(self.value >> other.value)
-    def lt(self, other):
-        return BooleanLiteral(self.value < other.value)
-    def le(self, other):
-        return BooleanLiteral(self.value <= other.value)
-    def gt(self, other):
-        return BooleanLiteral(self.value > other.value)
-    def ge(self, other):
-        return BooleanLiteral(self.value >= other.value)
     def eq(self, other):
         return BooleanLiteral(self.value == other.value)
-    def neq(self, other):
-        return BooleanLiteral(self.value != other.value)
-    def bitand(self, other):
-        raise Exception("Not implemented")
-    def bitxor(self, other):
-        raise Exception("Not implemented")
-    def bitnor(self, other):
-        raise Exception("Not implemented")
-    def bitor(self, other):
-        raise Exception("Not implemented")
-    def booleanand(self, other):
-        raise Exception("Not implemented")
-    def booleanor(self, other):
-        raise Exception("Not implemented")
     '''unary operations'''
     def booleaninv(self):
         raise Exception("Not implemented")
@@ -582,6 +529,8 @@ def Bit(n: 'IntegerLiteral'):
             for tokenArray in self.getSourceTokensNotFlat():
                 c.addSourceTokens(tokenArray)
             return c
+        def isBitLiteral(self):
+            return True
         def numLiterals(self) -> 'int|float':
             return 2**n.value
         @classmethod
@@ -603,47 +552,8 @@ def Bit(n: 'IntegerLiteral'):
         def fromIntegerLiteral(self, i: 'IntegerLiteral'):
             assert -(2**(self.n-1)) <= i.toInt() < 2**self.n, "Bluespec requires Bit#(n) literals to be in range -2**(n-1),...,2**n-1."
             return Bit(self.n)(i.toInt())
-        '''binary operations'''
-        def pow(self, other):
-            raise Exception("Not implemented")
-        def mul(self, other):
-            return Bit(self.n)(self.value * other.value)
-        def div(self, other):
-            raise Exception("Not implemented")
-        def mod(self, other):
-            raise Exception("Not implemented")
-        def add(self, other):
-            return Bit(IntegerLiteral(max(self.n.value, other.n.value)))(self.value + other.value)
-        def sub(self, other):
-            return Bit(self.n)(self.value - other.value)
-        def sleft(self, other):
-            raise Exception("Not implemented")
-        def sright(self, other):
-            raise Exception("Not implemented")
-        def lt(self, other):
-            return BooleanLiteral(self.value < other.value)
-        def le(self, other):
-            return BooleanLiteral(self.value <= other.value)
-        def gt(self, other):
-            return BooleanLiteral(self.value > other.value)
-        def ge(self, other):
-            return BooleanLiteral(self.value >= other.value)
         def eq(self, other):
             return BooleanLiteral(self.value == other.value)
-        def neq(self, other):
-            return BooleanLiteral(self.value != other.value)
-        def bitand(self, other):
-            raise Exception("Not implemented")
-        def bitxor(self, other):
-            raise Exception("Not implemented")
-        def bitnor(self, other):
-            raise Exception("Not implemented")
-        def bitor(self, other):
-            raise Exception("Not implemented")
-        def booleanand(self, other):
-            raise Exception("Not implemented")
-        def booleanor(self, other):
-            raise Exception("Not implemented")
         '''unary operations'''
         def booleaninv(self):
             raise Exception("Not implemented")
@@ -691,46 +601,8 @@ class Bool(MLiteral):
         return self.value == other.value
     def __bool__(self):
         return self.value
-    def pow(self, other):
-        raise Exception("Not implemented")
-    def mul(self, other):
-        raise Exception("Not implemented")
-    def div(self, other):
-        raise Exception("Not implemented")
-    def mod(self, other):
-        raise Exception("Not implemented")
-    def add(self, other):
-        raise Exception("Not implemented")
-    def sub(self, other):
-        raise Exception("Not implemented")
-    def sleft(self, other):
-        raise Exception("Not implemented")
-    def sright(self, other):
-        raise Exception("Not implemented")
-    def lt(self, other):
-        raise Exception("Not implemented")
-    def le(self, other):
-        raise Exception("Not implemented")
-    def gt(self, other):
-        raise Exception("Not implemented")
-    def ge(self, other):
-        raise Exception("Not implemented")
     def eq(self, other):
         return self == other
-    def neq(self, other):
-        raise Exception("Not implemented")
-    def bitand(self, other):
-        raise Exception("Not implemented")
-    def bitxor(self, other):
-        raise Exception("Not implemented")
-    def bitnor(self, other):
-        raise Exception("Not implemented")
-    def bitor(self, other):
-        raise Exception("Not implemented")
-    def booleanand(self, other):
-        return BooleanLiteral(self.value and other.value)
-    def booleanor(self, other):
-        return BooleanLiteral(self.value or other.value)
     '''Unary operations'''
     def booleaninv(self):
         return BooleanLiteral(not self.value)
@@ -878,46 +750,8 @@ class DontCareLiteral(MLiteral):
         return '?'
     def __eq__(self, other):
         return self.__class__ == other.__class__
-    # Returns itself for all binary operations
-    def pow(self, other):
-        return self
-    def mul(self, other):
-        return self
-    def div(self, other):
-        return self
-    def mod(self, other):
-        return self
-    def add(self, other):
-        return self
-    def sub(self, other):
-        return self
-    def sleft(self, other):
-        return self
-    def sright(self, other):
-        return self
-    def lt(self, other):
-        return self
-    def le(self, other):
-        return self
-    def gt(self, other):
-        return self
-    def ge(self, other):
-        return self
     def eq(self, other):
-        return self
-    def neq(self, other):
-        return self
-    def bitand(self, other):
-        return self
-    def bitxor(self, other):
-        return self
-    def bitnor(self, other):
-        return self
-    def bitor(self, other):
-        return self
-    def booleanand(self, other):
-        return self
-    def booleanor(self, other):
+        # TODO figure out what happens to ? values in case/if statements/expressions
         return self
     '''unary operations'''
     def booleaninv(self):
