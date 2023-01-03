@@ -225,9 +225,8 @@ def isMLiteral(value):
 class MLiteral(metaclass=MType):
     ''' A minispec type. Instances are minispec literals. '''
     _constructor = None
-    __slots__ = '_tokensSourcedFrom'
+    __slots__ = ()
     def __init__(self):
-        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
         raise Exception("Not implemented")
     def __eq__(self, other: 'MLiteral') -> bool:
         ''' Minispec literals have two types of equality, eq and __eq__.
@@ -246,29 +245,13 @@ class MLiteral(metaclass=MType):
     def sameType(self, other):
         ''' Returns true if self and other are the same minispec type. Assumes self and other were created in the same type factory. '''
         raise Exception(f"Not implemented, class {repr(self.__class__)} was not created in a type factory.")
-    def getHardware(self, globalsHandler):
+    def getHardware(self, globalsHandler, sourceTokens: 'list[list[tuple[str, int]]]') -> 'hardware.Node':
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
         constantFunc = hardware.Constant(self)
-        constantFunc.addSourceTokens(self.getSourceTokens())
+        for tokens in sourceTokens:
+            constantFunc.addSourceTokens(tokens)
         globalsHandler.currentComponent.addChild(constantFunc)
         return constantFunc.output
-    def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
-        ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the literal value. '''
-        assert tokens.__class__ == list, f"unexpected token class {tokens.__class__}"
-        assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
-        if not hasattr(self, '_tokensSourcedFrom'):
-            self._tokensSourcedFrom = []
-        self._tokensSourcedFrom.append(tokens.copy())
-    def getSourceTokens(self) -> 'list[tuple[str, int]]':
-        ''' Returns the source tokens of self. '''
-        if not hasattr(self, '_tokensSourcedFrom'):
-            self._tokensSourcedFrom = []
-        return sum(self._tokensSourcedFrom, [])
-    def getSourceTokensNotFlat(self) -> 'list[list[tuple[str, int]]]':
-        ''' Returns the source tokens of self. '''
-        if not hasattr(self, '_tokensSourcedFrom'):
-            self._tokensSourcedFrom = []
-        return self._tokensSourcedFrom
     def copy(self) -> 'MLiteral':
         ''' Returns a copy of self. Used for handling source support of constant values. '''
         print(f"Cannot copy literals of type {self.__class__}")

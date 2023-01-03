@@ -142,7 +142,7 @@ class Wire:
         assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
         self._tokensSourcedFrom.append(tokens)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
-        ''' Returns the source tokens of self. '''
+        ''' Returns the source tokens of self, flattened '''
         return sum(self._tokensSourcedFrom, [])
     def weight(self):
         ''' Returns an estimate of how large a Component is. '''
@@ -421,7 +421,7 @@ class Component:
         ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the component. '''
         self._tokensSourcedFrom.append(tokens)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
-        ''' Returns the source tokens of self. '''
+        ''' Returns the source tokens of self, flattened '''
         return sum(self._tokensSourcedFrom, [])
     def getAllWires(self) -> 'set[Wire]':
         ''' Returns the set of all wires in the data structure. '''

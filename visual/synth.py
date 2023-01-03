@@ -200,13 +200,19 @@ class MValue:
         assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
         self._tokensSourcedFrom.append(tokens)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
-        ''' Returns the source tokens of self. '''
+        ''' Returns the source tokens of self, flattened. '''
         return sum(self._tokensSourcedFrom, [])
     def copy(self) -> 'MValue':
         v = MValue(self.value)
         for token in self._tokensSourcedFrom:
             v.addSourceTokens(token)
         return v
+    def isLiteralValue(self):
+        return isMLiteral(self.value)
+    def getHardware(self, globalsHandler) -> 'Node':
+        assert globalsHandler.isGlobalsHandler(), "Quick type check"
+        assert self.isLiteralValue(), "Can only convert literal value to hardware"
+        return self.value.getHardware(globalsHandler, self._tokensSourcedFrom)
 
 class TemporaryScope:
     ''' Stores temporary state used in synthesis. '''
@@ -465,7 +471,7 @@ class ModuleWithMetadata:
             value = self.inputValues[inputName]
             assert value != None, f"All submodule inputs must be assigned--missing input {inputName} on {submoduleName}"
             if isMLiteral(value):
-                value = value.getHardware(globalsHandler)
+                value = MValue(value).getHardware(globalsHandler)
             if hasattr(self.module, 'isRegister') and self.module.isRegister():
                 inputNode = self.module.input
             else:
@@ -1577,12 +1583,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for stmt in ctx.stmt():
             self.visit(stmt)
 
-        returnValue = self.globalsHandler.currentScope.get(self, '-return').value
-        # if returnValue.__class__ == UnsynthesizableComponent:
-        #     return
-        if isMLiteral(returnValue):
-            returnValue = returnValue.getHardware(self.globalsHandler)
-        Wire(returnValue, funcComponent.output)
+        returnValue = self.globalsHandler.currentScope.get(self, '-return')
+        if isMLiteral(returnValue.value):
+            returnValueNode = returnValue.getHardware(self.globalsHandler)
+        else:
+            returnValueNode = returnValue.value
+        Wire(returnValueNode, funcComponent.output)
 
         self.globalsHandler.exitScope()
         self.globalsHandler.currentComponent = previousComponent #reset the current component
@@ -1621,7 +1627,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             return
         # Otherwise, we convert to hardware.
         if isMLiteral(value):
-            value = value.getHardware(self.globalsHandler)
+            value = MValue(value).getHardware(self.globalsHandler)
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
             # assign the variable, no slicing/subfields needed
             varName = lvalue.getText()
@@ -1709,7 +1715,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                             val = value
                             oldVal = self.globalsHandler.currentScope.get(self, regName + inputName).value
                             if isMLiteral(oldVal):
-                                oldVal = oldVal.getHardware(self.globalsHandler)
+                                oldVal = MValue(oldVal).getHardware(self.globalsHandler)
                             # create the relevant hardware
                             for k in range(len(indexValues)):
                                 indexValue = indexValues[len(indexValues) - 1 - k]
@@ -1722,7 +1728,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                     mux.inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
                                     eq = Function('=', [Node(), Node()])
                                     regIndex = regName.split(']')[k].split('[')[1]
-                                    const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
+                                    const = MValue(IntegerLiteral(int(regIndex))).getHardware(self.globalsHandler)
                                     Wire(eq.output, mux.control)
                                     Wire(indexValue, eq.inputs[0])
                                     Wire(const, eq.inputs[1])
@@ -1788,7 +1794,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # value has not yet been initialized
             return ("", tuple(), ctx.getText(), [])
         if isMLiteral(valueFound):
-            valueFound = valueFound.getHardware(self.globalsHandler)
+            valueFound = MValue(valueFound).getHardware(self.globalsHandler)
         return ("", (valueFound,), ctx.getText(), [])
 
     @decorateForErrorCatching
@@ -1905,7 +1911,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for i in range(len(possibleOutputs)):  # convert all possible outputs to hardware
                 possibleOutput = possibleOutputs[i]
                 if isMLiteral(possibleOutput):
-                    possibleOutputs[i] = possibleOutput.getHardware(self.globalsHandler)
+                    possibleOutputs[i] = MValue(possibleOutput).getHardware(self.globalsHandler)
             wires = [Wire(expr, mux.control)] + [ Wire(possibleOutputs[i], mux.inputs[i]) for i in range(len(possibleOutputs)) ]
             for component in [mux]:
                 self.globalsHandler.currentComponent.addChild(component)
@@ -1941,10 +1947,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for i in range(len(expri)):  # create hardware for values
             value = expri[i][1]
             if isMLiteral(value):
-                value = value.getHardware(self.globalsHandler)
+                value = MValue(value).getHardware(self.globalsHandler)
             valueWires.append(Wire(value, muxes[i].inputs[0]))
         if isMLiteral(defaultValue):
-            defaultValue = defaultValue.getHardware(self.globalsHandler)
+            defaultValue = MValue(defaultValue).getHardware(self.globalsHandler)
         valueWires.append(Wire(defaultValue, muxes[-1].inputs[1]))
         
         controlWires = []
@@ -1973,7 +1979,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     controlWires.append(Wire(n.output, muxControl))
             else:
                 if isMLiteral(controlValue):
-                    controlValue = controlValue.getHardware(self.globalsHandler)
+                    controlValue = MValue(controlValue).getHardware(self.globalsHandler)
                 eq = Function('==', [Node(), Node()])
                 controlComponents.append(eq)
                 controlWires.append(Wire(expr, eq.inputs[0]))
@@ -1993,14 +1999,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if ctx.unopExpr():  # our binary expression is actually a unopExpr.
             return self.visit(ctx.unopExpr())
         #we are either manipulating nodes/wires or manipulating integers.
-        left = self.visit(ctx.left).value
-        right = self.visit(ctx.right).value
+        leftValue = self.visit(ctx.left)
+        rightValue = self.visit(ctx.right)
+        left = leftValue.value
+        right = rightValue.value
         if not isNodeOrMLiteral(left): #we have received a ctx from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
-            left = self.visit(left).value
+            leftValue = self.visit(ctx.left)
+            left = leftValue.value
             if left.__class__ == UnsynthesizableComponent:
                 return MValue(UnsynthesizableComponent())
         if not isNodeOrMLiteral(right):
-            right = self.visit(right).value
+            rightValue = self.visit(ctx.right)
+            right = rightValue.value
             if right.__class__ == UnsynthesizableComponent:
                 return MValue(UnsynthesizableComponent())
         assert isNodeOrMLiteral(left), f"left side must be literal or node, not {left} which is {left.__class__}"
@@ -2008,14 +2018,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         op = ctx.op.text
         '''Combining literals'''
         if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
-            result = binaryOperationConstantFold(left, right, op)
+            result = MValue(binaryOperation(left, right, op))
             result.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-            return MValue(result)
+            return result
         # convert literals to hardware
         if isMLiteral(left):
-            left = left.getHardware(self.globalsHandler)
+            left = leftValue.getHardware(self.globalsHandler)
         if isMLiteral(right):
-            right = right.getHardware(self.globalsHandler)
+            right = rightValue.getHardware(self.globalsHandler)
         # both left and right are nodes, so we combine them using function hardware and return the output node.
         assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
         binComponent = Function(op, [Node("l"), Node("r")])
@@ -2055,9 +2065,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
         if isMLiteral(value):
-            result = unaryOperationConstantFold(value, op)
+            result = MValue(unaryOperation(value, op))
             result.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-            return MValue(result)
+            return result
         assert value.__class__ == Node, "value should be hardware"
         unopComponenet = Function(op, [Node("v")])
         unopComponenet.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
@@ -2078,13 +2088,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #   to be evaluated and must evaluate to an integer).
                 assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
                 params.append(value)
-        value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params).value
-        if value.__class__.__class__ == MType:
-            # we are returning a literal value, update its source
-            value = value.copy()  # make a copy so we don't have lots of different literals linked together
-            value.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
+        value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params).copy()  # make a copy so we don't mutate the original value when we add source tokens
+        value.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
         self.globalsHandler.lastParameterLookup = params
-        return MValue(value)
+        return value
 
     @decorateForErrorCatching
     def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
@@ -2093,7 +2100,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for expr in ctx.expression():
             value = self.visit(expr).value
             if isMLiteral(value):
-                value = value.getHardware(self.globalsHandler)
+                value = MValue(value).getHardware(self.globalsHandler)
             toConcat.append(value)
         inputs = []
         wires: 'list[tuple[Node, Node]]' = []
@@ -2150,8 +2157,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             # else we have an ordinary decimal integer
             i = IntegerLiteral(int(text))
-        i.addSourceTokens(tokensSourcedFrom)
-        return MValue(i)
+        iValue = MValue(i)
+        iValue.addSourceTokens(tokensSourcedFrom)
+        return iValue
 
     @decorateForErrorCatching
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
@@ -2184,7 +2192,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 fieldName = fieldList[i]
                 fieldValue = fieldValues[fieldName]
                 if isMLiteral(fieldValue):
-                    fieldValue = fieldValue.getHardware(self.globalsHandler)
+                    fieldValue = MValue(fieldValue).getHardware(self.globalsHandler)
                 Wire(fieldValue, combineComp.inputs[i])
             self.globalsHandler.currentComponent.addChild(combineComp)
             return MValue(combineComp.output)
@@ -2195,8 +2203,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
         tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
         d = DontCareLiteral()
-        d.addSourceTokens(tokensSourcedFrom)
-        return MValue(d)
+        dValue = MValue(d)
+        dValue.addSourceTokens(tokensSourcedFrom)
+        return dValue
 
     @decorateForErrorCatching
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
@@ -2315,7 +2324,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for i in range(len(functionArgs)):
                 exprValue = functionArgs[i]
                 if isMLiteral(exprValue):
-                    exprNode = exprValue.getHardware(self.globalsHandler)
+                    exprNode = MValue(exprValue).getHardware(self.globalsHandler)
                 else:
                     exprNode = exprValue
                 funcInputNode = funcComponent.inputs[i]
@@ -2344,7 +2353,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 for i in range(len(functionArgs)):
                     exprValue = functionArgs[i]
                     if isMLiteral(exprValue):
-                        exprNode = exprValue.getHardware(self.globalsHandler)
+                        exprNode = MValue(exprValue).getHardware(self.globalsHandler)
                     else:
                         exprNode = exprValue
                     funcInputNode = methodComponent.inputs[i]
@@ -2446,7 +2455,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for i in range(len(regsToWrite)):
             val = value
             if isMLiteral(val):
-                val = val.getHardware(self.globalsHandler)
+                val = MValue(val).getHardware(self.globalsHandler)
             vals.append(val)
         # assign the correct values
         for k in range(len(indexes)):
@@ -2464,7 +2473,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 # TODO mux inputNames
                 eq = Function('=', [Node(), Node()])
                 regIndex = regName.split(']')[k].split('[')[1]
-                const = IntegerLiteral(int(regIndex)).getHardware(self.globalsHandler)
+                const = MValue(IntegerLiteral(int(regIndex))).getHardware(self.globalsHandler)
                 Wire(eq.output, mux.control)
                 Wire(indexValue, eq.inputs[0])
                 Wire(const, eq.inputs[1])
@@ -2521,7 +2530,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # since the control signal is hardware, we convert the values to hardware as well (if needed)
             for i in range(len(values)):
                 if isMLiteral(values[i]):
-                    values[i] = values[i].getHardware(self.globalsHandler)
+                    values[i] = MValue(values[i]).getHardware(self.globalsHandler)
             muxComponent = Mux([ Node('v'+str(i)) for i in range(len(values)) ], Node('c'))
             muxComponent.inputNames = [str(value) for value in conditionLiterals]
             if tokensSourcedFrom:
