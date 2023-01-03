@@ -48,6 +48,7 @@ class Node:
     __slots__ = '_name', '_mtype', '_id', '_inWires', '_outWires', '_parent', '_isInput', '_label'
     def __init__(self, name: 'str' = "", mtype: 'MType' = Any):
         self._name = name
+        assert mtype.__class__ == MType, f"Expected a type, not {mtype}"
         self._mtype = mtype
         self._id = Node._num_nodes_created
         Node._num_nodes_created += 1

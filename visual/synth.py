@@ -295,17 +295,12 @@ class Scope:
             if output != None:
                 return output
         return None
-    def set(self, value: 'MValue', varName: 'str', parameters: 'list[int]' = None):
+    def set(self, value: 'MValue', varName: 'str'):
         '''Sets the given name/parameters to the given value in temporary storage,
         overwriting the previous value (if any) in temporary storage.
         Used for assigning variables to nodes, typically with no paramters.
         Currently ignores parameters.'''
         assert value.__class__ == MValue, f"Values must be MValue, not {value.__class__}"
-        if parameters == None:
-            parameters = []
-        assert len(parameters) == 0, f"Can't assign variable {varName} dynamically with parameters"
-        for param in parameters:
-            assert param.__class__ == int, f"Received unexpected class {param.__class__}"
         if self.fleeting:
             self.temporaryScope.temporaryValues[varName] = value
         else:
@@ -313,7 +308,7 @@ class Scope:
                 self.temporaryScope.temporaryValues[varName] = value
             else:
                 assert len(self.parents) == 1, f"Can't assign variable {varName} dynamically in a file scope"
-                self.parents[0].set(value, varName, parameters)
+                self.parents[0].set(value, varName)
     def setPermanent(self, value: 'MValue|None', varName: 'str', parameters: 'list[ctxType|str]' = None):
         '''Sets the given name/parameters to the given value in permanent storage.
         Overrules but does not overwrite previous values with the same name.
@@ -357,7 +352,7 @@ class BuiltInScope(Scope):
         self.name = name
         # self.permanentValues = {}
         # self.temporaryValues = {}
-    def set(self, value, varName: 'str', parameters: 'list[int]' = None):
+    def set(self, value, varName: 'str'):
         raise Exception(f"Can't set value {varName} in the built-in scope")
     def setPermanent(self, value, varName: 'str', parameters: 'list[ctxType|str]' = None):
         raise Exception(f"Can't set value {varName} permanently in the built-in scope")
@@ -1408,7 +1403,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         Bind the input in the appropriate context. (If the input is named 'in' then we bind in->Node('in').)
         Returns a tuple (inputName, defaultCtx), where defaultCtx is None if the input has no default value. '''
         inputName = ctx.name.getText()
-        inputType = self.visit(ctx.typeName())
+        inputType = self.visit(ctx.typeName()).value
         inputNode = Node(inputName, inputType)
         parentScope.setPermanent(None, inputName)
         parentScope.set(MValue(inputNode), inputName)
@@ -1565,7 +1560,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # a function with no arguments is still meaningful--if it is defined in a
             # module, it still has access to the module registers/inputs.
             for arg in ctx.argFormals().argFormal():
-                argType = self.visit(arg.typeName()) # typeName parse tree node
+                argType = self.visit(arg.typeName()).value # typeName parse tree node
                 argName = arg.argName.getText() # name of the variable
                 argNode = Node(argName, argType)
                 functionScope.set(MValue(argNode), argName)

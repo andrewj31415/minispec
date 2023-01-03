@@ -1138,9 +1138,8 @@ def _():
     expected = out
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-
-
 describe('''More Modules''')
+
 @it('''Handles functions inside of a module''')
 def _():
     text = pull('moduleFunction')
@@ -1157,6 +1156,64 @@ def _():
 
     output = synth.parseAndSynth(text, 'Outer')
     expected = out
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Handles modules with type parameter''')
+def _():
+    text = pull('moduleParameter')
+
+    r = Register('Reg#(Maybe#(Bit#(4)))')
+    m = Mux([Node(), Node()])
+    inv = Constant(Invalid(Bit(IntegerLiteral(4))))
+    isV = Function('isValid', [Node()])
+    i, o = Node(), Node()
+    b = Module('Buffer#(Bit#(4))', {'in': i}, {'out': o}, {r, m, inv, isV})
+    Wire(i, m.inputs[0]), Wire(inv.output, m.inputs[1])
+    Wire(isV.output, m.control), Wire(m.output, r.input)
+    Wire(i, isV.inputs[0])
+    Wire(r.output, o)
+    
+    output = synth.parseAndSynth(text, 'Buffer#(Bit#(4))')
+    expected = b
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
+describe('''Handles built-ins''')
+
+@it('''Handles log2''')
+def _():
+    text = pull('builtins')
+
+    o = Node()
+    four = Constant(IntegerLiteral(4))
+    f = Function('constant#(8)', [], o, {four})
+    Wire(four.output, o)
+
+    output = synth.parseAndSynth(text, 'constant#(8)')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+    o = Node()
+    three = Constant(IntegerLiteral(3))
+    f = Function('constant#(7)', [], o, {three})
+    Wire(three.output, o)
+
+    output = synth.parseAndSynth(text, 'constant#(7)')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Handles $display''')
+def _():
+    text = pull('builtins')
+
+    r = Register('Reg#(Bit#(4))')
+    i, o = Node(), Node()
+    m = Module('Buffer', {'in': i}, {'out': o}, {r})
+    Wire(i, r.input), Wire(r.output, o)
+    
+    output = synth.parseAndSynth(text, 'Buffer')
+    garbageCollection1(output)
+    expected = m
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
