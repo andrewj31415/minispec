@@ -731,6 +731,28 @@ def _():
     expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly constant-folds literal slice expressions and other slice combinations''')
+def _():
+    text = pull('bits4')
+
+    f = Function('f', [Node(), Node()])
+    #TODO finish writing test
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly handles slices with variable width''')
+def _():
+    text = pull('bits5')
+
+    f = Function('f', [Node(), Node()])
+    #TODO finish writing test
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
 describe('''For Loops''')
 
 @it('''Correctly handles for loop''')
