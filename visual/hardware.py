@@ -169,6 +169,8 @@ class Component:
         Component._num_components_created += 1
         self._name: 'str' = name
         self._children: 'set[Component]' = children
+        for child in self._children:
+            child._parent = self
         self._inputs: 'dict[Any, Node]' = inputs
         for nodeKey in inputs:
             node = inputs[nodeKey]
@@ -834,19 +836,21 @@ def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', p
                         'tokensSourcedFrom':item.getSourceTokens()}
     elif item.__class__ == Mux:
         ports = []
+        ind = len(item.inputs)+1
         for i in range(len(item.inputs)):
             node = item.inputs[i]
-            nodeELK = nodeToELK(node, {'port.side': 'WEST'})
+            nodeELK = nodeToELK(node, {'port.side': 'WEST', 'port.index': ind})
             if item.inputNames:
                 setPortLabel(nodeELK, item.inputNames[i], 0, 0)
             ports.append(nodeELK)
-        ports.append( nodeToELK(item.control, {'port.side': 'SOUTH'}) )
-        ports.append( nodeToELK(item.output, {'port.side': 'EAST'}) )
+            ind -= 1  # elk indexes nodes clockwise from the top, so the index decrements.
+        ports.append( nodeToELK(item.control, {'port.side': 'SOUTH', 'port.index': 1}) )
+        ports.append( nodeToELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
         jsonObj = { 'id': elkID(item),
                     'ports': ports,
                     'width': 10,
                     'height': 10 * len(item.inputs),
-                    'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+                    'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         jsonObj['isMux'] = True
         jsonObj['i'] = {'name': '',
                         'weight': weightAdjust(item.weight()),

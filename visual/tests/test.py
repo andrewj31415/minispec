@@ -414,19 +414,30 @@ def _():
     expected = f3
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
-@it.skip('''Correctly handles partially constant-folded case statement''')
+@it('''Correctly handles partially constant-folded case statement''')
 def _():
     text = pull('cases2')
 
     fa, fb, fc, fd, fo = Node(), Node(), Node(), Node(), Node()
-    zero, one, two, four, zeroy, oney = Function('0'), Function('1'), Function('2'), Function('4'), Function('0'), Function('1')
-    concat = Function('{}', [], [Node(), Node()])
+    zero, one, two, four, eight = Constant(Integer(0)), Constant(Integer(1)), Constant(Integer(2)), Constant(Integer(4)), Constant(Integer(8)), 
+    zero1y, zero2y, zero3y, zero4y, oney = Constant(Integer(0)), Constant(Integer(0)), Constant(Integer(0)), Constant(Integer(0)), Constant(Integer(1))
+    concat = Function('{}', [Node(), Node()])
     ma, mb, mc, md = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
     may, mby, mcy, mdy = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
 
-    #TODO finish writing spec
+    f = Function('f', [fa, fb, fc, fd], fo, {zero, one, two, four, eight, zero1y, zero2y, zero3y, zero4y, oney, ma, mb, mc, md, may, mby, mcy, mdy, concat})
+    Wire(concat.output, fo)
+    Wire(ma.output, concat.inputs[0]), Wire(may.output, concat.inputs[1])
 
-    f = Function('f', [zero, one, two, four, zeroy, oney, ma, mb, mc, md, may, mby, mcy, mdy, concat, Wire(concat.output, fo)], [fa, fb, fc, fd], fo)
+    Wire(one.output, ma.inputs[0]), Wire(two.output, mb.inputs[0]), Wire(four.output, mc.inputs[0])
+    Wire(mb.output, ma.inputs[1]), Wire(mc.output, mb.inputs[1]), Wire(md.output, mc.inputs[1])
+    Wire(fa, ma.control), Wire(fb, mb.control), Wire(fc, mc.control), Wire(fd, md.control)
+    Wire(eight.output, md.inputs[0]), Wire(zero.output, md.inputs[1])
+
+    Wire(zero1y.output, may.inputs[0]), Wire(zero2y.output, mby.inputs[0]), Wire(zero3y.output, mcy.inputs[0])
+    Wire(mby.output, may.inputs[1]), Wire(mcy.output, mby.inputs[1]), Wire(mdy.output, mcy.inputs[1])
+    Wire(fa, may.control), Wire(fb, mby.control), Wire(fc, mcy.control), Wire(fd, mdy.control)
+    Wire(oney.output, mdy.inputs[1]), Wire(zero4y.output, mdy.inputs[0])
 
     output = synth.parseAndSynth(text, 'f')
     expected = f
