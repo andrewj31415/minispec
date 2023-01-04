@@ -187,6 +187,16 @@ Note:
 ctx_with_value = [
     build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext,
     build.MinispecPythonParser.MinispecPythonParser.CaseExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.SliceExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.VarExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext,
+    build.MinispecPythonParser.MinispecPythonParser.ParenExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.StringLiteralContext,
+    build.MinispecPythonParser.MinispecPythonParser.CallExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.FieldExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.BitConcatContext,
+    build.MinispecPythonParser.MinispecPythonParser.StructExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext,
 ]
 
 class MValue:
@@ -194,7 +204,7 @@ class MValue:
     May be a Node, an MLiteral, a Register, a PartiallyIndexedModule, an antlr ctx object, etc.
     TODO make a full list of variants '''
     __slots__ = '_value', '_tokensSourcedFrom'
-    def __init__(self, value: 'Any'):
+    def __init__(self, value: 'Any', tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []):
         assert value.__class__ != MValue, "Cannot have an MValue inside of an MValue"
         assert (
             value.__class__ == MType
@@ -213,6 +223,8 @@ class MValue:
         ), f"Unexpected value class {value.__class__}"
         self._value: 'Any' = value
         self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
+        for tokens in tokensSourcedFrom:
+            self.addSourceTokens(tokens)
     @property
     def value(self):
         return self._value
@@ -235,6 +247,39 @@ class MValue:
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
         assert self.isLiteralValue(), "Can only convert literal value to hardware"
         return self.value.getHardware(globalsHandler, self._tokensSourcedFrom)
+    def getNodeOrMLiteral(self, visitor: 'SynthesizerVisitor') -> 'MValue':
+        ''' Returns an MValue with the same source info with a Node or MLiteral.
+        Throws if self does not correspond to a Node or MLiteral. '''
+        expanded = self.evaluateMValue(visitor)
+        if expanded.value.__class__ == Node:
+            return expanded.copy()
+        if expanded.value.__class__.__class__ == MType:
+            return expanded.copy()
+        if isinstance(expanded.value, Component):
+            return MValue(expanded.value.output, expanded._tokensSourcedFrom)
+        raise Exception(f"Unexpected class {expanded.value.__class__} does not correspond to a Node or MLiteral")
+    def evaluateMValue(self, visitor: 'SynthesizerVisitor') -> 'MValue':
+        ''' Returns an MValue with the same source and not containing a context object. '''
+        if (self.value.__class__ == MType
+            or self.value.__class__.__class__ == MType
+            or self.value.__class__ == Node
+            or isinstance(self.value, Component)
+            or self.value.__class__ == PartiallyIndexedModule
+            or self.value.__class__ == UnsynthesizableComponent
+            or self.value == None):
+            return self.copy()
+        expanded = visitor.visit(self.value)
+        if isinstance(expanded.value, Component):
+            # we visitied a ctx object which was synthesized to a Component, so we register the created hardware.
+            visitor.globalsHandler.currentComponent.addChild(expanded.value)
+        for tokens in self._tokensSourcedFrom:
+            expanded.addSourceTokens(tokens)
+        return expanded.evaluateMValue(visitor)
+    def getNode(self) -> 'Node':
+        ''' Converts the MValue into a Node.
+        Throws if self does not correspond to a Node. '''
+            # return MValue(self.getHardware(visitor.globalsHandler))
+        raise Exception("Not implemented")
 
 class TemporaryScope:
     ''' Stores temporary state used in synthesis. '''
@@ -2064,7 +2109,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
         ''' Return the Node or MLiteral corresponding to the expression '''
         if not ctx.op:  # our unopExpr is actually just an exprPrimary.
-            value = self.visit(ctx.exprPrimary()).value
+            # value = MValue(ctx.exprPrimary()).getNodeOrMLiteral(self).value
+            # if value.__class__ == UnsynthesizableComponent:
+            #         return MValue(UnsynthesizableComponent())
+            # value = self.visit(ctx.exprPrimary()).value
+            value = self.visit(ctx.exprPrimary()).evaluateMValue(self).value
             if not isNodeOrMLiteral(value):
                 if hasattr(value, 'isRegister') and value.isRegister():
                     value = value.value
@@ -2072,18 +2121,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     return MValue(value)
                 elif value.__class__ == UnsynthesizableComponent:
                     return MValue(UnsynthesizableComponent())
-                else:
-                    # we have a ctx object, so we visit it
-                    value = self.visit(value).value
-                    if value.__class__ == Function:
-                        # we visitied a ctx object which was a function, so the corresponding value is the output.
-                        self.globalsHandler.currentComponent.addChild(value)
-                        value = value.output
+                elif value.__class__ == Function:
+                    value = value.output
+                # else:
+                #     # we have a ctx object, so we visit it
+                #     value = self.visit(value).value
+                #     if value.__class__ == Function:
+                #         # we visitied a ctx object which was a function, so the corresponding value is the output.
+                #         self.globalsHandler.currentComponent.addChild(value)
+                #         value = value.output
             assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
             return MValue(value)
-        value = self.visit(ctx.exprPrimary()).value
-        if hasattr(value, 'isRegister') and value.isRegister():
-            value = value.value
+        value = MValue(ctx.exprPrimary()).getNodeOrMLiteral(self).value
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
         if isMLiteral(value):
