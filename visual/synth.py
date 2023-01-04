@@ -275,10 +275,19 @@ class MValue:
         for tokens in self._tokensSourcedFrom:
             expanded.addSourceTokens(tokens)
         return expanded.evaluateMValue(visitor)
-    def getNode(self) -> 'Node':
-        ''' Converts the MValue into a Node.
+    def getNodeFromMValue(self, visitor: 'SynthesizerVisitor') -> 'MValue':
+        ''' Returns an MValue with the same source and containing a Node.
         Throws if self does not correspond to a Node. '''
-            # return MValue(self.getHardware(visitor.globalsHandler))
+        expanded = self.getNodeOrMLiteral(visitor)
+        for token in self._tokensSourcedFrom:
+                expanded.addSourceTokens(token)
+        if expanded.value.__class__.__class__ == MType:
+            nodeValue = MValue(expanded.getHardware(visitor.globalsHandler))
+            for token in expanded._tokensSourcedFrom:
+                nodeValue.addSourceTokens(token)
+            return nodeValue
+        assert expanded.value.__class__ == Node, f"Unexpected class {expanded.value.__class__}"
+        return expanded.copy()
         raise Exception("Not implemented")
 
 class TemporaryScope:
@@ -1544,7 +1553,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # there are no arguments, so we synthesize the method inside the current module.
         if ctx.expression():
             # the method is a single-line expression.
-            value = self.visit(ctx.expression()).value
+            value = self.visit(ctx.expression()).getNodeFromMValue(self).value
             if isMLiteral(value):  # convert value to hardware before linking to output node
                 value = value.getHardware(self.globalsHandler)
             Wire(value, methodOutputNode)
@@ -1554,11 +1563,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.visit(stmt)
         
             # collect the return value
-            returnValue = self.globalsHandler.currentScope.get(self, '-return').value
-            if returnValue.__class__ != UnsynthesizableComponent:
-                if isMLiteral(returnValue):
-                    returnValue = returnValue.getHardware(self.globalsHandler)
-                Wire(returnValue, methodOutputNode)
+            returnValue = self.globalsHandler.currentScope.get(self, '-return').evaluateMValue(self)
+            if returnValue.value.__class__ != UnsynthesizableComponent:
+                returnValue = returnValue.getNodeFromMValue(self)
+                Wire(returnValue.value, methodOutputNode)
 
         if ctx.argFormals():
             self.globalsHandler.currentComponent = previousComponent  #reset the current component
@@ -1650,12 +1658,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for stmt in ctx.stmt():
             self.visit(stmt)
 
-        returnValue = self.globalsHandler.currentScope.get(self, '-return')
-        if isMLiteral(returnValue.value):
-            returnValueNode = returnValue.getHardware(self.globalsHandler)
-        else:
-            returnValueNode = returnValue.value
-        Wire(returnValueNode, funcComponent.output)
+        returnValue = self.globalsHandler.currentScope.get(self, '-return').evaluateMValue(self)
+        if returnValue.value.__class__ != UnsynthesizableComponent:
+            returnValue = returnValue.getNodeFromMValue(self)
+            Wire(returnValue.value, funcComponent.output)
 
         self.globalsHandler.exitScope()
         self.globalsHandler.currentComponent = previousComponent #reset the current component
@@ -2066,20 +2072,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if ctx.unopExpr():  # our binary expression is actually a unopExpr.
             return self.visit(ctx.unopExpr())
         #we are either manipulating nodes/wires or manipulating integers.
-        leftValue = self.visit(ctx.left)
-        rightValue = self.visit(ctx.right)
+        leftValue = self.visit(ctx.left).evaluateMValue(self)
+        rightValue = self.visit(ctx.right).evaluateMValue(self)
         left = leftValue.value
         right = rightValue.value
-        if not isNodeOrMLiteral(left): #we have received a ctx from constant storage, probably references to global constants that should evaluate to integers. Evaluate them.
-            leftValue = self.visit(ctx.left)
-            left = leftValue.value
-            if left.__class__ == UnsynthesizableComponent:
-                return MValue(UnsynthesizableComponent())
-        if not isNodeOrMLiteral(right):
-            rightValue = self.visit(ctx.right)
-            right = rightValue.value
-            if right.__class__ == UnsynthesizableComponent:
-                return MValue(UnsynthesizableComponent())
+        if left.__class__ == UnsynthesizableComponent:
+            return MValue(UnsynthesizableComponent())
+        if right.__class__ == UnsynthesizableComponent:
+            return MValue(UnsynthesizableComponent())
+        leftValue = leftValue.getNodeOrMLiteral(self)
+        rightValue = rightValue.getNodeOrMLiteral(self)
+        left = leftValue.value
+        right = rightValue.value
         assert isNodeOrMLiteral(left), f"left side must be literal or node, not {left} which is {left.__class__}"
         assert isNodeOrMLiteral(right), f"right side must be literal or node, not {right} which is {right.__class__}"
         op = ctx.op.text
@@ -2109,29 +2113,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
         ''' Return the Node or MLiteral corresponding to the expression '''
         if not ctx.op:  # our unopExpr is actually just an exprPrimary.
-            # value = MValue(ctx.exprPrimary()).getNodeOrMLiteral(self).value
-            # if value.__class__ == UnsynthesizableComponent:
-            #         return MValue(UnsynthesizableComponent())
-            # value = self.visit(ctx.exprPrimary()).value
-            value = self.visit(ctx.exprPrimary()).evaluateMValue(self).value
-            if not isNodeOrMLiteral(value):
-                if hasattr(value, 'isRegister') and value.isRegister():
-                    value = value.value
-                elif isinstance(value, Module):  # we have found a module, such as a shared module.
-                    return MValue(value)
-                elif value.__class__ == UnsynthesizableComponent:
-                    return MValue(UnsynthesizableComponent())
-                elif value.__class__ == Function:
-                    value = value.output
-                # else:
-                #     # we have a ctx object, so we visit it
-                #     value = self.visit(value).value
-                #     if value.__class__ == Function:
-                #         # we visitied a ctx object which was a function, so the corresponding value is the output.
-                #         self.globalsHandler.currentComponent.addChild(value)
-                #         value = value.output
-            assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
-            return MValue(value)
+            return self.visit(ctx.exprPrimary())
         value = MValue(ctx.exprPrimary()).getNodeOrMLiteral(self).value
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
@@ -2169,9 +2151,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Bit concatenation is just a function. Returns the function output. '''
         toConcat = []
         for expr in ctx.expression():
-            value = self.visit(expr).value
-            if isMLiteral(value):
-                value = MValue(value).getHardware(self.globalsHandler)
+            value = self.visit(expr).getNodeFromMValue(self).value
             toConcat.append(value)
         inputs = []
         wires: 'list[tuple[Node, Node]]' = []
@@ -2659,8 +2639,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 exprHardware: 'Node' = expr.getHardware(self.globalsHandler)
             else:
                 exprHardware: 'Node' = expr
-            if isMLiteral(exprToMatch):
-                exprToMatch = exprToMatch.getHardware(self.globalsHandler)
+            exprToMatch = MValue(exprToMatch).getNodeFromMValue(self).value
             eqComp = Function('==', [Node(), Node()])
             Wire(exprHardware, eqComp.inputs[0])
             Wire(exprToMatch, eqComp.inputs[1])
