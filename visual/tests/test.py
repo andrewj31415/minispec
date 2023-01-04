@@ -492,6 +492,44 @@ def _():
     expected = h
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Correctly handles more case statements 1''')
+def _():
+    text = pull('cases5')
+
+    fa, fb, fo = Node(), Node(), Node()
+    ma = Mux([Node(), Node()])
+    mb = Mux([Node(), Node()])
+    one, two, three = Constant(Integer(1)), Constant(Integer(2)), Constant(Integer(3))
+    f = Function('f', [fa, fb], fo, {ma, mb, one, two, three})
+    Wire(ma.output, fo)
+    Wire(fa, ma.control), Wire(fb, mb.control)
+    Wire(mb.output, ma.inputs[1]), Wire(one.output, ma.inputs[0])
+    Wire(two.output, mb.inputs[0]), Wire(three.output, mb.inputs[1])
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+@it('''Correctly handles more case statements 2''')
+def _():
+    text = pull('cases5')
+
+    ga, gb, go = Node(), Node(), Node()
+    mb = Mux([Node(), Node()])
+    eq = Function('==', [Node(), Node()])
+    mf = Mux([Node(), Node()])
+    zero, one, two = Constant(Integer(0)), Constant(Integer(1)), Constant(Integer(2))
+    g = Function('g', [ga, gb], go, {mb, mf, eq, zero, one, two})
+    Wire(eq.output, mb.control)
+    Wire(ga, eq.inputs[0]), Wire(gb, eq.inputs[1])
+    Wire(one.output, mb.inputs[0]), Wire(mf.output, mb.inputs[1])
+    Wire(zero.output, mf.inputs[1]), Wire(two.output, mf.inputs[0])
+    Wire(ga, mf.control)
+    Wire(mb.output, go)
+
+    output = synth.parseAndSynth(text, 'g')
+    expected = g
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 describe('''Case Expressions''')
 

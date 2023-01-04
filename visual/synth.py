@@ -2584,6 +2584,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         exprToMatch = expri[index][0]
         ifStmt = expri[index][1]
 
+        muxLabels = [BooleanLiteral(True), BooleanLiteral(False)]
+
         # set up the if/else condition.
         # we create an equality tester to compare the expr and the exprToMatch and pass in the output node.
         # if they are booleans and one is a literal, we feed the non-boolean in directly (or inverted) to avoid boolean laundering.
@@ -2596,23 +2598,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.visit(ifStmt)  # run this in the original scope since there is no branching, then end the case statement.
             return
         elif isMLiteral(expr) and not isMLiteral(exprToMatch) and expr.__class__ == Bool:
-            if expr:
-                condition = exprToMatch
-            else:
-                n = Function('~', [Node()])
-                wIn = Wire(exprToMatch, n.inputs[0])
-                for component in [n, wIn]:
-                    self.globalsHandler.currentComponent.addChild(component)
-                condition = n.output
+            if not expr:
+                muxLabels = [BooleanLiteral(False), BooleanLiteral(True)]
+            condition = exprToMatch
         elif not isMLiteral(expr) and isMLiteral(exprToMatch) and exprToMatch.__class__ == Bool:
-            if exprToMatch:
-                condition = exprToMatch
-            else:
-                n = Function('~', [Node()])
-                wIn = Wire(expr, n.inputs[0])
-                for component in [n, wIn]:
-                    self.globalsHandler.currentComponent.addChild(component)
-                condition = n.output
+            if not exprToMatch:
+                muxLabels = [BooleanLiteral(False), BooleanLiteral(True)]
+            condition = expr
         else:  # neither are boolean literals
             if isMLiteral(expr):
                 exprHardware: 'Node' = expr.getHardware(self.globalsHandler)
@@ -2621,10 +2613,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if isMLiteral(exprToMatch):
                 exprToMatch = exprToMatch.getHardware(self.globalsHandler)
             eqComp = Function('==', [Node(), Node()])
-            wire1 = Wire(exprHardware, eqComp.output)
-            wire2 = Wire(exprToMatch, eqComp.output)
-            for component in [eqComp, wire1, wire2]:
-                self.globalsHandler.currentComponent.addChild(component)
+            Wire(exprHardware, eqComp.inputs[0])
+            Wire(exprToMatch, eqComp.inputs[1])
+            self.globalsHandler.currentComponent.addChild(eqComp)
             condition = eqComp.output
 
         self.globalsHandler.currentScope = ifScope
@@ -2636,7 +2627,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         elif defaultItem:
             self.visit(defaultItem.stmt())
 
-        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope], [BooleanLiteral(True), BooleanLiteral(False)])
+        self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope], muxLabels)
 
         self.globalsHandler.currentScope = originalScope
 
@@ -2672,10 +2663,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for expression in caseStmtItem.expression():
                 currentExpr = self.visit(expression).value
                 if isMLiteral(currentExpr):
+                    duplicate = False
                     for otherLiteral in expriLiterals:
                         if currentExpr.__class__ == otherLiteral.__class__  and currentExpr.eq(otherLiteral):
                             # we have a duplicate literal which will never be reached, so we discard it
-                            continue
+                            duplicate = True
+                            break
+                    if duplicate:
+                        continue
                     if isMLiteral(expr) and not expr.eq(currentExpr):
                         # we have a branch of the case statement which will never run, so we skip it
                         continue
@@ -2700,8 +2695,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # - we need to determine if there is an implicit default "do nothing"--specifically, if there is no
             #   default statement given and not all possible literals are covered, we need to have an extra default
             #   scope that corresponds to no expri statement running.
-            if isMLiteral(expr):
-                expr = expr.getHardware(self.globalsHandler)
+            assert expr.__class__ == Node, "Expected expr is a Node--otherwise we would have constant-folded the case statement"
             hasDefault = ctx.caseStmtDefaultItem() != None
             numLiteralsNeeded = min([literal[0].numLiterals() for literal in expri])
             numLiteralsPresent = len(expri)
@@ -2711,7 +2705,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if numLiteralsPresent == numLiteralsNeeded:
                 coversAllCases = True
             else:
-                assert numLiteralsPresent < numLiteralsNeeded, "Something has gone wrong with counting literals"
+                assert numLiteralsPresent < numLiteralsNeeded, f"Something has gone wrong with counting literals"
                 coversAllCases = False
             scopes = []
             for i in range(len(expri) + (0 if coversAllCases else 1)):
