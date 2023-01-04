@@ -182,6 +182,13 @@ Note:
 
 '''
 
+# The set of antlr context object types which correspond to actual minispec values
+# Used for type checking
+ctx_with_value = [
+    build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.CaseExprContext,
+]
+
 class MValue:
     ''' A value in a minispec program. Used to track source support.
     May be a Node, an MLiteral, a Register, a PartiallyIndexedModule, an antlr ctx object, etc.
@@ -189,6 +196,21 @@ class MValue:
     __slots__ = '_value', '_tokensSourcedFrom'
     def __init__(self, value: 'Any'):
         assert value.__class__ != MValue, "Cannot have an MValue inside of an MValue"
+        assert (
+            value.__class__ == MType
+            or value.__class__.__class__ == MType
+            or value.__class__ == Node
+            or isinstance(value, Component)
+            or value.__class__ == PartiallyIndexedModule
+            or value.__class__ == UnsynthesizableComponent
+            or value == None
+            or value.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext
+            or value.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext
+            or value.__class__ == build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext
+            or value.__class__ == build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext
+            or value.__class__ == BuiltinRegisterCtx
+            or value.__class__ in ctx_with_value
+        ), f"Unexpected value class {value.__class__}"
         self._value: 'Any' = value
         self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
     @property
