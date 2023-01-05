@@ -61,6 +61,7 @@ if __name__ == '__main__':
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
     if not args.no_garbage_collection:
         hardware.garbageCollection1(synthesizedComponent)
+    setWireTypes(synthesizedComponent)
     print(f'Synthesis complete. Time: {time.time() - synthesisStartTime} seconds')
 
     componentJson: 'dict[str, Any]' = hardware.getELK(synthesizedComponent)
@@ -85,6 +86,9 @@ if __name__ == '__main__':
             if 'children' in componentJson:
                 for child in componentJson['children']:
                     getIFieldValues(child)
+            if 'edges' in componentJson:
+                for edge in componentJson['edges']:
+                    getIFieldValues(edge)
         getIFieldValues(componentJson)
 
         layoutStartTime = time.time()
@@ -130,6 +134,9 @@ if __name__ == '__main__':
             if 'children' in elkOutputJson:
                 for child in elkOutputJson['children']:
                     restoreIFieldValues(child)
+            if 'edges' in elkOutputJson:
+                for edge in elkOutputJson['edges']:
+                    restoreIFieldValues(edge)
         restoreIFieldValues(elkOutputJson)
         elkOutput = json.dumps(elkOutputJson, separators=(',', ':'))
 

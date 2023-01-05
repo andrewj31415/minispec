@@ -191,9 +191,11 @@
             }
             #wire-inspect-div {
                 position: absolute;
-                background-color: white;
-                border-width: 3px;
-                border-color: black;
+                font-size: 16pt;
+                padding: 8;
+                background-color: lightgray;
+                border-width: 1px;
+                border-color: gray;
                 border-style: solid;
                 z-index: 6;
                 pointer-events: none;
@@ -350,6 +352,14 @@
             svgDisplay = document.getElementById("display-svg"); //The svg with the diagram
             helpDiv = document.getElementById("help-div"); //The div with help information
             helpClickDiv = document.getElementById("button-help-click-div"); //The button to click to show help information
+            wireInspectDiv = document.getElementById("wire-inspect-div"); //This div will appear when hovering over a wire.
+
+            /* Manage the wire inspect div */
+            wireInspectDiv.style.visibility = "hidden";
+            svgDisplay.addEventListener("mousemove", (event) => {
+                wireInspectDiv.style.left = event.clientX + "px";
+                wireInspectDiv.style.top = event.clientY + "px";
+            });
 
             /* Handle showing the help information */
             helpDiv.style.visibility = "hidden";
@@ -1052,9 +1062,20 @@
                     line.setAttribute("y2", parentPos.y + segment.end.y);
                     // line.setAttribute("stroke", "black");
                     line.setAttribute("stroke", "blue");
-                    line.setAttribute("stroke-width", 1);
-                    line.setAttribute("pointer-events", "none");
+                    line.setAttribute("stroke-width", 3);
+                    // line.setAttribute("pointer-events", "none");
                     svgDisplay.appendChild(line);
+
+                    // set the wire inspect div to show the wire type
+                    line.addEventListener("mouseenter", () => {
+                        wireInspectDiv.style.visibility = "";
+                        wireInspectDiv.innerHTML = edge.i.mt;
+                        line.setAttribute("stroke", "green");
+                    });
+                    line.addEventListener("mouseleave", () => {
+                        wireInspectDiv.style.visibility = "hidden";
+                        line.setAttribute("stroke", "blue");
+                    });
                 }
 
                 //draw circles at junction points

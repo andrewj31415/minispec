@@ -103,7 +103,7 @@ class Wire:
     ''' src and dst are Nodes.
     Adds itself to the hardware data structure when initialized. '''
     _num_wires_created = 0  # one for each Wire created
-    __slots__ = '_id', '_src', '_dst', '_tokensSourcedFrom'
+    __slots__ = '_id', '_src', '_dst', '_tokensSourcedFrom', '_mtype'
     def __init__(self, src: 'Node', dst: 'Node'):
         assert isNode(src), f"Must be a node, not {src} which is {src.__class__}"
         assert isNode(dst), f"Must be a node, not {dst} which is {dst.__class__}"
@@ -116,6 +116,7 @@ class Wire:
         self._dst = dst
         dst.addInWire(self)
         self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
+        self._mtype: 'MType' = Any
     def __hash__(self):
         return hash('w' + str(self._id))
     @property
@@ -632,6 +633,27 @@ def gc1node(node: 'Node'):
                 if len(component.children) == 0:
                     gc1component(component)
 
+
+'''
+Wire type determination.
+We run a depth-first search through the graph from each node with type and assign Wire types as we go.
+'''
+
+def setWireTypes(comp: 'Component'):
+    for nodeKey, node in comp._inputs.items():
+        setWiresTypesFromNode(node)
+    for nodeKey, node in comp._outputs.items():
+        setWiresTypesFromNode(node)
+    for child in comp.children:
+        setWireTypes(child)
+
+def setWiresTypesFromNode(node: 'Node'):
+    if node._mtype != Any:
+        for wire in node._inWires:
+            wire._mtype = node._mtype
+        for wire in node._outWires:
+            wire._mtype = node._mtype
+
 '''
 Some helpful ELK examples:
 https://rtsys.informatik.uni-kiel.de/elklive/elkgraph.html?compressedContent=OYJwhgDgFgBA4gRgFABswE8D2BXALjAbRgGcBLALwFMAuGAZjoAYAaeugNhgF0kA7TACaUAyhUoA6AMaZexXOFK9cxWgCICAOQDyAEQCiAfQAyAQQBCeo8NYBZAJIa7NgKo2DwuwC09XVUiiklOAgklDoABJgvAIoisC0DgDCRs76BonhdkY6AEp6GkhgKMCYIKS4UAC2tKXA4pSSsRDEEpQoANbiaOhBlAJ8mEYYOLi0AGZFLQNCMNJKYIpBMADeSACQ3SOE62sQmGS4pDK0AEwsMGc7ZFSnAJzsrCe3jOs8a-xColRSMnIKSioYOptGlTBYrLYHE5XO4vD4-GsAkEwCEwpForFePEYEkUmkMllcvl1h8RGJxJVFKRKthqkCABR0E7iFgAFnYLIAlAi2p0IGABAI4moCLhMBAALwclgoShjXAShAs5gAI0wuDFlUVyrKwCgCqVjF862I-MkcXEpI0ghoMBeGzAKraMCMCDUc1wC14QVUKx2mzw2zWwb2ByOvFoCBOrNYAFYdmtrrbWQAOR7IYNvd42oZOlDEcQQNCSSiVShKEXhdL5AAqehyrAAagYa1oAAqsBwefTGtYAXxJNpgellZaUCD9wYD+AICdD5XDkdYTITSbuMZgsboOyzpK+Ejmfy9yhFIMMYMs1hg9kcLjcHm8vcRgWCoQiURiwpxGmSqUMBOyPICmDPdyUpXhqVpNR6ROFNlROaVuX9R1nSME41BHUty1wBBfVWYMHSwQNZwIxMxFoFMHguDMCPnQ5jjtOMEyzbMhFzNoCyLMASzHUYgQIKtElresmxbdtOw0bt4R2Ad+0HGZMN4k5J0IrYSJDfYFwYhBWBTeMCLXC5bg3WN7TWXcbX3H5ZHkY9AWBXRz3MS9IVvGEH2k4MkVfNEP0xbFcT-dJMkA4kQMssCqRpOlVBguCWBOAB2LkEQdPMXToDDR2wk48ITacgwM8iYEo9ME12TT6IjRiYHYZiE1Jdj80LYssIrfjBOEhsYGbVsO2-KSn1k2TSWHbKlDoFSCvUiqw201gEDofTg0Mp4N0SmiLM+clD1sxQT34s9jGciFryhO9YUfVLvJRN90U-LEEh-PF-xColgNYslvnAyCYri+DksYJCpxQlAXVZLK2twOg8oI6bysM0rqPKujFxquqCJYxrQc41reMrasNDrbrevEga7B7VLhvkygxqh1kpuGYi50qtGdIuRgMZW4q1t07dMx2UDvl2-4Doc0ETqvG9oXvOEnxu1F3wxL9AvxN6gMFiLvqiqCGVggGUuQ9KjFjSHeNZWGQaImcEeKpGThojS5uq84ufMhqcxxlruKhgmhKJkSerE-quwpzy5LkgcgA
@@ -785,6 +807,7 @@ def wireToELK(item: 'Wire'):
     assert item.__class__ == Wire, "Requires a Wire"
     jsonObj = { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
     assert item in item.src.outWires, "Expected Wire to be in the outWires of its src"
+    jsonObj['i'] = {'mt': str(item._mtype)}
     if len(item.src.outWires) == 1:
         jsonObj['properties'] = {}
         jsonObj['properties']['org.eclipse.elk.layered.priority.direction'] = 10
