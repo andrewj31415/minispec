@@ -1957,35 +1957,31 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for caseExprItem in ctx.caseExprItem():
             if not caseExprItem.exprPrimary():  # no selection expression, so we have a default expression.
                 hasDefault = True
-                defaultValue = self.visit(caseExprItem.expression()).value
+                defaultValue = self.visit(caseExprItem.expression())
                 break
             correspondingOutput = self.visit(caseExprItem.expression()).resolveToNodeOrMLiteral(self)
             for comparisonStmt in caseExprItem.exprPrimary():
                 expri.append((self.visit(comparisonStmt).resolveToNodeOrMLiteral(self), correspondingOutput))
-        if expr.isLiteralValue() and all([pair[0].isLiteralValue() for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))):
+        if expr.isLiteralValue() and all([pair[0].isLiteralValue() for pair in expri]):
             # case 1
             for pair in expri:
                 if pair[0].value.eq(expr.value):
                     return pair[1]
             assert hasDefault, "all branches must be covered"
-            return MValue(defaultValue)
-        if all([pair[0].isLiteralValue() for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))):
+            return defaultValue
+        if all([pair[0].isLiteralValue() for pair in expri]):
             # case 2
             assert not isMLiteral(expr.value), "We assume expr is not a literal here, so we do not have to eliminate any extra values."
-            possibleOutputs = [] # including the default output, if present
+            possibleOutputs: 'list[MValue]' = [] # including the default output, if present
             for pair in expri:
-                possibleOutputs.append(pair[1].value)
+                possibleOutputs.append(pair[1])
             if hasDefault:
                 possibleOutputs.append(defaultValue)
             mux = Mux([Node() for i in range(len(possibleOutputs))])
             mux.inputNames = [str(pair[0].value) for pair in expri] + (['default'] if hasDefault else [])
             mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
             mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[-1])])
-            for i in range(len(possibleOutputs)):  # convert all possible outputs to hardware
-                possibleOutput = possibleOutputs[i]
-                if isMLiteral(possibleOutput):
-                    possibleOutputs[i] = MValue(possibleOutput).getHardware(self.globalsHandler)
-            wires = [Wire(expr.value, mux.control)] + [ Wire(possibleOutputs[i], mux.inputs[i]) for i in range(len(possibleOutputs)) ]
+            wires = [Wire(expr.value, mux.control)] + [ Wire(possibleOutputs[i].resolveToNode(self).value, mux.inputs[i]) for i in range(len(possibleOutputs)) ]
             for component in [mux]:
                 self.globalsHandler.currentComponent.addChild(component)
             return MValue(mux.output)
@@ -1996,7 +1992,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if isMLiteral(expr.value) and pair[0].isLiteralValue():
                 if expr.value.eq(pair[0].value):
                     hasDefault = True # since this expri will always work, we discard any default value
-                    defaultValue = pair[1].value
+                    defaultValue = pair[1]
                     break
                 else:
                     continue
@@ -2004,7 +2000,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 newExpri.append(pair)
         if not hasDefault:  # transform to guarantee a default value. this is valid since every case expression must always return something.
             hasDefault = True
-            defaultValue = newExpri[-1][1].value
+            defaultValue = newExpri[-1][1]
             newExpri = newExpri[:-1]
         expri = newExpri
 
@@ -2018,13 +2014,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         valueWires = []
         for i in range(len(expri)):  # create hardware for values
-            value = expri[i][1].value
-            if isMLiteral(value):
-                value = MValue(value).getHardware(self.globalsHandler)
-            valueWires.append(Wire(value, muxes[i].inputs[0]))
-        if isMLiteral(defaultValue):
-            defaultValue = MValue(defaultValue).getHardware(self.globalsHandler)
-        valueWires.append(Wire(defaultValue, muxes[-1].inputs[1]))
+            valueWires.append(Wire(expri[i][1].resolveToNode(self).value, muxes[i].inputs[0]))
+        defaultValue = defaultValue.resolveToNode(self)
+        valueWires.append(Wire(defaultValue.value, muxes[-1].inputs[1]))
         
         controlWires = []
         controlComponents = []
@@ -2061,7 +2053,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 muxes[i].inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
         for component in muxes + controlComponents:
                 self.globalsHandler.currentComponent.addChild(component)
-        return MValue(muxes[0].output) if len(muxes) > 0 else MValue(defaultValue)
+        return MValue(muxes[0].output) if len(muxes) > 0 else defaultValue
 
     @decorateForErrorCatching
     def visitCaseExprItem(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CaseExprItemContext):
@@ -2399,23 +2391,21 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     @decorateForErrorCatching
     def visitFieldExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.FieldExprContext):
-        toAccess = self.visit(ctx.exprPrimary()).value
+        toAccess = self.visit(ctx.exprPrimary())
         field = ctx.field.getText()
-        if toAccess.__class__ == PartiallyIndexedModule:
-            return MValue(toAccess.getInput(self.globalsHandler, field))
-        if toAccess.__class__ == Module:
+        if toAccess.value.__class__ == PartiallyIndexedModule:
+            return MValue(toAccess.value.getInput(self.globalsHandler, field))
+        if toAccess.value.__class__ == Module:
             field = ctx.field.getText()
-            if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
-                return MValue(toAccess.metadata.getMethod(field))
-            return MValue(toAccess.methods[field])
-        if toAccess.__class__ == Register:
-            # we have a register containing a struct, extract its value.
-            toAccess = toAccess.value
-        if isMLiteral(toAccess):
-            return MValue(toAccess.fieldBinds[field])
+            if toAccess.value.metadata.__class__ == BluespecModuleWithMetadata:
+                return MValue(toAccess.value.metadata.getMethod(field))
+            return MValue(toAccess.value.methods[field])
+        toAccess = toAccess.resolveToNodeOrMLiteral(self)
+        if toAccess.isLiteralValue():
+            return MValue(toAccess.value.fieldBinds[field]).appendSourceTokens(toAccess)
         fieldExtractComp = Function('.'+field, [Node()])
         fieldExtractComp.addSourceTokens([(getSourceFilename(ctx), ctx.field.getSourceInterval()[0])])
-        Wire(toAccess, fieldExtractComp.inputs[0])
+        Wire(toAccess.value, fieldExtractComp.inputs[0])
         self.globalsHandler.currentComponent.addChild(fieldExtractComp)
         return MValue(fieldExtractComp.output)
 
@@ -2445,12 +2435,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''To assign to a register, we put a wire from the value (rhs) to the register input.
         We don't create the wire here, since the register write might have occurred during an if statement--
         the wires are created at the end of the rule, in visitRuleDef.'''
-        value = self.visit(ctx.rhs).value
+        value = self.visit(ctx.rhs)
         if ctx.lhs.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
             # ordinary register, no vectors
             regName = ctx.lhs.getText()
-            self.globalsHandler.currentScope.set(MValue(value), regName + ".input")
+            self.globalsHandler.currentScope.set(value, regName + ".input")
             return
+        value = value.value
         # writing to a vector of registers
         # TODO test this more thoroughly and make sure it works
         indexes = []
@@ -2747,16 +2738,16 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     @decorateForErrorCatching
     def visitForStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ForStmtContext):
         iterVarName = ctx.initVar.getText()
-        initVal = self.visit(ctx.expression(0)).value
-        assert isMLiteral(initVal), "For loops must be unrolled before synthesis"
-        self.globalsHandler.currentScope.set(MValue(initVal), iterVarName)
-        checkDone = self.visit(ctx.expression(1)).value
+        initVal = self.visit(ctx.expression(0)).resolveMValue(self)
+        assert initVal.isLiteralValue(), "For loops must be unrolled before synthesis"
+        self.globalsHandler.currentScope.set(initVal, iterVarName)
+        checkDone: 'Bool' = self.visit(ctx.expression(1)).value
         assert isMLiteral(checkDone) and checkDone.__class__ == BooleanLiteral, "For loops must be unrolled before synthesis"
         while checkDone.value:
             self.visit(ctx.stmt())
-            nextIterVal = self.visit(ctx.expression(2)).value
-            assert isMLiteral(nextIterVal), "For loops must be unrolled before synthesis"
-            self.globalsHandler.currentScope.set(MValue(nextIterVal), iterVarName)
+            nextIterVal = self.visit(ctx.expression(2)).resolveMValue(self)
+            assert nextIterVal.isLiteralValue(), "For loops must be unrolled before synthesis"
+            self.globalsHandler.currentScope.set(nextIterVal, iterVarName)
             checkDone = self.visit(ctx.expression(1)).value
             assert isMLiteral(checkDone) and checkDone.__class__ == BooleanLiteral, "For loops must be unrolled before synthesis"
         
