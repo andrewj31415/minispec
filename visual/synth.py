@@ -2672,7 +2672,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         expriLiterals = [] # list of literals found when visiting each expri
         for caseStmtItem in ctx.caseStmtItem():
             for expression in caseStmtItem.expression():
-                currentExpr = self.visit(expression).value
+                currentExpr = self.visit(expression).resolveToNodeOrMLiteral(self).value
                 if isMLiteral(currentExpr):
                     duplicate = False
                     for otherLiteral in expriLiterals:
