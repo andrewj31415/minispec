@@ -1645,7 +1645,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 functionScope.set(MValue(argNode), argName)
                 inputNodes.append(argNode)
                 inputNames.append(argName)
-        funcComponent = Function(functionName, inputNodes)
+        outputType = self.visit(ctx.typeName()).value
+        outputNode = Node("_func_output", outputType)
+        funcComponent = Function(functionName, inputNodes, outputNode)
         funcComponent.inputNames = inputNames
         funcComponent.addSourceTokens([(getSourceFilename(ctx), ctx.functionId().getSourceInterval()[0])])
         self.globalsHandler.currentScope.setPermanent(None, '-return')

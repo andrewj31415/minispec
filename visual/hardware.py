@@ -757,20 +757,20 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
         isDirectEdge = sourceParent == targetParent and sourceNode._isInput and not targetNode._isInput
         if isDirectEdge:
             # break the edge into two edges with a zero-size node in the middle
-            middleNode = toELK(Function(""))
+            middleNode = toELK(Function(""), componentELKs)
             middleNode['width'] = 0
             middleNode['height'] = 0
             assert len(edge['sources']) == 1, f"Unexpected edge {edge} with too many source nodes"
             assert len(edge['targets']) == 1, f"Unexpected edge {edge} with too many target nodes"
             edge1 = { 'id': 'part1_'+edge['id'], 'sources': [ edge['sources'][0] ], 'targets': [ middleNode['id'] ] }
             edge2 = { 'id': 'part2_'+edge['id'], 'sources': [ middleNode['id'] ], 'targets': [ edge['targets'][0] ] }
-            if "edges" not in sourceParent:
-                sourceParent['edges'] = []
-            sourceParent['edges'].append(edge1)
-            sourceParent['edges'].append(edge2)
-            if "children" not in sourceParent:
-                sourceParent['children'] = []
-            sourceParent['children'].append(middleNode)
+            if "edges" not in componentELKs[sourceParent]:
+                componentELKs[sourceParent]['edges'] = []
+            componentELKs[sourceParent]['edges'].append(edge1)
+            componentELKs[sourceParent]['edges'].append(edge2)
+            if "children" not in componentELKs[sourceParent]:
+                componentELKs[sourceParent]['children'] = []
+            componentELKs[sourceParent]['children'].append(middleNode)
             continue
         # we have an ordinary edge, move it to the correct parent
         if not sourceNode._isInput:
