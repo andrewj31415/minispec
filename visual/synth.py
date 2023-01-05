@@ -182,6 +182,14 @@ Note:
 
 '''
 
+
+class BuiltinRegisterCtx:
+    def __init__(self, mtype: 'MType'):
+        self.mtype = mtype
+    def accept(self, visitor):
+        return visitor.visitRegister(self.mtype)
+
+
 # The set of antlr context object types which correspond to actual minispec values
 # Used for type checking
 ctx_with_value = [
@@ -197,6 +205,12 @@ ctx_with_value = [
     build.MinispecPythonParser.MinispecPythonParser.BitConcatContext,
     build.MinispecPythonParser.MinispecPythonParser.StructExprContext,
     build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext,
+    build.MinispecPythonParser.MinispecPythonParser.CondExprContext,
+]
+ctx_for_synth = [
+    build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext,
+    build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext,
+    BuiltinRegisterCtx,
 ]
 
 class MValue:
@@ -214,11 +228,9 @@ class MValue:
             or value.__class__ == PartiallyIndexedModule
             or value.__class__ == UnsynthesizableComponent
             or value == None
-            or value.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext
-            or value.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext
             or value.__class__ == build.MinispecPythonParser.MinispecPythonParser.TypeDefStructContext
             or value.__class__ == build.MinispecPythonParser.MinispecPythonParser.TypeDefSynonymContext
-            or value.__class__ == BuiltinRegisterCtx
+            or value.__class__ in ctx_for_synth
             or value.__class__ in ctx_with_value
         ), f"Unexpected value class {value.__class__}"
         self._value: 'Any' = value
@@ -259,7 +271,8 @@ class MValue:
             or self.value == None):
             return self
         expanded = visitor.visit(self.value)
-        if isinstance(expanded.value, Component):
+        # if isinstance(expanded.value, Component):
+        if self.value.__class__ in ctx_for_synth:
             # we visitied a ctx object which was synthesized to a Component, so we register the created hardware.
             visitor.globalsHandler.currentComponent.addChild(expanded.value)
         for tokens in self._tokensSourcedFrom:
@@ -506,14 +519,6 @@ class BuiltInScope(Scope):
 
 #type annotation for context objects.
 ctxType = ' | '.join([ctxType for ctxType in dir(build.MinispecPythonParser.MinispecPythonParser) if ctxType[-7:] == "Context"][:-3])
-
-
-class BuiltinRegisterCtx:
-    def __init__(self, mtype: 'MType'):
-        self.mtype = mtype
-    def accept(self, visitor):
-        return visitor.visitRegister(self.mtype)
-
 
 class ModuleWithMetadata:
     ''' During synthesis, a module has extra data that needs to be carried around.
@@ -1142,7 +1147,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for param in ctx.params().param():
                 # TODO create a separate type for module types ("module type", takes a module and parameter info?)
                 # create this separate type when looking up module types as parameters.
-                paramValue = self.visit(param).value
+                paramValue = self.visit(param).resolveMValue(self).value
                 # if param.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
                 #     param = ModuleType()
                 params.append(paramValue)
@@ -1685,6 +1690,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         valueValue = self.visit(ctx.expression())
         if valueValue.value.__class__ == UnsynthesizableComponent:
             return MValue(UnsynthesizableComponent())
+        valueValue = valueValue.resolveToNodeOrMLiteral(self)
         assert isNodeOrMLiteral(valueValue.value), f"Received {valueValue.value} from {ctx.toStringTree(recog=parser)}"
         # We have one of:
         #   1. An ordinary variable -- assign with .set to the relevant node.
@@ -1905,33 +1911,33 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     @decorateForErrorCatching
     def visitCondExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CondExprContext):
-        condition = self.visit(ctx.expression(0)).value
-        if condition.__class__ == UnsynthesizableComponent:
+        condition = self.visit(ctx.expression(0))
+        if condition.value.__class__ == UnsynthesizableComponent:
             return UnsynthesizableComponent()
-        if isMLiteral(condition):
+        condition = condition.resolveToNodeOrMLiteral(self)
+        if condition.isLiteralValue():
             # we select the appropriate branch
-            if condition == BooleanLiteral(True):
+            if condition.value == BooleanLiteral(True):
                 return self.visit(ctx.expression(1))
             else:
                 if ctx.stmt(1):
                     return self.visit(ctx.expression(2))
         else:
-            value1 = self.visit(ctx.expression(1)).value
-            value2 = self.visit(ctx.expression(2)).value
-            if value1.__class__ == UnsynthesizableComponent:
+            assert condition.value.__class__ == Node, f"Expected Node, not {condition.value.__class__}"
+            value1 = self.visit(ctx.expression(1))
+            value2 = self.visit(ctx.expression(2))
+            if value1.value.__class__ == UnsynthesizableComponent:
                 return MValue(UnsynthesizableComponent())
-            if value2.__class__ == UnsynthesizableComponent:
+            if value2.value.__class__ == UnsynthesizableComponent:
                 return MValue(UnsynthesizableComponent())
             # since the control signal is hardware, we convert the values to hardware as well (if needed)
-            if isMLiteral(value1):
-                value1 = value1.getHardware(self.globalsHandler)
-            if isMLiteral(value2):
-                value2 = value2.getHardware(self.globalsHandler)
+            value1 = value1.resolveToNode(self)
+            value2 = value2.resolveToNode(self)
             muxComponent = Mux([Node('v1'), Node('v2')], Node('c'))
             muxComponent.inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
             muxComponent.addSourceTokens([(getSourceFilename(ctx), ctx.condQmark.tokenIndex)])
             muxComponent.addSourceTokens([(getSourceFilename(ctx), ctx.condColon.tokenIndex)])
-            Wire(value1, muxComponent.inputs[0]), Wire(value2, muxComponent.inputs[1]), Wire(condition, muxComponent.control)
+            Wire(value1.value, muxComponent.inputs[0]), Wire(value2.value, muxComponent.inputs[1]), Wire(condition.value, muxComponent.control)
             self.globalsHandler.currentComponent.addChild(muxComponent)
             return MValue(muxComponent.output)
         #TODO go back through ?/if statements and make sure hardware/literal cases are handled properly.
@@ -2308,15 +2314,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         and return the function output node (which corresponds to the value of the function).'''
         # for now, we will assume that the fcn=exprPrimary in the callExpr must be a varExpr (with a var=anyIdentifier term).
         # this might also be a fieldExpr; I don't think there are any other possibilities with the current minispec specs.
-        functionArgs = []
+        functionArgs: 'list[MValue]' = []
         allLiterals = True # true if all function args are literals, false otherwise. used for evaluating built-ins.
         for i in range(len(ctx.expression())):
             expr = ctx.expression(i)
-            exprValue = self.visit(expr).value # visit the expression and get the corresponding node
-            if exprValue.__class__ == UnsynthesizableComponent:
+            exprValue = self.visit(expr).resolveMValue(self) # visit the expression and get the corresponding value
+            if exprValue.value.__class__ == UnsynthesizableComponent:
                 return MValue(UnsynthesizableComponent())
             functionArgs.append(exprValue)
-            if not isMLiteral(exprValue):
+            if not exprValue.isLiteralValue():
                 allLiterals = False
         if ctx.fcn.__class__ == build.MinispecPythonParser.MinispecPythonParser.VarExprContext:
             # function call
@@ -2345,18 +2351,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             except BluespecBuiltinFunction as e:
                 functionComponent, evaluate = e.functionComponent, e.evalute
                 if allLiterals:
-                    return MValue(evaluate(*functionArgs))
+                    return MValue(evaluate(*[mvalue.value for mvalue in functionArgs]))
                 funcComponent = functionComponent
             funcComponent.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
             # hook up the funcComponent to the arguments passed in.
             for i in range(len(functionArgs)):
-                exprValue = functionArgs[i]
-                if isMLiteral(exprValue):
-                    exprNode = MValue(exprValue).getHardware(self.globalsHandler)
-                else:
-                    exprNode = exprValue
                 funcInputNode = funcComponent.inputs[i]
-                Wire(exprNode, funcInputNode)
+                Wire(functionArgs[i].resolveToNode(self).value, funcInputNode)
             self.globalsHandler.currentComponent.addChild(funcComponent)
             return MValue(funcComponent.output)  # return the value of this call, which is the output of the function
         elif ctx.fcn.__class__ == build.MinispecPythonParser.MinispecPythonParser.FieldExprContext:
@@ -2367,7 +2368,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if len(functionArgs) == 0:
                     # this is actually just an ordinary method of the module, being called as `module.method()` instead of `module.method`.
                     raise Exception("Not implemented")
-                return MValue(toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, functionArgs, ctx.fcn.field))
+                return MValue(toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, [mvalue.value for mvalue in functionArgs], ctx.fcn.field))
             else:
                 if len(functionArgs) == 0:
                     # this is actually just an ordinary method of the module, being called as `module.method()` instead of `module.method`.
@@ -2379,13 +2380,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 methodComponent.addSourceTokens([(getSourceFilename(ctx), ctx.fcn.field.getSourceInterval()[0])])
                 # hook up the methodComponent to the arguments passed in.
                 for i in range(len(functionArgs)):
-                    exprValue = functionArgs[i]
-                    if isMLiteral(exprValue):
-                        exprNode = MValue(exprValue).getHardware(self.globalsHandler)
-                    else:
-                        exprNode = exprValue
                     funcInputNode = methodComponent.inputs[i]
-                    Wire(exprNode, funcInputNode)
+                    Wire(functionArgs[i].resolveToNode(self).value, funcInputNode)
                 self.globalsHandler.currentComponent.addChild(methodComponent)
                 return MValue(methodComponent.output)
         else:

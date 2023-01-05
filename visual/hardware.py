@@ -494,7 +494,7 @@ class Constant(Component):
     def __init__(self, value: 'MLiteral'):
         assert isMLiteral(value), f"Value of Constant must be MLiteral, not {value.__class__}"
         self._value = value
-        Component.__init__(self, str(self.value), {}, {'c0': Node()}, None, set())
+        Component.__init__(self, str(self.value), {}, {'c0': Node('_c_input', value.__class__)}, None, set())
     @property
     def value(self) -> 'MLiteral':
         '''The value of the constant'''
