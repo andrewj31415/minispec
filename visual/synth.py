@@ -1256,24 +1256,24 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for varInit in ctx.varInit():
             varName = varInit.var.getText()
             if (varInit.rhs):
-                value = self.visit(varInit.rhs).value
+                value = self.visit(varInit.rhs)
             else:
-                value = None
-            if value.__class__ == Node:
-                value.setMType(typeValue)
-            self.globalsHandler.currentScope.set(MValue(value), varName)
+                value = MValue(None)
+            if value.value.__class__ == Node:
+                value.value.setMType(typeValue)
+            self.globalsHandler.currentScope.set(value, varName)
 
     @decorateForErrorCatching
     def visitLetBinding(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LetBindingContext):
         '''A let binding declares a variable or a concatenation of variables and optionally assigns
         them to the given expression node ("rhs").'''
         if not ctx.rhs:
-            rhsValue = None
+            rhsValue = MValue(None)
         else:
-            rhsValue = self.visit(ctx.rhs).value  #we expect a node corresponding to the desired value
+            rhsValue = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
         if len(ctx.lowerCaseIdentifier()) == 1:
             varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-            self.globalsHandler.currentScope.set(MValue(rhsValue), varName)
+            self.globalsHandler.currentScope.set(rhsValue, varName)
         else:
             raise Exception("Not Implemented")
         
@@ -1681,10 +1681,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             raise Exception("Not Implemented")
         lvalue = varList[0]
         valueValue = self.visit(ctx.expression())
-        value = valueValue.value
-        if value.__class__ == UnsynthesizableComponent:
+        if valueValue.value.__class__ == UnsynthesizableComponent:
             return MValue(UnsynthesizableComponent())
-        assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
+        assert isNodeOrMLiteral(valueValue.value), f"Received {valueValue.value} from {ctx.toStringTree(recog=parser)}"
         # We have one of:
         #   1. An ordinary variable -- assign with .set to the relevant node.
         #   2. A module input -- wire the relevant node to the given input.
@@ -1698,12 +1697,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             self.globalsHandler.currentScope.set(valueValue, varName)
             return
         # Otherwise, we convert to hardware.
-        if isMLiteral(value):
-            value = MValue(value).getHardware(self.globalsHandler)
+        valueValue = valueValue.resolveToNode(self)
+        value = valueValue.value
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
             # assign the variable, no slicing/subfields needed
             varName = lvalue.getText()
-            self.globalsHandler.currentScope.set(MValue(value), varName)
+            self.globalsHandler.currentScope.set(valueValue, varName)
             return
         # insert the field/slice/index
         # first, detect if we are setting a module input
