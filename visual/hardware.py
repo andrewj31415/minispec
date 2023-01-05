@@ -219,7 +219,7 @@ class Component:
         ''' A copy of the outputs of the Component '''
         return self._outputs.copy()
     @property
-    def output(self):
+    def output(self) -> 'Node':
         ''' The output Node of the Component, if it is unique.
         Used by variants with one output, such as Function or Mux. '''
         assert len(self._outputs) == 1, "Can only return output if it is unique"
@@ -654,6 +654,52 @@ def setWiresTypesFromNode(node: 'Node'):
         for wire in node._outWires:
             wire._mtype = node._mtype
 
+
+'''
+Vector module vacuum.
+We move components into a Vector module if they are part of a tight loop or if they have a unique
+output wire which ends in the Vector module.
+'''
+
+def vacuumIntoVectors(comp: 'Component'):
+    if comp.__class__ == VectorModule:
+        vacuumIntoVectorModule(comp)
+    for child in comp.children.copy():
+        vacuumIntoVectors(child)
+
+def vacuumIntoVectorModule(vector: 'VectorModule'):
+    progress = True
+    while progress:
+        progress = False
+        for child in vector.children.copy():
+            if len(child.outputs) == 1:
+                output = child.output
+                for wire in output.outWires:
+                    dstComp: 'Component' = wire.dst.parent
+                    assert dstComp != None, "Destination of wire must be part of component"
+                    if dstComp.parent == vector:
+                        # dstComp is already in vector, no need to consider it
+                        continue
+                    if len(dstComp.outputs) == 1:
+                        output2 = dstComp.output
+                        if len(output2.outWires) == 1:
+                            wire2 = list(output2.outWires)[0]
+                            dstComp2 = wire2.dst.parent
+                            if dstComp2.parent == vector:
+                                # dstComp is part of a tight loop
+                                dstComp.parent._children.remove(dstComp)
+                                vector.addChild(dstComp)
+                                progress = True
+            for inputKey, input in child._inputs.items():
+                for wire in input.inWires:
+                    src = wire.src
+                    if len(src.outWires) == 1:
+                        dstComp = src.parent
+                        if dstComp.parent != vector:
+                            # dstComp has a unique output which ends in vector
+                            dstComp.parent._children.remove(dstComp)
+                            vector.addChild(dstComp)
+                            progress = True
 '''
 Some helpful ELK examples:
 https://rtsys.informatik.uni-kiel.de/elklive/elkgraph.html?compressedContent=OYJwhgDgFgBA4gRgFABswE8D2BXALjAbRgGcBLALwFMAuGAZjoAYAaeugNhgF0kA7TACaUAyhUoA6AMaZexXOFK9cxWgCICAOQDyAEQCiAfQAyAQQBCeo8NYBZAJIa7NgKo2DwuwC09XVUiiklOAgklDoABJgvAIoisC0DgDCRs76BonhdkY6AEp6GkhgKMCYIKS4UAC2tKXA4pSSsRDEEpQoANbiaOhBlAJ8mEYYOLi0AGZFLQNCMNJKYIpBMADeSACQ3SOE62sQmGS4pDK0AEwsMGc7ZFSnAJzsrCe3jOs8a-xColRSMnIKSioYOptGlTBYrLYHE5XO4vD4-GsAkEwCEwpForFePEYEkUmkMllcvl1h8RGJxJVFKRKthqkCABR0E7iFgAFnYLIAlAi2p0IGABAI4moCLhMBAALwclgoShjXAShAs5gAI0wuDFlUVyrKwCgCqVjF862I-MkcXEpI0ghoMBeGzAKraMCMCDUc1wC14QVUKx2mzw2zWwb2ByOvFoCBOrNYAFYdmtrrbWQAOR7IYNvd42oZOlDEcQQNCSSiVShKEXhdL5AAqehyrAAagYa1oAAqsBwefTGtYAXxJNpgellZaUCD9wYD+AICdD5XDkdYTITSbuMZgsboOyzpK+Ejmfy9yhFIMMYMs1hg9kcLjcHm8vcRgWCoQiURiwpxGmSqUMBOyPICmDPdyUpXhqVpNR6ROFNlROaVuX9R1nSME41BHUty1wBBfVWYMHSwQNZwIxMxFoFMHguDMCPnQ5jjtOMEyzbMhFzNoCyLMASzHUYgQIKtElresmxbdtOw0bt4R2Ad+0HGZMN4k5J0IrYSJDfYFwYhBWBTeMCLXC5bg3WN7TWXcbX3H5ZHkY9AWBXRz3MS9IVvGEH2k4MkVfNEP0xbFcT-dJMkA4kQMssCqRpOlVBguCWBOAB2LkEQdPMXToDDR2wk48ITacgwM8iYEo9ME12TT6IjRiYHYZiE1Jdj80LYssIrfjBOEhsYGbVsO2-KSn1k2TSWHbKlDoFSCvUiqw201gEDofTg0Mp4N0SmiLM+clD1sxQT34s9jGciFryhO9YUfVLvJRN90U-LEEh-PF-xColgNYslvnAyCYri+DksYJCpxQlAXVZLK2twOg8oI6bysM0rqPKujFxquqCJYxrQc41reMrasNDrbrevEga7B7VLhvkygxqh1kpuGYi50qtGdIuRgMZW4q1t07dMx2UDvl2-4Doc0ETqvG9oXvOEnxu1F3wxL9AvxN6gMFiLvqiqCGVggGUuQ9KjFjSHeNZWGQaImcEeKpGThojS5uq84ufMhqcxxlruKhgmhKJkSerE-quwpzy5LkgcgA

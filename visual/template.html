@@ -192,7 +192,7 @@
             #wire-inspect-div {
                 position: absolute;
                 font-size: 16pt;
-                padding: 8;
+                padding: 4px 4px;
                 background-color: lightgray;
                 border-width: 1px;
                 border-color: gray;
@@ -1062,17 +1062,26 @@
                     line.setAttribute("y2", parentPos.y + segment.end.y);
                     // line.setAttribute("stroke", "black");
                     line.setAttribute("stroke", "blue");
-                    line.setAttribute("stroke-width", 3);
-                    // line.setAttribute("pointer-events", "none");
+                    line.setAttribute("stroke-width", 1);
+                    line.setAttribute("pointer-events", "none");
                     svgDisplay.appendChild(line);
 
+                    let lineInteract = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    lineInteract.setAttribute("x1", parentPos.x + segment.start.x);
+                    lineInteract.setAttribute("y1", parentPos.y + segment.start.y);
+                    lineInteract.setAttribute("x2", parentPos.x + segment.end.x);
+                    lineInteract.setAttribute("y2", parentPos.y + segment.end.y);
+                    lineInteract.setAttribute("stroke", "transparent");
+                    lineInteract.setAttribute("stroke-width", 5);
+                    svgDisplay.appendChild(lineInteract);
+
                     // set the wire inspect div to show the wire type
-                    line.addEventListener("mouseenter", () => {
+                    lineInteract.addEventListener("mouseenter", () => {
                         wireInspectDiv.style.visibility = "";
                         wireInspectDiv.innerHTML = edge.i.mt;
                         line.setAttribute("stroke", "green");
                     });
-                    line.addEventListener("mouseleave", () => {
+                    lineInteract.addEventListener("mouseleave", () => {
                         wireInspectDiv.style.visibility = "hidden";
                         line.setAttribute("stroke", "blue");
                     });

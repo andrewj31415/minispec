@@ -61,6 +61,7 @@ if __name__ == '__main__':
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
     if not args.no_garbage_collection:
         hardware.garbageCollection1(synthesizedComponent)
+    vacuumIntoVectors(synthesizedComponent)
     setWireTypes(synthesizedComponent)
     print(f'Synthesis complete. Time: {time.time() - synthesisStartTime} seconds')
 
