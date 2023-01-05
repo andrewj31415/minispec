@@ -247,18 +247,7 @@ class MValue:
         assert globalsHandler.isGlobalsHandler(), "Quick type check"
         assert self.isLiteralValue(), "Can only convert literal value to hardware"
         return self.value.getHardware(globalsHandler, self._tokensSourcedFrom)
-    def getNodeOrMLiteral(self, visitor: 'SynthesizerVisitor') -> 'MValue':
-        ''' Returns an MValue with the same source info with a Node or MLiteral.
-        Throws if self does not correspond to a Node or MLiteral. '''
-        expanded = self.evaluateMValue(visitor)
-        if expanded.value.__class__ == Node:
-            return expanded.copy()
-        if expanded.value.__class__.__class__ == MType:
-            return expanded.copy()
-        if isinstance(expanded.value, Component):
-            return MValue(expanded.value.output, expanded._tokensSourcedFrom)
-        raise Exception(f"Unexpected class {expanded.value.__class__} does not correspond to a Node or MLiteral")
-    def evaluateMValue(self, visitor: 'SynthesizerVisitor') -> 'MValue':
+    def resolveMValue(self, visitor: 'SynthesizerVisitor') -> 'MValue':
         ''' Returns an MValue with the same source and not containing a context object. '''
         if (self.value.__class__ == MType
             or self.value.__class__.__class__ == MType
@@ -274,11 +263,22 @@ class MValue:
             visitor.globalsHandler.currentComponent.addChild(expanded.value)
         for tokens in self._tokensSourcedFrom:
             expanded.addSourceTokens(tokens)
-        return expanded.evaluateMValue(visitor)
-    def getNodeFromMValue(self, visitor: 'SynthesizerVisitor') -> 'MValue':
+        return expanded.resolveMValue(visitor)
+    def resolveToNodeOrMLiteral(self, visitor: 'SynthesizerVisitor') -> 'MValue':
+        ''' Returns an MValue with the same source info with a Node or MLiteral.
+        Throws if self does not correspond to a Node or MLiteral. '''
+        expanded = self.resolveMValue(visitor)
+        if expanded.value.__class__ == Node:
+            return expanded.copy()
+        if expanded.value.__class__.__class__ == MType:
+            return expanded.copy()
+        if isinstance(expanded.value, Component):
+            return MValue(expanded.value.output, expanded._tokensSourcedFrom)
+        raise Exception(f"Unexpected class {expanded.value.__class__} does not correspond to a Node or MLiteral")
+    def resolveToNode(self, visitor: 'SynthesizerVisitor') -> 'MValue':
         ''' Returns an MValue with the same source and containing a Node.
         Throws if self does not correspond to a Node. '''
-        expanded = self.getNodeOrMLiteral(visitor)
+        expanded = self.resolveToNodeOrMLiteral(visitor)
         for token in self._tokensSourcedFrom:
                 expanded.addSourceTokens(token)
         if expanded.value.__class__.__class__ == MType:
@@ -288,7 +288,6 @@ class MValue:
             return nodeValue
         assert expanded.value.__class__ == Node, f"Unexpected class {expanded.value.__class__}"
         return expanded.copy()
-        raise Exception("Not implemented")
 
 class TemporaryScope:
     ''' Stores temporary state used in synthesis. '''
@@ -1553,9 +1552,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # there are no arguments, so we synthesize the method inside the current module.
         if ctx.expression():
             # the method is a single-line expression.
-            value = self.visit(ctx.expression()).getNodeFromMValue(self).value
-            if isMLiteral(value):  # convert value to hardware before linking to output node
-                value = value.getHardware(self.globalsHandler)
+            value = self.visit(ctx.expression()).resolveToNode(self).value
             Wire(value, methodOutputNode)
         else:
             # the method is a multi-line sequence of statements with a return statement at the end.
@@ -1563,9 +1560,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.visit(stmt)
         
             # collect the return value
-            returnValue = self.globalsHandler.currentScope.get(self, '-return').evaluateMValue(self)
+            returnValue = self.globalsHandler.currentScope.get(self, '-return').resolveMValue(self)
             if returnValue.value.__class__ != UnsynthesizableComponent:
-                returnValue = returnValue.getNodeFromMValue(self)
+                returnValue = returnValue.resolveToNode(self)
                 Wire(returnValue.value, methodOutputNode)
 
         if ctx.argFormals():
@@ -1658,9 +1655,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for stmt in ctx.stmt():
             self.visit(stmt)
 
-        returnValue = self.globalsHandler.currentScope.get(self, '-return').evaluateMValue(self)
+        returnValue = self.globalsHandler.currentScope.get(self, '-return').resolveMValue(self)
         if returnValue.value.__class__ != UnsynthesizableComponent:
-            returnValue = returnValue.getNodeFromMValue(self)
+            returnValue = returnValue.resolveToNode(self)
             Wire(returnValue.value, funcComponent.output)
 
         self.globalsHandler.exitScope()
@@ -2072,49 +2069,41 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if ctx.unopExpr():  # our binary expression is actually a unopExpr.
             return self.visit(ctx.unopExpr())
         #we are either manipulating nodes/wires or manipulating integers.
-        leftValue = self.visit(ctx.left).evaluateMValue(self)
-        rightValue = self.visit(ctx.right).evaluateMValue(self)
-        left = leftValue.value
-        right = rightValue.value
-        if left.__class__ == UnsynthesizableComponent:
+        left = self.visit(ctx.left).resolveMValue(self)
+        right = self.visit(ctx.right).resolveMValue(self)
+        if left.value.__class__ == UnsynthesizableComponent:
             return MValue(UnsynthesizableComponent())
-        if right.__class__ == UnsynthesizableComponent:
+        if right.value.__class__ == UnsynthesizableComponent:
             return MValue(UnsynthesizableComponent())
-        leftValue = leftValue.getNodeOrMLiteral(self)
-        rightValue = rightValue.getNodeOrMLiteral(self)
-        left = leftValue.value
-        right = rightValue.value
-        assert isNodeOrMLiteral(left), f"left side must be literal or node, not {left} which is {left.__class__}"
-        assert isNodeOrMLiteral(right), f"right side must be literal or node, not {right} which is {right.__class__}"
+        left = left.resolveToNodeOrMLiteral(self)
+        right = right.resolveToNodeOrMLiteral(self)
+        assert isNodeOrMLiteral(left.value), f"left side must be literal or node, not {left.value} which is {left.value.__class__}"
+        assert isNodeOrMLiteral(right.value), f"right side must be literal or node, not {right.value} which is {right.value.__class__}"
         op = ctx.op.text
         '''Combining literals'''
-        if isMLiteral(left) and isMLiteral(right): #we have two literals, so we combine them
-            result = MValue(binaryOperation(left, right, op))
+        if isMLiteral(left.value) and isMLiteral(right.value): #we have two literals, so we combine them
+            result = MValue(binaryOperation(left.value, right.value, op))
             result.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
             return result
         # convert literals to hardware
-        if isMLiteral(left):
-            left = leftValue.getHardware(self.globalsHandler)
-        if isMLiteral(right):
-            right = rightValue.getHardware(self.globalsHandler)
+        left = left.resolveToNode(self)
+        right = right.resolveToNode(self)
         # both left and right are nodes, so we combine them using function hardware and return the output node.
-        assert left.__class__ == Node and right.__class__ == Node, "left and right should be hardware"
+        assert left.value.__class__ == Node and right.value.__class__ == Node, "left and right should be hardware"
         binComponent = Function(op, [Node("l"), Node("r")])
         binComponent.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-        Wire(left, binComponent.inputs[0])
-        Wire(right, binComponent.inputs[1])
+        Wire(left.value, binComponent.inputs[0])
+        Wire(right.value, binComponent.inputs[1])
         for component in [binComponent]:
             self.globalsHandler.currentComponent.addChild(component)
         return MValue(binComponent.output)
-
-        #assert False, f"binary expressions can only handle two nodes or two integers, received {left} and {right}"
 
     @decorateForErrorCatching
     def visitUnopExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UnopExprContext):
         ''' Return the Node or MLiteral corresponding to the expression '''
         if not ctx.op:  # our unopExpr is actually just an exprPrimary.
             return self.visit(ctx.exprPrimary())
-        value = MValue(ctx.exprPrimary()).getNodeOrMLiteral(self).value
+        value = MValue(ctx.exprPrimary()).resolveToNodeOrMLiteral(self).value
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
         if isMLiteral(value):
@@ -2151,7 +2140,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Bit concatenation is just a function. Returns the function output. '''
         toConcat = []
         for expr in ctx.expression():
-            value = self.visit(expr).getNodeFromMValue(self).value
+            value = self.visit(expr).resolveToNode(self).value
             toConcat.append(value)
         inputs = []
         wires: 'list[tuple[Node, Node]]' = []
@@ -2170,9 +2159,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     @decorateForErrorCatching
     def visitStringLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StringLiteralContext):
+        ''' String literals do not correspond to actual hardware; they are only used in bluespec simulations. '''
         return MValue(UnsynthesizableComponent())
-        # I don't think string literals do anything--they are only for system functions (dollar-sign
-        # identifiers) or for comments.
 
     @decorateForErrorCatching
     def visitIntLiteral(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IntLiteralContext):
@@ -2217,12 +2205,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''This is the return expression in a function. We keep track of return values
         by assigning them to `-return`. The `-` character was chosen because it cannot
         be used in minispec variable names.'''
-        rhs = self.visit(ctx.expression()).value  # the value to return
-        self.globalsHandler.currentScope.set(MValue(rhs), '-return')
+        rhs = self.visit(ctx.expression())  # the value to return
+        self.globalsHandler.currentScope.set(rhs, '-return')
 
     @decorateForErrorCatching
     def visitStructExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.StructExprContext):
-        fieldValues = {}
+        fieldValues: 'dict[str, MValue]' = {}
         packingHardware = False
         try:
             structType = self.visit(ctx.typeName()).value
@@ -2231,8 +2219,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             structType = ctx.typeName().getText()
         for memberBind in ctx.memberBinds().memberBind():
             fieldName = memberBind.field.getText()
-            fieldValue = self.visit(memberBind.expression()).value
-            if not isMLiteral(fieldValue):
+            fieldValue = self.visit(memberBind.expression())
+            if not fieldValue.isLiteralValue():
                 packingHardware = True
             fieldValues[fieldName] = fieldValue
         if packingHardware:  # at least one of the fields is hardware, so we convert all of the fields to hardware, combine them, and return the output node.
@@ -2241,20 +2229,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             fieldList = list(fieldValues)
             for i in range(len(fieldValues)):
                 fieldName = fieldList[i]
-                fieldValue = fieldValues[fieldName]
-                if isMLiteral(fieldValue):
-                    fieldValue = MValue(fieldValue).getHardware(self.globalsHandler)
-                Wire(fieldValue, combineComp.inputs[i])
+                fieldValue = fieldValues[fieldName].resolveToNode(self)
+                Wire(fieldValue.value, combineComp.inputs[i])
             self.globalsHandler.currentComponent.addChild(combineComp)
             return MValue(combineComp.output)
-        else:
-            return MValue(structType(fieldValues))  # no hardware, just a struct literal
+        # no hardware, just a struct literal
+        return MValue(structType({fieldName : fieldValues[fieldName].value for fieldName in fieldValues}))
 
     @decorateForErrorCatching
     def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
         tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
-        d = DontCareLiteral()
-        dValue = MValue(d)
+        dValue = MValue(DontCareLiteral())
         dValue.addSourceTokens(tokensSourcedFrom)
         return dValue
 
@@ -2639,7 +2624,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 exprHardware: 'Node' = expr.getHardware(self.globalsHandler)
             else:
                 exprHardware: 'Node' = expr
-            exprToMatch = MValue(exprToMatch).getNodeFromMValue(self).value
+            exprToMatch = MValue(exprToMatch).resolveToNode(self).value
             eqComp = Function('==', [Node(), Node()])
             Wire(exprHardware, eqComp.inputs[0])
             Wire(exprToMatch, eqComp.inputs[1])
