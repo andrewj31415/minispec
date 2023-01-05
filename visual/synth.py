@@ -222,25 +222,28 @@ class MValue:
             or value.__class__ in ctx_with_value
         ), f"Unexpected value class {value.__class__}"
         self._value: 'Any' = value
-        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
         for tokens in tokensSourcedFrom:
-            self.addSourceTokens(tokens)
+            assert tokens.__class__ == list, f"unexpected token class {tokens.__class__}"
+            assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = tokensSourcedFrom
     @property
     def value(self):
         return self._value
     def addSourceTokens(self, tokens: 'list[tuple[str, int]]'):
         ''' Given a list of tuples (filename, token), adds the list to the collection of sources of the component. '''
-        assert tokens.__class__ == list, f"unexpected token class {tokens.__class__}"
-        assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
-        self._tokensSourcedFrom.append(tokens)
+        raise Exception('Not mutable')
+    def withSourceTokens(self, tokens: 'list[tuple[str, int]]'):
+        ''' Returns an MValue with tokens added to its source. '''
+        return MValue(self.value, self._tokensSourcedFrom + [tokens])
+    def appendSourceTokens(self, mvalue: 'MValue'):
+        ''' Returns an MValue with the source tokens of self appended to the source tokens of mvalue. '''
+        assert mvalue.__class__ == MValue, f"Expected MValue, not {mvalue.__class__}"
+        return MValue(self.value, self._tokensSourcedFrom + mvalue._tokensSourcedFrom)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
         ''' Returns the source tokens of self, flattened. '''
         return sum(self._tokensSourcedFrom, [])
     def copy(self) -> 'MValue':
-        v = MValue(self.value)
-        for token in self._tokensSourcedFrom:
-            v.addSourceTokens(token)
-        return v
+        return MValue(self.value, self._tokensSourcedFrom)
     def isLiteralValue(self):
         return isMLiteral(self.value)
     def getHardware(self, globalsHandler) -> 'Node':
@@ -262,7 +265,7 @@ class MValue:
             # we visitied a ctx object which was synthesized to a Component, so we register the created hardware.
             visitor.globalsHandler.currentComponent.addChild(expanded.value)
         for tokens in self._tokensSourcedFrom:
-            expanded.addSourceTokens(tokens)
+            expanded = expanded.withSourceTokens(tokens)
         return expanded.resolveMValue(visitor)
     def resolveToNodeOrMLiteral(self, visitor: 'SynthesizerVisitor') -> 'MValue':
         ''' Returns an MValue with the same source info with a Node or MLiteral.
@@ -280,11 +283,11 @@ class MValue:
         Throws if self does not correspond to a Node. '''
         expanded = self.resolveToNodeOrMLiteral(visitor)
         for token in self._tokensSourcedFrom:
-                expanded.addSourceTokens(token)
+                expanded = expanded.withSourceTokens(token)
         if expanded.value.__class__.__class__ == MType:
             nodeValue = MValue(expanded.getHardware(visitor.globalsHandler))
             for token in expanded._tokensSourcedFrom:
-                nodeValue.addSourceTokens(token)
+                nodeValue = nodeValue.withSourceTokens(token)
             return nodeValue
         assert expanded.value.__class__ == Node, f"Unexpected class {expanded.value.__class__}"
         return expanded.copy()
@@ -2083,8 +2086,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         '''Combining literals'''
         if isMLiteral(left.value) and isMLiteral(right.value): #we have two literals, so we combine them
             result = MValue(binaryOperation(left.value, right.value, op))
-            result.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-            return result
+            return result.appendSourceTokens(left).appendSourceTokens(right).withSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
         # convert literals to hardware
         left = left.resolveToNode(self)
         right = right.resolveToNode(self)
@@ -2103,13 +2105,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Return the Node or MLiteral corresponding to the expression '''
         if not ctx.op:  # our unopExpr is actually just an exprPrimary.
             return self.visit(ctx.exprPrimary())
-        value = MValue(ctx.exprPrimary()).resolveToNodeOrMLiteral(self).value
+        valueValue = MValue(ctx.exprPrimary()).resolveToNodeOrMLiteral(self)
+        value = valueValue.value
         assert isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
         if isMLiteral(value):
             result = MValue(unaryOperation(value, op))
-            result.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-            return result
+            return result.appendSourceTokens(valueValue).withSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
         assert value.__class__ == Node, "value should be hardware"
         unopComponenet = Function(op, [Node("v")])
         unopComponenet.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
@@ -2131,7 +2133,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
                 params.append(value)
         value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params).copy()  # make a copy so we don't mutate the original value when we add source tokens
-        value.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
+        value = value.withSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
         self.globalsHandler.lastParameterLookup = params
         return value
 
@@ -2197,8 +2199,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # else we have an ordinary decimal integer
             i = IntegerLiteral(int(text))
         iValue = MValue(i)
-        iValue.addSourceTokens(tokensSourcedFrom)
-        return iValue
+        return iValue.withSourceTokens(tokensSourcedFrom)
 
     @decorateForErrorCatching
     def visitReturnExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.ReturnExprContext):
@@ -2239,9 +2240,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     @decorateForErrorCatching
     def visitUndefinedExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.UndefinedExprContext):
         tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0])]
-        dValue = MValue(DontCareLiteral())
-        dValue.addSourceTokens(tokensSourcedFrom)
-        return dValue
+        return MValue(DontCareLiteral()).withSourceTokens(tokensSourcedFrom)
 
     @decorateForErrorCatching
     def visitSliceExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceExprContext):
