@@ -1951,50 +1951,52 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
           is wire in to several muxes, we instantiate it into hardware several times, one for each mux.
         '''
         #TODO in caseExpr and caseStmt, if a default is included but all possible inputs are already present (as literals), skip the default input.
-        expr = self.visit(ctx.expression()).value
-        expri: 'list[tuple[MLiteral|Node, MLiteral|Node]]' = [] # pairs (comparisonStmt, valueToOutput)
+        expr = self.visit(ctx.expression())
+        expri: 'list[tuple[MValue, MValue]]' = [] # pairs (comparisonStmt, valueToOutput)
         hasDefault = False
         for caseExprItem in ctx.caseExprItem():
             if not caseExprItem.exprPrimary():  # no selection expression, so we have a default expression.
                 hasDefault = True
                 defaultValue = self.visit(caseExprItem.expression()).value
                 break
-            correspondingOutput = self.visit(caseExprItem.expression()).value
+            correspondingOutput = self.visit(caseExprItem.expression()).resolveToNodeOrMLiteral(self)
             for comparisonStmt in caseExprItem.exprPrimary():
-                expri.append((self.visit(comparisonStmt).value, correspondingOutput))
-        if isMLiteral(expr) and all([isMLiteral(pair[0]) for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))): # case 1
+                expri.append((self.visit(comparisonStmt).resolveToNodeOrMLiteral(self), correspondingOutput))
+        if expr.isLiteralValue() and all([pair[0].isLiteralValue() for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))):
+            # case 1
             for pair in expri:
-                if pair[0].eq(expr):
-                    return MValue(pair[1])
+                if pair[0].value.eq(expr.value):
+                    return pair[1]
             assert hasDefault, "all branches must be covered"
             return MValue(defaultValue)
-        if all([isMLiteral(pair[0]) for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))): # case 2
-            assert not isMLiteral(expr), "We assume expr is not a literal here, so we do not have to eliminate any extra values."
+        if all([pair[0].isLiteralValue() for pair in expri]) and ((not hasDefault) or (hasDefault and isMLiteral(defaultValue))):
+            # case 2
+            assert not isMLiteral(expr.value), "We assume expr is not a literal here, so we do not have to eliminate any extra values."
             possibleOutputs = [] # including the default output, if present
             for pair in expri:
-                possibleOutputs.append(pair[1])
+                possibleOutputs.append(pair[1].value)
             if hasDefault:
                 possibleOutputs.append(defaultValue)
             mux = Mux([Node() for i in range(len(possibleOutputs))])
-            mux.inputNames = [str(pair[0]) for pair in expri] + (['default'] if hasDefault else [])
+            mux.inputNames = [str(pair[0].value) for pair in expri] + (['default'] if hasDefault else [])
             mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
             mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[-1])])
             for i in range(len(possibleOutputs)):  # convert all possible outputs to hardware
                 possibleOutput = possibleOutputs[i]
                 if isMLiteral(possibleOutput):
                     possibleOutputs[i] = MValue(possibleOutput).getHardware(self.globalsHandler)
-            wires = [Wire(expr, mux.control)] + [ Wire(possibleOutputs[i], mux.inputs[i]) for i in range(len(possibleOutputs)) ]
+            wires = [Wire(expr.value, mux.control)] + [ Wire(possibleOutputs[i], mux.inputs[i]) for i in range(len(possibleOutputs)) ]
             for component in [mux]:
                 self.globalsHandler.currentComponent.addChild(component)
             return MValue(mux.output)
         # case 3
         muxes = []
-        newExpri = [] #prune some literals if possible
+        newExpri: 'list[tuple[MValue, MValue]]' = [] #prune some literals if possible
         for pair in expri:
-            if isMLiteral(expr) and isMLiteral(pair[0]):
-                if expr.eq(pair[0]):
+            if isMLiteral(expr.value) and pair[0].isLiteralValue():
+                if expr.value.eq(pair[0].value):
                     hasDefault = True # since this expri will always work, we discard any default value
-                    defaultValue = pair[1]
+                    defaultValue = pair[1].value
                     break
                 else:
                     continue
@@ -2002,7 +2004,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 newExpri.append(pair)
         if not hasDefault:  # transform to guarantee a default value. this is valid since every case expression must always return something.
             hasDefault = True
-            defaultValue = newExpri[-1][1]
+            defaultValue = newExpri[-1][1].value
             newExpri = newExpri[:-1]
         expri = newExpri
 
@@ -2016,7 +2018,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         valueWires = []
         for i in range(len(expri)):  # create hardware for values
-            value = expri[i][1]
+            value = expri[i][1].value
             if isMLiteral(value):
                 value = MValue(value).getHardware(self.globalsHandler)
             valueWires.append(Wire(value, muxes[i].inputs[0]))
@@ -2027,12 +2029,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         controlWires = []
         controlComponents = []
         for i in range(len(expri)):  # create hardware for controls
-            controlValue = expri[i][0]
+            controlValue = expri[i][0].value
             muxControl = muxes[i].control
-            assert not (isMLiteral(controlValue) and isMLiteral(expr)), "This case should have been evaluated earlier"
-            if isMLiteral(expr) and expr.__class__ == Bool:
+            assert not (isMLiteral(controlValue) and isMLiteral(expr.value)), "This case should have been evaluated earlier"
+            if isMLiteral(expr.value) and expr.value.__class__ == Bool:
                 # TODO mux input names instead of inverting
-                if expr:
+                if expr.value:
                     controlWires.append(Wire(controlValue, muxControl))
                 else:
                     n = Function('~', [Node()])
@@ -2042,18 +2044,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             elif isMLiteral(controlValue) and controlValue.__class__ == Bool:
                 # TODO mux input names instead of inverting
                 if controlValue:
-                    controlWires.append(Wire(expr, muxControl))
+                    controlWires.append(Wire(expr.value, muxControl))
                 else:
                     n = Function('~', [Node()])
                     controlComponents.append(n)
-                    controlWires.append(Wire(expr, n.inputs[0]))
+                    controlWires.append(Wire(expr.value, n.inputs[0]))
                     controlWires.append(Wire(n.output, muxControl))
             else:
                 if isMLiteral(controlValue):
                     controlValue = MValue(controlValue).getHardware(self.globalsHandler)
                 eq = Function('==', [Node(), Node()])
                 controlComponents.append(eq)
-                controlWires.append(Wire(expr, eq.inputs[0]))
+                controlWires.append(Wire(expr.value, eq.inputs[0]))
                 controlWires.append(Wire(controlValue, eq.inputs[1]))
                 controlWires.append(Wire(eq.output, muxControl))
                 muxes[i].inputNames = [str(BooleanLiteral(True)), str(BooleanLiteral(False))]
