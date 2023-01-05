@@ -242,8 +242,6 @@ class MValue:
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
         ''' Returns the source tokens of self, flattened. '''
         return sum(self._tokensSourcedFrom, [])
-    def copy(self) -> 'MValue':
-        return MValue(self.value, self._tokensSourcedFrom)
     def isLiteralValue(self):
         return isMLiteral(self.value)
     def getHardware(self, globalsHandler) -> 'Node':
@@ -259,7 +257,7 @@ class MValue:
             or self.value.__class__ == PartiallyIndexedModule
             or self.value.__class__ == UnsynthesizableComponent
             or self.value == None):
-            return self.copy()
+            return self
         expanded = visitor.visit(self.value)
         if isinstance(expanded.value, Component):
             # we visitied a ctx object which was synthesized to a Component, so we register the created hardware.
@@ -272,9 +270,9 @@ class MValue:
         Throws if self does not correspond to a Node or MLiteral. '''
         expanded = self.resolveMValue(visitor)
         if expanded.value.__class__ == Node:
-            return expanded.copy()
+            return expanded
         if expanded.value.__class__.__class__ == MType:
-            return expanded.copy()
+            return expanded
         if isinstance(expanded.value, Component):
             return MValue(expanded.value.output, expanded._tokensSourcedFrom)
         raise Exception(f"Unexpected class {expanded.value.__class__} does not correspond to a Node or MLiteral")
@@ -290,7 +288,7 @@ class MValue:
                 nodeValue = nodeValue.withSourceTokens(token)
             return nodeValue
         assert expanded.value.__class__ == Node, f"Unexpected class {expanded.value.__class__}"
-        return expanded.copy()
+        return expanded
 
 class TemporaryScope:
     ''' Stores temporary state used in synthesis. '''
@@ -1682,7 +1680,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # bsc says something about type errors and tuples. TODO figure this out, same issue holds for visitLetBinding.
             raise Exception("Not Implemented")
         lvalue = varList[0]
-        value = self.visit(ctx.expression()).value
+        valueValue = self.visit(ctx.expression())
+        value = valueValue.value
         if value.__class__ == UnsynthesizableComponent:
             return MValue(UnsynthesizableComponent())
         assert isNodeOrMLiteral(value), f"Received {value} from {ctx.toStringTree(recog=parser)}"
@@ -1696,7 +1695,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # we don't visit the simplelvalue context since simplelvalue automatically produces hardware
             #   for slicing/indexing/etc. (as all other remaining cases require this).
             varName = ctx.var.getText()
-            self.globalsHandler.currentScope.set(MValue(value), varName)
+            self.globalsHandler.currentScope.set(valueValue, varName)
             return
         # Otherwise, we convert to hardware.
         if isMLiteral(value):
@@ -2132,10 +2131,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 #   to be evaluated and must evaluate to an integer).
                 assert value.__class__ == IntegerLiteral or value.__class__ == MType, f"Parameters must be an integer or a type, not {value} which is {value.__class__}"
                 params.append(value)
-        value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params).copy()  # make a copy so we don't mutate the original value when we add source tokens
-        value = value.withSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
+        value = self.globalsHandler.currentScope.get(self, ctx.var.getText(), params)
         self.globalsHandler.lastParameterLookup = params
-        return value
+        return value.withSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
 
     @decorateForErrorCatching
     def visitBitConcat(self, ctx: build.MinispecPythonParser.MinispecPythonParser.BitConcatContext):
