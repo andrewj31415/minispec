@@ -2246,67 +2246,60 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Slicing is just a function. Need to handle cases of constant/nonconstant slicing separately.
         Returns the result of slicing (the output of the slicing function).
         topLevel is true if this is the outermost slice in a nested slice (such as m[a][b][c]).'''
-        toSliceFrom = self.visit(ctx.array).value
-        if toSliceFrom.__class__ == Register:
-            toSliceFrom = toSliceFrom.value
-        msb = self.visit(ctx.msb).value #most significant bit
-        if toSliceFrom.__class__ == PartiallyIndexedModule:
+        toSliceFrom = self.visit(ctx.array).resolveMValue(self)
+        msb = self.visit(ctx.msb).resolveToNodeOrMLiteral(self)  # most significant bit
+        # first, check if we are slicing into a module
+        if toSliceFrom.value.__class__ == PartiallyIndexedModule:
             # slicing further into a vector of module
-            return MValue(toSliceFrom.indexFurther(self.globalsHandler, msb))
-        if toSliceFrom.__class__ == VectorModule:
+            return MValue(toSliceFrom.value.indexFurther(self.globalsHandler, msb.value))
+        if toSliceFrom.value.__class__ == VectorModule:
             # slicing into a vector of modules
-            if not isMLiteral(msb):
-                return MValue(PartiallyIndexedModule(toSliceFrom).indexFurther(self.globalsHandler, msb))
-            return MValue(toSliceFrom.getNumberedSubmodule(msb.value))
+            if not msb.isLiteralValue():
+                return MValue(PartiallyIndexedModule(toSliceFrom.value).indexFurther(self.globalsHandler, msb.value))
+            return MValue(toSliceFrom.value.getNumberedSubmodule(msb.value.value))
+        toSliceFrom = toSliceFrom.resolveToNodeOrMLiteral(self)
         if ctx.lsb:
-            lsb = self.visit(ctx.lsb).value #least significant bit
-        if isMLiteral(toSliceFrom) and isMLiteral(msb) and ( (not (ctx.lsb)) or (ctx.lsb and isMLiteral(lsb)) ):  # perform the slice directly
+            lsb = self.visit(ctx.lsb).resolveToNodeOrMLiteral(self)  # least significant bit
+        if toSliceFrom.isLiteralValue() and msb.isLiteralValue() and ( (not (ctx.lsb)) or (ctx.lsb and lsb.isLiteralValue()) ):
+            # all values are literals, perform the slice directly
             if ctx.lsb:
-                return MValue(toSliceFrom.slice(msb, lsb))
+                return MValue(toSliceFrom.value.slice(msb.value, lsb.value)).appendSourceTokens(toSliceFrom)
             else:
-                return MValue(toSliceFrom.slice(msb))
-        if isMLiteral(toSliceFrom):
-            toSliceFrom = MValue(toSliceFrom).getHardware(self.globalsHandler)
-        # TODO refactor assert we have a node at this point
-        if isNode(toSliceFrom):  # we are slicing into an ordinary variable
-            text = "["
-            inNode = Node()
-            inputs = [inNode]
-            wires: 'list[tuple[Node, Node]]' = [(toSliceFrom, inNode)]
-            if isMLiteral(msb):
-                text += str(msb)
+                return MValue(toSliceFrom.value.slice(msb.value)).appendSourceTokens(toSliceFrom)
+        # some values are hardware, create the corresponding component
+        toSliceFrom = toSliceFrom.resolveToNode(self)
+        text = "["
+        inNode = Node()
+        inputs = [inNode]
+        wires: 'list[tuple[Node, Node]]' = [(toSliceFrom.value, inNode)]
+        if msb.isLiteralValue():
+            text += str(msb.value)
+        else:
+            assert isNode(msb.value), "Expected a node"
+            text += '_'
+            inNode1 = Node()
+            inputs.append(inNode1)
+            wires.append((msb.value, inNode1))
+        if ctx.lsb:
+            text += ':'
+            if lsb.isLiteralValue():
+                text += str(lsb.value)
             else:
-                assert isNode(msb), "Expected a node"
+                assert isNode(lsb.value), "Expected a node"
                 text += '_'
-                inNode1 = Node()
-                inputs.append(inNode1)
-                wires.append((msb, inNode1))
-            if ctx.lsb:
-                text += ':'
-                if isMLiteral(lsb):
-                    text += str(lsb)
-                else:
-                    assert isNode(lsb), "Expected a node"
-                    text += '_'
-                    inNode2 = Node()
-                    inputs.append(inNode2)
-                    wires.append((lsb, inNode2))
-            text += "]"
-            sliceComponent = Function(text, inputs)
-            for src, dst in wires:
-                Wire(src, dst)
-            sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.msb.getSourceInterval()[0]-1)])
-            if ctx.lsb:
-                sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.lsb.getSourceInterval()[-1]+1)])
-            sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.msb.getSourceInterval()[-1]+1)])
-            self.globalsHandler.currentComponent.addChild(sliceComponent)
-            return MValue(sliceComponent.output)
-        else: # we are slicing into a submodule
-            #TODO this code never runs?
-            if msb.__class__ != IntegerLiteral:
-                print(toSliceFrom.__class__)
-                raise Exception("Variable slicing into modules is not implemented")
-            return MValue(toSliceFrom.getNumberedSubmodule(msb.value))
+                inNode2 = Node()
+                inputs.append(inNode2)
+                wires.append((lsb.value, inNode2))
+        text += "]"
+        sliceComponent = Function(text, inputs)
+        for src, dst in wires:
+            Wire(src, dst)
+        sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.msb.getSourceInterval()[0]-1)])
+        if ctx.lsb:
+            sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.lsb.getSourceInterval()[-1]+1)])
+        sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.msb.getSourceInterval()[-1]+1)])
+        self.globalsHandler.currentComponent.addChild(sliceComponent)
+        return MValue(sliceComponent.output)
 
     @decorateForErrorCatching
     def visitCallExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.CallExprContext):
