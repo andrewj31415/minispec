@@ -1920,7 +1920,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if condition.value == BooleanLiteral(True):
                 return self.visit(ctx.expression(1))
             else:
-                if ctx.stmt(1):
+                if ctx.expression(2):
                     return self.visit(ctx.expression(2))
         else:
             assert condition.value.__class__ == Node, f"Expected Node, not {condition.value.__class__}"

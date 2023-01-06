@@ -244,6 +244,20 @@ for n in range(1,5+1):
     it(f'''Correctly folds all constants {n}''')(testn(n))
 
 
+@it('''Correctly converts Integer to Bit after type coercion''')
+def _():
+    text = pull('literals3')
+
+    c = Constant(Bool(True))
+    f = Function('f')
+    f.addChild(c)
+    Wire(c.output, f.output)
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
 describe("If and Ternary Statements")
 
 @it('''Correctly synthesizes mux''')
@@ -598,6 +612,24 @@ def _():
     output = synth.parseAndSynth(text, 'f4')
     garbageCollection1(output)
     expected = f4
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
+@it('''Correctly handles a ternary expression''')
+def _():
+    text = pull('condExpr')
+
+    fa, fo = Node(), Node()
+    m = Mux([Node(), Node()])
+    two, three = Constant(Integer(2)), Constant(Integer(3))
+    f = Function('f', [fa], fo, {m, two, three})
+    Wire(two.output, m.inputs[0])
+    Wire(three.output, m.inputs[1])
+    Wire(m.output, f.output)
+    Wire(fa, m.control)
+
+    output = synth.parseAndSynth(text, 'f')
+    expected = f
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
 
