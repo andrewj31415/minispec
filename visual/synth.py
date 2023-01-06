@@ -1687,11 +1687,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # bsc says something about type errors and tuples. TODO figure this out, same issue holds for visitLetBinding.
             raise Exception("Not Implemented")
         lvalue = varList[0]
-        valueValue = self.visit(ctx.expression())
-        if valueValue.value.__class__ == UnsynthesizableComponent:
+        value = self.visit(ctx.expression())
+        if value.value.__class__ == UnsynthesizableComponent:
             return MValue(UnsynthesizableComponent())
-        valueValue = valueValue.resolveToNodeOrMLiteral(self)
-        assert isNodeOrMLiteral(valueValue.value), f"Received {valueValue.value} from {ctx.toStringTree(recog=parser)}"
+        value = value.resolveToNodeOrMLiteral(self)
+        assert isNodeOrMLiteral(value.value), f"Received {value.value} from {ctx.toStringTree(recog=parser)}"
         # We have one of:
         #   1. An ordinary variable -- assign with .set to the relevant node.
         #   2. A module input -- wire the relevant node to the given input.
@@ -1702,16 +1702,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # we don't visit the simplelvalue context since simplelvalue automatically produces hardware
             #   for slicing/indexing/etc. (as all other remaining cases require this).
             varName = ctx.var.getText()
-            self.globalsHandler.currentScope.set(valueValue, varName)
+            self.globalsHandler.currentScope.set(value, varName)
             return
         # Otherwise, we convert to hardware.
-        valueValue = valueValue.resolveToNode(self)
-        value = valueValue.value
-        if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-            # assign the variable, no slicing/subfields needed
-            varName = lvalue.getText()
-            self.globalsHandler.currentScope.set(valueValue, varName)
-            return
+        value = value.resolveToNode(self)
         # insert the field/slice/index
         # first, detect if we are setting a module input
         if lvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
@@ -1727,14 +1721,14 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         # no slicing is present, only the input name.
                         assert lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext, "Can only slice into a vector of modules"
                         inputName = lvalue.lowerCaseIdentifier().getText()
-                        self.globalsHandler.currentScope.set(MValue(value), prospectiveModuleName + "." + inputName)
+                        self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
                         return
                     elif settingOverall.metadata.__class__ == BluespecModuleWithMetadata:
                         if lvalue.lvalue().__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext: # no slicing is present, only the input name.
                             # we are setting an input to a bluespec imported module
                             inputName = lvalue.lowerCaseIdentifier().getText()
                             settingOverall.metadata.createInput(inputName, prospectiveModuleName)
-                            self.globalsHandler.currentScope.set(MValue(value), prospectiveModuleName + "." + inputName)
+                            self.globalsHandler.currentScope.set(value, prospectiveModuleName + "." + inputName)
                             return
                         else:
                             # we are slicing into a module, which must be a bluespec built-in (since otherwise it would be a VectorModule)
@@ -1791,7 +1785,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                         # assign the correct values
                         for i in range(len(regsToWrite)):
                             regName = regsToWrite[i]
-                            val = value
+                            val = value.value
                             oldVal = self.globalsHandler.currentScope.get(self, regName + inputName).value
                             if isMLiteral(oldVal):
                                 oldVal = MValue(oldVal).getHardware(self.globalsHandler)
@@ -1831,7 +1825,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         insertComponent.addSourceTokens(tokensSourcedFrom)
         for i in range(len(nodes)):
             Wire(nodes[i], insertComponent.inputs[i])
-        Wire(value, insertComponent.inputs[len(nodes)])
+        Wire(value.value, insertComponent.inputs[len(nodes)])
         self.globalsHandler.currentComponent.addChild(insertComponent)
         self.globalsHandler.currentScope.set(MValue(insertComponent.output), varName)
 
