@@ -15,6 +15,7 @@ import os, sys  # see https://stackoverflow.com/questions/16780014/import-file-f
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from hardware import *
+from mtypes import *
 import synth
 
 import pathlib

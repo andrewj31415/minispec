@@ -1,5 +1,6 @@
 
-from mtypes import *
+import mtypes
+from typing import Any
 
 ''' The hardware rep.
 The hardware representation consists of two data structures:
@@ -46,9 +47,9 @@ class Node:
     label: the label of the Node in its parent Component. '''
     _num_nodes_created = 0  # one for each node created
     __slots__ = '_name', '_mtype', '_id', '_inWires', '_outWires', '_parent', '_isInput', '_label'
-    def __init__(self, name: 'str' = "", mtype: 'MType' = Any):
+    def __init__(self, name: 'str' = "", mtype: 'mtypes.MType' = mtypes.Any):
         self._name = name
-        assert mtype.__class__ == MType, f"Expected a type, not {mtype}"
+        assert mtype.__class__ == mtypes.MType, f"Expected a type, not {mtype}"
         self._mtype = mtype
         self._id = Node._num_nodes_created
         Node._num_nodes_created += 1
@@ -97,7 +98,7 @@ def isNode(value):
     return value.__class__ == Node
 def isNodeOrMLiteral(value):
     '''Returns whether or not value is a literal or a node.'''
-    return isMLiteral(value) or isNode(value)
+    return mtypes.isMLiteral(value) or isNode(value)
 
 class Wire:
     ''' src and dst are Nodes.
@@ -116,7 +117,7 @@ class Wire:
         self._dst = dst
         dst.addInWire(self)
         self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
-        self._mtype: 'MType' = Any
+        self._mtype: 'mtypes.MType' = mtypes.Any
     def __hash__(self):
         return hash('w' + str(self._id))
     @property
@@ -491,12 +492,12 @@ class Mux(Component):
 
 class Constant(Component):
     __slots__ = '_value'
-    def __init__(self, value: 'MLiteral'):
-        assert isMLiteral(value), f"Value of Constant must be MLiteral, not {value.__class__}"
+    def __init__(self, value: 'mtypes.MLiteral'):
+        assert mtypes.isMLiteral(value), f"Value of Constant must be MLiteral, not {value.__class__}"
         self._value = value
         Component.__init__(self, str(self.value), {}, {'c0': Node('_c_input', value.__class__)}, None, set())
     @property
-    def value(self) -> 'MLiteral':
+    def value(self) -> 'mtypes.MLiteral':
         '''The value of the constant'''
         return self._value
 
@@ -648,7 +649,7 @@ def setWireTypes(comp: 'Component'):
         setWireTypes(child)
 
 def setWiresTypesFromNode(node: 'Node'):
-    if node._mtype != Any:
+    if node._mtype != mtypes.Any:
         for wire in node._inWires:
             wire._mtype = node._mtype
         for wire in node._outWires:
