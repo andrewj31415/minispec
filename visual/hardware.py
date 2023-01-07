@@ -1,6 +1,9 @@
 
 import mtypes
+import synth
 from typing import Any
+
+print('synth', synth)
 
 ''' The hardware rep.
 The hardware representation consists of two data structures:
@@ -105,7 +108,13 @@ class Wire:
     Adds itself to the hardware data structure when initialized. '''
     _num_wires_created = 0  # one for each Wire created
     __slots__ = '_id', '_src', '_dst', '_tokensSourcedFrom', '_mtype'
-    def __init__(self, src: 'Node', dst: 'Node'):
+    def __init__(self, src: 'Node|synth.MValue', dst: 'Node'):
+        if src.__class__ == synth.MValue:
+            tokensSourcedFrom = src._tokensSourcedFrom.copy()
+            print('got', tokensSourcedFrom)
+            src = src.value
+        else:
+            tokensSourcedFrom = []
         assert isNode(src), f"Must be a node, not {src} which is {src.__class__}"
         assert isNode(dst), f"Must be a node, not {dst} which is {dst.__class__}"
         assert src._parent != None, "Can only put Wire on Node in Component"
@@ -116,7 +125,7 @@ class Wire:
         src.addOutWire(self)
         self._dst = dst
         dst.addInWire(self)
-        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = []
+        self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = tokensSourcedFrom
         self._mtype: 'mtypes.MType' = mtypes.Any
     def __hash__(self):
         return hash('w' + str(self._id))
@@ -854,7 +863,8 @@ def wireToELK(item: 'Wire'):
     assert item.__class__ == Wire, "Requires a Wire"
     jsonObj = { 'id': elkID(item), 'sources': [ elkID(item.src) ], 'targets': [ elkID(item.dst) ] }
     assert item in item.src.outWires, "Expected Wire to be in the outWires of its src"
-    jsonObj['i'] = {'mt': str(item._mtype)}
+    jsonObj['i'] = {'mt': str(item._mtype),  # minispec type
+                    'ts': item.getSourceTokens()}  # source tokens
     if len(item.src.outWires) == 1:
         jsonObj['properties'] = {}
         jsonObj['properties']['org.eclipse.elk.layered.priority.direction'] = 10

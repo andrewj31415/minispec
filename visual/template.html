@@ -1085,6 +1085,13 @@
                         wireInspectDiv.style.visibility = "hidden";
                         line.setAttribute("stroke", "blue");
                     });
+                    lineInteract.addEventListener('dblclick', () => {
+                        let tokensToLink = edge.i.ts;
+                        let filenameOfOrigin = tokensToLink[0][0];
+                        let tokenIndex = tokensToLink[0][1];
+                        goToLocation(filenameOfOrigin, tokenIndex);
+                        highlightToken(filenameOfOrigin, tokenIndex);
+                    })
                 }
 
                 //draw circles at junction points

@@ -1691,7 +1691,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         value = self.visit(ctx.expression())
         if value.value.__class__ == UnsynthesizableComponent:
             return MValue(UnsynthesizableComponent())
-        value = value.resolveToNodeOrMLiteral(self)
+        value = value.resolveToNodeOrMLiteral(self).withSourceTokens([(getSourceFilename(ctx), ctx.lvalue(0).getSourceInterval()[-1]+2)])
         assert hardware.isNodeOrMLiteral(value.value), f"Received {value.value} from {ctx.toStringTree(recog=parser)}"
         # We have one of:
         #   1. An ordinary variable -- assign with .set to the relevant node.
@@ -2345,7 +2345,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # hook up the funcComponent to the arguments passed in.
             for i in range(len(functionArgs)):
                 funcInputNode = funcComponent.inputs[i]
-                hardware.Wire(functionArgs[i].resolveToNode(self).value, funcInputNode)
+                hardware.Wire(functionArgs[i].resolveToNode(self), funcInputNode)
             self.globalsHandler.currentComponent.addChild(funcComponent)
             return MValue(funcComponent.output)  # return the value of this call, which is the output of the function
         elif ctx.fcn.__class__ == build.MinispecPythonParser.MinispecPythonParser.FieldExprContext:
