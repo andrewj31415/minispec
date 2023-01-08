@@ -111,7 +111,6 @@ class Wire:
     def __init__(self, src: 'Node|synth.MValue', dst: 'Node'):
         if src.__class__ == synth.MValue:
             tokensSourcedFrom = src._tokensSourcedFrom.copy()
-            print('got', tokensSourcedFrom)
             src = src.value
         else:
             tokensSourcedFrom = []
