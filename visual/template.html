@@ -708,8 +708,16 @@
                     tokenSpan.textContent = token;
                     tokenSpan.style.color = getTokenColor(token);
                     tokenSpan.components = [];  // The arrays of component objects that have source including this token.
+                    tokenSpan.edges = [];
                     tokenSpan.linkComponent = (component, parentPos) => {
                         tokenSpan.components.push([component, parentPos]);
+                        // tokenSpan.style.backgroundColor = "yellow";
+                        tokenSpan.style.border = "1.5px solid black";
+                        tokenSpan.style.borderRadius = "5px";
+                        tokenSpan.style.cursor = "pointer";
+                    };
+                    tokenSpan.linkEdge = (edge, parentPos) => {
+                        tokenSpan.edges.push([edge, parentPos]);
                         // tokenSpan.style.backgroundColor = "yellow";
                         tokenSpan.style.border = "1.5px solid black";
                         tokenSpan.style.borderRadius = "5px";
@@ -720,7 +728,7 @@
                         updateComponentJump(tokenSpan);
                     });
                     tokenSpan.addEventListener("mouseenter", () => {
-                        if (tokenSpan.components.length != 0) {
+                        if (tokenSpan.components.length != 0 || tokenSpan.edges.length != 0) {
                             // there are tokens corresponding to this component
                             highlightAssociatedComponents(tokenSpan);
                             clearHighlightedTokens();
@@ -824,7 +832,19 @@
             currentIndexTokenToJumpTo = 0;
             updateComponentJump = (tokenSpan) => {
                 if (tokenSpan.components.length == 0) {
-                    // no tokens corresponding to this component
+                    // no components corresponding to this token, look through the edges
+                    if (tokenSpan.edges.length == 0) {
+                        return;
+                    }
+                    if (currentTokenToJumpTo && currentTokenToJumpTo == tokenSpan) {
+                        currentIndexTokenToJumpTo = (currentIndexTokenToJumpTo + 1) % currentTokenToJumpTo.edges.length;
+                    } else {
+                        currentIndexTokenToJumpTo = 0;
+                    }
+                    currentTokenToJumpTo = tokenSpan;
+                    let edge = tokenSpan.edges[currentIndexTokenToJumpTo][0];
+                    let parentPos = tokenSpan.edges[currentIndexTokenToJumpTo][1];
+                    jumpToEdge(edge, parentPos);
                     return;
                 }
                 if (currentTokenToJumpTo && currentTokenToJumpTo == tokenSpan) {
@@ -833,12 +853,13 @@
                     currentIndexTokenToJumpTo = 0;
                 }
                 currentTokenToJumpTo = tokenSpan;
-                component = tokenSpan.components[currentIndexTokenToJumpTo][0];
-                parentPos = tokenSpan.components[currentIndexTokenToJumpTo][1];
+                let component = tokenSpan.components[currentIndexTokenToJumpTo][0];
+                let parentPos = tokenSpan.components[currentIndexTokenToJumpTo][1];
                 jumpToComponent(component, parentPos);
             };
 
             let currentHighlightedComponents = new Set();  // Stores the components currently being highlighted.
+            let currentHighlightedEdges = new Set();  // Stores the edges currently being highlighted.
             /* Highlights the given component. Called by a component on mouse enter. */
             highlightComponent = (component) => {
                 component.overRect.setAttribute("fill", "yellow");
@@ -857,17 +878,22 @@
                 for (let component of currentHighlightedComponents) {
                     dehighlightComponent(component);
                 }
+                for (let edge of currentHighlightedEdges) {
+                    edge.dehighlightEdge();
+                }
                 currentHighlightedComponents = new Set();
+                currentHighlightedEdges = new Set();
             }
             /* Called by a token on mouse enter. Highlights the corresponding components. */
             highlightAssociatedComponents = (tokenSpan) => {
-                if (tokenSpan.components.length == 0) {
-                    // no tokens corresponding to this component
-                    return;
-                }
                 for (let componentAndParentPos of tokenSpan.components) {
                     let component = componentAndParentPos[0];
                     highlightComponent(component);
+                }
+                for (let edgeAndParentPos of tokenSpan.edges) {
+                    let edge = edgeAndParentPos[0];
+                    currentHighlightedEdges.add(edge);
+                    edge.highlightEdge();
                 }
             }
 
@@ -1035,6 +1061,44 @@
 
             /* edge: an elk edge. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeEdge = (edge, parentPos) => {
+                let tokensToLink = edge.i.ts;
+                edge.lines = [];
+                edge.circles = [];
+                let highlightEdge = () => {
+                    for (let line of edge.lines) {
+                        line.setAttribute("stroke", "green");
+                        line.parentElement.appendChild(line);  // bring line to front
+                    }
+                    for (let circle of edge.circles) {
+                        circle.setAttribute("fill", "green");
+                        circle.parentElement.appendChild(circle);  // bring circle to front
+                    }
+                }
+                edge.highlightEdge = highlightEdge;
+                let dehighlightEdge = () => {
+                    for (let line of edge.lines) {
+                        line.setAttribute("stroke", "blue");
+                    }
+                    for (let circle of edge.circles) {
+                        circle.setAttribute("fill", "blue");
+                    }
+                }
+                edge.dehighlightEdge = dehighlightEdge;
+                updateEdgeBBox = (box) => {
+                    if (edge.box) {
+                        edge.bbox = {x1: Math.min(edge.bbox.x1, box.x1, edge.bbox.x2, box.x2),
+                                     y1: Math.min(edge.bbox.y1, box.y1, edge.bbox.y2, box.y2),
+                                     x2: Math.max(edge.bbox.x1, box.x1, edge.bbox.x2, box.x2),
+                                     y2: Math.max(edge.bbox.y1, box.y1, edge.bbox.y2, box.y2),
+                                    };
+                    } else {
+                        edge.bbox = {x1: Math.min(box.x1, box.x2),
+                                     y1: Math.min(box.y1, box.y2),
+                                     x2: Math.max(box.x1, box.x2),
+                                     y2: Math.max(box.y1, box.y2),
+                                    };
+                    }
+                };
                 let segments = []; //Array<{start:{x:number, y:number}, end:{x:number, y:number}}>
                 if (edge.sections === undefined) {
                     // behavior should not occur
@@ -1064,6 +1128,7 @@
                     line.setAttribute("stroke", "blue");
                     line.setAttribute("stroke-width", 1);
                     line.setAttribute("pointer-events", "none");
+                    edge.lines.push(line);
                     svgDisplay.appendChild(line);
 
                     let lineInteract = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -1076,23 +1141,30 @@
                     svgDisplay.appendChild(lineInteract);
 
                     // set the wire inspect div to show the wire type, as well as token highlighting.
-                    let tokensToLink = edge.i.ts;
                     lineInteract.addEventListener("mouseenter", () => {
                         wireInspectDiv.style.visibility = "";
                         wireInspectDiv.innerHTML = edge.i.mt;
-                        line.setAttribute("stroke", "green");
+                        highlightEdge()
                         clearHighlightedTokens();
                         highlightAssociatedTokens(edge, tokensToLink);
                     });
                     lineInteract.addEventListener("mouseleave", () => {
                         wireInspectDiv.style.visibility = "hidden";
-                        line.setAttribute("stroke", "blue");
+                        dehighlightEdge()
+                        clearHighlightedTokens();
                     });
                     lineInteract.addEventListener('dblclick', () => {
                         clearHighlightedTokens();
                         highlightAssociatedTokens(edge, tokensToLink);
                         jumpThroughSource(edge, tokensToLink);
-                    })
+                    });
+
+                    //update the edge's bounding box
+                    updateEdgeBBox({x1: parentPos.x + segment.start.x,
+                                    y1: parentPos.y + segment.start.y,
+                                    x2: parentPos.x + segment.end.x,
+                                    y2: parentPos.y + segment.end.y
+                                    })
                 }
 
                 //draw circles at junction points
@@ -1104,32 +1176,62 @@
                         circle.setAttribute("r", 2);
                         circle.setAttribute("fill", "blue");
                         circle.setAttribute("pointer-events", "none");
+                        edge.circles.push(circle);
                         svgDisplay.appendChild(circle);
                     }
+                }
+
+                //link the corresponding tokens
+                for (filenameAndToken of tokensToLink) {
+                    let filenameOfOrigin = filenameAndToken[0];
+                    let tokenIndex = filenameAndToken[1];
+                    let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
+                    tokenSpan.linkEdge(edge, parentPos);
                 }
             };
 
             //place the top level component
             placeComponent(topLevel, { x: 0, y: 0 });
 
+            /* Given a box with x, y, width, and height, moves the svg to show the box with
+            a heuristically chosen amount of zoom. */
+            showOffBox = (box) => {
+                let size = Math.max(box.width, box.height);
+                let marginPercent = 10 + 15*1000/(1+size);
+                let margin = (size * marginPercent) / 100;
+                destinationViewBox = [
+                    -margin + box.x,
+                    -margin + box.y,
+                    box.width + 2 * margin,
+                    box.height + 2 * margin,
+                ];
+                svgDisplay.setAttribute("viewBox", destinationViewBox.join(" "));
+            }
+
             /* Given a component and its parent component's position,
             moves the svg view window to focus on the component. */
             jumpToComponent = (component, parentPos) => {
-                let marginPercent = 10 + 15*1000/(1+component.width);
-                let margin = (component.width * marginPercent) / 100;
-                destinationViewBox = [
-                    -margin + component.x + parentPos.x,
-                    -margin + component.y + parentPos.y,
-                    component.width + 2 * margin,
-                    component.height + 2 * margin,
-                ];
-                svgDisplay.setAttribute("viewBox", destinationViewBox.join(" "));
+                showOffBox({x: component.x + parentPos.x,
+                            y: component.y + parentPos.y,
+                            width: component.width,
+                            height: component.height
+                        });
             };
             //set up the reset zoom button
             jumpToComponent(topLevel, { x: 0, y: 0 });
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
                 jumpToComponent(topLevel, { x: 0, y: 0 });
             });
+
+            jumpToEdge = (edge, parentPos) => {
+                showOffBox({
+                    x: edge.bbox.x1,
+                    y: edge.bbox.y1,
+                    height: edge.bbox.x2 - edge.bbox.x1,
+                    width: edge.bbox.y2 - edge.bbox.y1
+                });
+                console.log('jumping to edge', edge);
+            };
 
             //shrink any components' text boxes so that they fit inside the component
             fitAllText();
