@@ -793,7 +793,7 @@
             }
 
             /* Pulls up the given source and scrolls to the location. Places the location vertically centered
-            and horizontally as far right as possible (but still on screen). */
+            and horizontally as far right as possible (but still on screen) with a few characters of leeway. */
             goToLocation = (filename, location) => {
                 assert(isString(filename));
                 assert(isNumber(location));
@@ -803,7 +803,8 @@
                 sourceDivHeight = sourceDivs.get(filename).clientHeight; //clientHeight excludes scrollbar
                 sourceDivWidth = sourceDivs.get(filename).clientWidth;
                 sourceDivs.get(filename).scrollTop = highlighterSpan.offsetTop - sourceDivHeight / 2;
-                sourceDivs.get(filename).scrollLeft = highlighterSpan.offsetLeft - sourceDivWidth + highlighterSpanWidth;
+                let horizontalPixelsOfLeeway = 14;
+                sourceDivs.get(filename).scrollLeft = highlighterSpan.offsetLeft - sourceDivWidth + highlighterSpanWidth + horizontalPixelsOfLeeway;
             };
             /* Called by a component or edge on click. Cycles through the corresponding source tokens. */
             currentComponentInFocus = undefined;

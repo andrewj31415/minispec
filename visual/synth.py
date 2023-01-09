@@ -1648,7 +1648,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 argType = self.visit(arg.typeName()).value # typeName parse tree node
                 argName = arg.argName.getText() # name of the variable
                 argNode = hardware.Node(argName, argType)
-                functionScope.set(MValue(argNode), argName)
+                argValue = MValue(argNode, [[(getSourceFilename(ctx), arg.argName.getSourceInterval()[0])]])
+                functionScope.set(argValue, argName)
                 inputNodes.append(argNode)
                 inputNames.append(argName)
         outputType = self.visit(ctx.typeName()).value
@@ -2090,8 +2091,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert left.value.__class__ == hardware.Node and right.value.__class__ == hardware.Node, "left and right should be hardware"
         binComponent = hardware.Function(op, [hardware.Node("l"), hardware.Node("r")])
         binComponent.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-        hardware.Wire(left.value, binComponent.inputs[0])
-        hardware.Wire(right.value, binComponent.inputs[1])
+        hardware.Wire(left, binComponent.inputs[0])
+        hardware.Wire(right, binComponent.inputs[1])
         for component in [binComponent]:
             self.globalsHandler.currentComponent.addChild(component)
         return MValue(binComponent.output)
@@ -2101,14 +2102,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Return the Node or MLiteral corresponding to the expression '''
         if not ctx.op:  # our unopExpr is actually just an exprPrimary.
             return self.visit(ctx.exprPrimary())
-        valueValue = MValue(ctx.exprPrimary()).resolveToNodeOrMLiteral(self)
-        value = valueValue.value
-        assert hardware.isNodeOrMLiteral(value), f"Received {value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
+        value = MValue(ctx.exprPrimary()).resolveToNodeOrMLiteral(self)
+        assert hardware.isNodeOrMLiteral(value.value), f"Received {value.value.__repr__()} from {ctx.exprPrimary().toStringTree(recog=parser)}"
         op = ctx.op.text
-        if mtypes.isMLiteral(value):
-            result = MValue(mtypes.unaryOperation(value, op))
-            return result.appendSourceTokens(valueValue).withSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
-        assert value.__class__ == hardware.Node, "value should be hardware"
+        if mtypes.isMLiteral(value.value):
+            result = MValue(mtypes.unaryOperation(value.value, op)).appendSourceTokens(value)
+            return result.appendSourceTokens(value).withSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
+        assert value.value.__class__ == hardware.Node, "value should be hardware"
         unopComponenet = hardware.Function(op, [hardware.Node("v")])
         unopComponenet.addSourceTokens([(getSourceFilename(ctx), ctx.op.tokenIndex)])
         hardware.Wire(value, unopComponenet.inputs[0])
