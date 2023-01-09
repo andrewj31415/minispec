@@ -884,9 +884,11 @@
                 }
                 currentHighlightedComponents = new Set();
                 currentHighlightedEdges = new Set();
+                wireInspectDiv.style.visibility = "hidden";
             }
             /* Called by a token on mouse enter. Highlights the corresponding components. */
             highlightAssociatedComponents = (tokenSpan) => {
+                clearHighlightedComponents();
                 for (let componentAndParentPos of tokenSpan.components) {
                     let component = componentAndParentPos[0];
                     highlightComponent(component);
@@ -896,6 +898,17 @@
                     currentHighlightedEdges.add(edge);
                     edge.highlightEdge();
                 }
+            }
+            spotlightComponent = (component) => {
+                clearHighlightedComponents();
+                highlightComponent(component);
+            }
+            spotlightEdge = (edge) => {
+                clearHighlightedComponents();
+                wireInspectDiv.style.visibility = "";
+                wireInspectDiv.innerHTML = edge.i.mt;
+                currentHighlightedEdges.add(edge);
+                edge.highlightEdge();
             }
 
             /* End of code for highlighting tokens and components */
@@ -931,8 +944,10 @@
                 let componentName = componentData.name;
 
                 component.parts = []
+                // if the svgViewPort overlaps the component.box, the component is on screen and should be displayed.
+                component.box = {x:absolutePos.x, y:absolutePos.y, width:component.width, height:component.height};
                 component.displayParts = () => {
-                    if (boxesIntersect({x:absolutePos.x, y:absolutePos.y, width:component.width, height:component.height}, svgViewPort)) {
+                    if (boxesIntersect(component.box, svgViewPort)) {
                         countOfComponentsPlaced += 1;
                         for (let part of component.parts) {
                             svgDisplay.appendChild(part);
@@ -997,6 +1012,12 @@
                             let y = absolutePos.y + port.y;
                             let width = port.width
                             let height = port.height
+                            component.box = {
+                                x: Math.min(component.box.x, x),
+                                y: Math.min(component.box.y, y),
+                                width: Math.max(component.box.x + component.box.width, x + width) - Math.min(component.box.x, x),
+                                height: Math.max(component.box.y + component.box.height, y + height) - Math.min(component.box.y, y)
+                            };
                             if (componentData.isMux) {
                                 y -= 5/2;
                                 width = 10;
@@ -1050,15 +1071,13 @@
                     overRect.addEventListener("mouseenter", () => {
                         clearHighlightedTokens();
                         highlightAssociatedTokens(component, tokensToLink);
-                        clearHighlightedComponents();
-                        highlightComponent(component);
+                        spotlightComponent(component);
                     });
                     for (let portRect of component.portRects) {
                         portRect.addEventListener("mouseenter", () => {
                             clearHighlightedTokens();
                             highlightAssociatedTokens(component, tokensToLink);
-                            clearHighlightedComponents();
-                            highlightComponent(component);
+                            spotlightComponent(component);
                         });
                     }
                     // clear box highlight upon exiting
@@ -1105,12 +1124,12 @@
                     for (let line of edge.lines) {
                         line.setAttribute("stroke", "green");
                         line.setAttribute("stroke-width", 3);
-                        line.parentElement.appendChild(line);  // bring line to front
+                        // line.parentElement.appendChild(line);  // bring line to front
                     }
                     for (let circle of edge.circles) {
                         circle.setAttribute("fill", "green");
                         circle.setAttribute("r", 3);
-                        circle.parentElement.appendChild(circle);  // bring circle to front
+                        // circle.parentElement.appendChild(circle);  // bring circle to front
                     }
                 }
                 edge.highlightEdge = highlightEdge;
@@ -1183,15 +1202,12 @@
 
                     // set the wire inspect div to show the wire type, as well as token highlighting.
                     lineInteract.addEventListener("mouseenter", () => {
-                        wireInspectDiv.style.visibility = "";
-                        wireInspectDiv.innerHTML = edge.i.mt;
-                        highlightEdge();
+                        spotlightEdge(edge);
                         clearHighlightedTokens();
                         highlightAssociatedTokens(edge, tokensToLink);
                     });
                     lineInteract.addEventListener("mouseleave", () => {
-                        wireInspectDiv.style.visibility = "hidden";
-                        dehighlightEdge();
+                        clearHighlightedComponents();
                         clearHighlightedTokens();
                     });
                     lineInteract.addEventListener('dblclick', () => {
@@ -1291,9 +1307,6 @@
                 for (component of componentsWithEdgesToPlace) {
                     for (let edge of component.edges) {
                         edge.displayParts();
-                        wireInspectDiv.style.visibility = "hidden";
-                        edge.dehighlightEdge();
-                        clearHighlightedTokens();
                     }
                 }
             };
@@ -1347,12 +1360,12 @@
             // displayParts();
 
             updateDisplayTick = () => {
-                console.log('updating display');
+                // console.log('updating display');
                 let startTime = performance.now();
                 displayParts();
                 let endTime = performance.now();
                 let timeTaken = endTime - startTime;
-                console.log(`finished update in ${timeTaken} ms`);
+                // console.log(`finished update in ${timeTaken} ms`);
                 setTimeout(()=>{
                     updateDisplayTick();
                 }, timeTaken);
