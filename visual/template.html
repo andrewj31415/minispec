@@ -412,6 +412,7 @@
                     currentSVGViewBox[3] * rescaleFactor,
                 ];
                 svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                displayParts();
             });
 
             /* Allow the user to click to zoom and drag to move
@@ -441,6 +442,7 @@
                         currentSVGViewBox[3],
                     ];
                     svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                    displayParts();
                 }
             });
             mobileRecalculateSvgDragging = (touches) => {
@@ -928,6 +930,37 @@
                 component.componentData = componentData;
                 let componentName = componentData.name;
 
+                component.parts = []
+                component.displayParts = (depth) => {
+                    if (depth == 0) {
+                        if (boxesIntersect({x:absolutePos.x, y:absolutePos.y, width:component.width, height:component.height}, svgViewPort)) {
+                            for (let part of component.parts) {
+                                svgDisplay.appendChild(part);
+                            }
+                            if (component.edges) {
+                                for (edge of component.edges) {
+                                    edge.displayParts();
+                                }
+                            }
+                            let more = (component.parts.length > 0) || (component.edges && component.edges.length > 0);
+                            if (more) {
+                                countOfComponentsPlaced += 1;
+                            }
+                            return more;
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        let more = false;
+                        if (component.children) {
+                            for (let child of component.children) {
+                                more = child.displayParts(depth - 1) || more;
+                            }
+                        }
+                        return more;
+                    }
+                }
+
                 let overRect;
                 if (componentData.isMux) {
                     overRect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
@@ -947,7 +980,7 @@
                     rect.setAttribute("fill", "white");
                 }
                 component.overRect = overRect;
-                svgDisplay.appendChild(overRect);
+                component.parts.push(overRect);
                 let overName = undefined;
                 if (componentName.length > 0) {
                     let overName = fitText(componentName, {
@@ -957,6 +990,7 @@
                         height: (component.children && component.children.length > 0 ) ? componentData.weight : component.height,
                     });
                     overName.setAttribute("pointer-events", "none");
+                    component.parts.push(overName);
                     // overName.setAttribute("fill", "blue");
                 }
 
@@ -986,7 +1020,7 @@
                                     rect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
                                     rect.setAttribute("fill", "white");
                                 }
-                                svgDisplay.appendChild(portRect);
+                                component.parts.push(portRect);
                                 component.portRects.push(portRect);
                             }
                             let portName = fitText(label.text, {
@@ -996,6 +1030,7 @@
                                 height: height,
                             });
                             portName.setAttribute("pointer-events", "none");
+                            component.parts.push(portName);
                         }
                     }
                 }
@@ -1060,6 +1095,13 @@
 
             /* edge: an elk edge. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeEdge = (edge, parentPos) => {
+                edge.parts = []
+                edge.displayParts = () => {
+                    for (let part of edge.parts) {
+                        svgDisplay.appendChild(part);
+                    }
+                }
+
                 let tokensToLink = edge.i.ts;
                 edge.lines = [];
                 edge.circles = [];
@@ -1132,7 +1174,7 @@
                     line.setAttribute("stroke-width", 1);
                     line.setAttribute("pointer-events", "none");
                     edge.lines.push(line);
-                    svgDisplay.appendChild(line);
+                    edge.parts.push(line);
 
                     let lineInteract = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     lineInteract.setAttribute("x1", parentPos.x + segment.start.x);
@@ -1141,7 +1183,7 @@
                     lineInteract.setAttribute("y2", parentPos.y + segment.end.y);
                     lineInteract.setAttribute("stroke", "transparent");
                     lineInteract.setAttribute("stroke-width", 5);
-                    svgDisplay.appendChild(lineInteract);
+                    edge.parts.push(lineInteract);
 
                     // set the wire inspect div to show the wire type, as well as token highlighting.
                     lineInteract.addEventListener("mouseenter", () => {
@@ -1180,7 +1222,7 @@
                         circle.setAttribute("fill", "blue");
                         circle.setAttribute("pointer-events", "none");
                         edge.circles.push(circle);
-                        svgDisplay.appendChild(circle);
+                        edge.parts.push(circle);
                     }
                 }
 
@@ -1195,6 +1237,50 @@
 
             //place the top level component
             placeComponent(topLevel, { x: 0, y: 0 });
+
+            boxesIntersect = (box1, box2) => {
+                return ( box1.x + box1.width >= box2.x && box2.x + box2.width >= box1.x )
+                        && ( box1.y + box1.height >= box2.y && box2.y + box2.height >= box1.y );
+            }
+            displayParts = () => {
+                let box = svgDisplay.getBoundingClientRect();
+                let pt = svgDisplay.createSVGPoint();
+                pt.x = box.left;
+                pt.y = box.top;
+                let topleft = pt.matrixTransform(svgDisplay.getScreenCTM().inverse());
+                pt.x = box.right;
+                pt.y = box.bottom;
+                let bottomright = pt.matrixTransform(svgDisplay.getScreenCTM().inverse());
+                /* When the svg is in the browser, it extends beyond its viewbox to fill the available
+                space (whenever the aspect ratio of the svg does not match the available space, which is
+                most of the time). So, to dynamically load/unload elements, we cannot rely on the the
+                viewbox to determine which elements are on screen. Instead, we find the upper left/bottom right
+                parts of the svg in terms of the client coordinates and transform these into svg coordinates
+                using the same idea as in the code for converting mouse event coordinates into svg coordinates.
+                topleft and bottomright are {x: Number, y: Number} points wihch represent the top-left-most and 
+                bottom-right-most visible points on the svg. */
+
+                while (svgDisplay.firstChild != null) {
+                    svgDisplay.removeChild(svgDisplay.firstChild);
+                }
+
+                svgViewPort = {
+                                x: topleft.x,
+                                y: topleft.y,
+                                width: bottomright.x - topleft.x,
+                                height: bottomright.y - topleft.y
+                            }
+
+                let cap = 500;
+                countOfComponentsPlaced = 0;
+                let more = true;
+                let depth = 0;
+                while (more && countOfComponentsPlaced < cap) {
+                    more = topLevel.displayParts(depth);
+                    depth += 1;
+                }
+                console.log('placed', countOfComponentsPlaced);
+            };
 
             /* Given a box with x, y, width, and height, moves the svg to show the box with
             a heuristically chosen amount of zoom. */
@@ -1235,8 +1321,13 @@
                 });
             };
 
-            //shrink any components' text boxes so that they fit inside the component
+            // shrink any components' text boxes so that they fit inside the component
             fitAllText();
+            // determine which components can be displayed so as to avoid lag
+            while (svgDisplay.firstChild != null) {
+                svgDisplay.removeChild(svgDisplay.firstChild);
+            }
+            displayParts();
         </script>
     </body>
 </html>
