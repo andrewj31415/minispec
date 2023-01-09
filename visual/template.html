@@ -412,7 +412,7 @@
                     currentSVGViewBox[3] * rescaleFactor,
                 ];
                 svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                // displayParts();
+                displayParts();
             });
 
             /* Allow the user to click to zoom and drag to move
@@ -442,7 +442,7 @@
                         currentSVGViewBox[3],
                     ];
                     svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                    // displayParts();
+                    displayParts();
                 }
             });
             mobileRecalculateSvgDragging = (touches) => {
@@ -483,6 +483,7 @@
                             currentSVGViewBox[3],
                         ];
                         svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                        displayParts();
                     } else if (isSVGDragging && event.touches.length === 2) {
                         event.preventDefault(); //prevent the touch from resizing the entire window
                         let newCoords1 = getSVGCoordinates(event.touches[0]);
@@ -503,6 +504,7 @@
                             currentSVGViewBox[3] * rescaleFactor,
                         ];
                         svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
+                        displayParts();
                     }
                 },
                 { passive: false } //necessary to allow svg dragging to prevent default
@@ -564,12 +566,13 @@
                         textBox.setAttribute("dominant-baseline", "text-after-edge");
                 }
                 //fix the font size to fit vertically
-                textBox.setAttribute("font-size", String(element.height) + "px");
+                let fontSize = String(element.height) + "px";
+                textBox.setAttribute("font-size", fontSize);
                 textBox.style.userSelect = "none";
-                svgDisplay.appendChild(textBox);
 
                 //short-circuit if the text has length 0
                 if (text !== "") {
+                    textBox.font = fontSize + " Consolas";
                     textNodesToFit.push([textBox, element]);
                 }
                 return textBox;
@@ -577,6 +580,13 @@
 
             fitTextSteps = 0;
             textNodesUpdated = new Set(); /* The text nodes that have been updated, hence might need to be truncated */
+            referenceCanvas = document.createElement("canvas");
+            referenceContext = referenceCanvas.getContext("2d");
+            getTextWidth = (text, font) => {
+                referenceContext.font = font;
+                let metrics = referenceContext.measureText(text);
+                return metrics.width;
+            }
             /* Shrinks the text in the [text, element] pairs of textNodesToFit to fit inside element.
             This is a separate function to improve performance--shrinking all text boxes together is faster. */
             fitAllText = () => {
@@ -585,7 +595,8 @@
                 for (pair of textNodesToFit) {
                     let textBox = pair[0];
                     let element = pair[1];
-                    if (textBox.getBBox().width > element.width) {
+                    let text = textBox.textContent;
+                    if (getTextWidth(text, textBox.font) > element.width) {
                         textNodesToUpdate.push(pair);
                     }
                 }
@@ -594,7 +605,9 @@
                     let element = pair[1];
                     let currentSize = Number(textBox.getAttribute("font-size").slice(0, -2));
                     currentSize = currentSize * fontShrinkFactor;
+                    let fontSize = String(currentSize) + "px";
                     textBox.setAttribute("font-size", String(currentSize) + "px");
+                    textBox.font = fontSize + " Consolas";
                     textNodesUpdated.add(pair);
                 }
                 textNodesToFit = textNodesToUpdate;
@@ -606,9 +619,9 @@
                     for (pair of textNodesUpdated) {
                         let textBox = pair[0];
                         let element = pair[1];
-                        if (textBox.getBBox().width > element.width) {
+                        if (getTextWidth(textBox.textContent, textBox.font) > element.width) {
                             textBox.textContent += "...";
-                            while (textBox.getBBox().width > element.width && textBox.textContent.length > 5) {
+                            while (getTextWidth(textBox.textContent, textBox.font) > element.width && textBox.textContent.length > 5) {
                                 //remove the last letter before the ellipses
                                 textBox.textContent = textBox.textContent.slice(0, -4) + "...";
                             }
@@ -950,7 +963,7 @@
                     if (boxesIntersect(component.box, svgViewPort)) {
                         countOfComponentsPlaced += 1;
                         for (let part of component.parts) {
-                            svgDisplay.appendChild(part);
+                            svgFragment.appendChild(part);
                         }
                         if (component.edges) {
                             componentsWithEdgesToPlace.push(component);
@@ -1113,7 +1126,7 @@
                 edge.parts = []
                 edge.displayParts = () => {
                     for (let part of edge.parts) {
-                        svgDisplay.appendChild(part);
+                        svgFragment.appendChild(part);
                     }
                 }
 
@@ -1255,6 +1268,9 @@
                         && ( box1.y + box1.height >= box2.y && box2.y + box2.height >= box1.y );
             }
             displayParts = () => {
+                // console.log('updating display');
+                // let startTime = performance.now();
+                
                 let box = svgDisplay.getBoundingClientRect();
                 let pt = svgDisplay.createSVGPoint();
                 pt.x = box.left;
@@ -1275,6 +1291,8 @@
                 while (svgDisplay.firstChild != null) {
                     svgDisplay.removeChild(svgDisplay.firstChild);
                 }
+
+                svgFragment = new DocumentFragment();
 
                 svgViewPort = {
                                 x: topleft.x,
@@ -1309,6 +1327,11 @@
                         edge.displayParts();
                     }
                 }
+                svgDisplay.appendChild(svgFragment);
+
+                // let endTime = performance.now();
+                // let timeTaken = endTime - startTime;
+                // console.log(`finished update in ${timeTaken} ms`);
             };
 
             /* Given a box with x, y, width, and height, moves the svg to show the box with
@@ -1324,6 +1347,7 @@
                     box.height + 2 * margin,
                 ];
                 svgDisplay.setAttribute("viewBox", destinationViewBox.join(" "));
+                displayParts();
             }
 
             /* Given a component and its parent component's position,
@@ -1352,25 +1376,8 @@
 
             // shrink any components' text boxes so that they fit inside the component
             fitAllText();
-            // determine which components can be displayed so as to avoid lag
-            while (svgDisplay.firstChild != null) {
-                svgDisplay.removeChild(svgDisplay.firstChild);
-            }
 
-            // displayParts();
-
-            updateDisplayTick = () => {
-                // console.log('updating display');
-                let startTime = performance.now();
-                displayParts();
-                let endTime = performance.now();
-                let timeTaken = endTime - startTime;
-                // console.log(`finished update in ${timeTaken} ms`);
-                setTimeout(()=>{
-                    updateDisplayTick();
-                }, timeTaken);
-            }
-            updateDisplayTick();
+            displayParts();
         </script>
     </body>
 </html>
