@@ -1262,7 +1262,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         for varInit in ctx.varInit():
             varName = varInit.var.getText()
             if (varInit.rhs):
-                value = self.visit(varInit.rhs)
+                lhsSource = [(getSourceFilename(ctx), varInit.var.getSourceInterval()[0])]
+                value = self.visit(varInit.rhs).withSourceTokens(lhsSource)
             else:
                 value = MValue(None)
             if value.value.__class__ == hardware.Node:
@@ -1278,8 +1279,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             rhsValue = self.visit(ctx.rhs)  #we expect a node corresponding to the desired value
         if len(ctx.lowerCaseIdentifier()) == 1:
+            lhsSource = [(getSourceFilename(ctx), ctx.lowerCaseIdentifier(0).getSourceInterval()[0])]
             varName = ctx.lowerCaseIdentifier(0).getText() #the variable we are assigning
-            self.globalsHandler.currentScope.set(rhsValue, varName)
+            self.globalsHandler.currentScope.set(rhsValue.withSourceTokens(lhsSource), varName)
         else:
             raise Exception("Not Implemented")
         
@@ -1703,8 +1705,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             # we have a single variable to assign, no slicing/subfields needed
             # we don't visit the simplelvalue context since simplelvalue automatically produces hardware
             #   for slicing/indexing/etc. (as all other remaining cases require this).
+            lhsSource = [(getSourceFilename(ctx), ctx.var.getSourceInterval()[0])]
             varName = ctx.var.getText()
-            self.globalsHandler.currentScope.set(value, varName)
+            self.globalsHandler.currentScope.set(value.withSourceTokens(lhsSource), varName)
             return
         # Otherwise, we convert to hardware.
         value = value.resolveToNode(self)
@@ -2226,7 +2229,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for i in range(len(fieldValues)):
                 fieldName = fieldList[i]
                 fieldValue = fieldValues[fieldName].resolveToNode(self)
-                hardware.Wire(fieldValue.value, combineComp.inputs[i])
+                hardware.Wire(fieldValue, combineComp.inputs[i])
             self.globalsHandler.currentComponent.addChild(combineComp)
             return MValue(combineComp.output)
         # no hardware, just a struct literal
