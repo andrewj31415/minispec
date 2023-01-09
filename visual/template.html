@@ -35,7 +35,6 @@
                 font-family: Consolas, Monaco, Lucida Console, Liberation Mono, DejaVu Sans Mono, Bitstream Vera Sans Mono,
                     Courier New; /* see https://meta.stackexchange.com/questions/36176/whats-the-font-used-in-code-blocks */
             }
-
             #source-filenames-div {
                 z-index: 2;
                 width: 100%;
@@ -1088,17 +1087,17 @@
                 }
                 edge.dehighlightEdge = dehighlightEdge;
                 updateEdgeBBox = (box) => {
-                    if (edge.box) {
-                        edge.bbox = {x1: Math.min(edge.bbox.x1, box.x1, edge.bbox.x2, box.x2),
-                                     y1: Math.min(edge.bbox.y1, box.y1, edge.bbox.y2, box.y2),
-                                     x2: Math.max(edge.bbox.x1, box.x1, edge.bbox.x2, box.x2),
-                                     y2: Math.max(edge.bbox.y1, box.y1, edge.bbox.y2, box.y2),
-                                    };
-                    } else {
+                    if (edge.bbox == undefined) {
                         edge.bbox = {x1: Math.min(box.x1, box.x2),
                                      y1: Math.min(box.y1, box.y2),
                                      x2: Math.max(box.x1, box.x2),
                                      y2: Math.max(box.y1, box.y2),
+                                    };
+                    } else {
+                        edge.bbox = {x1: Math.min(edge.bbox.x1, box.x1, edge.bbox.x2, box.x2),
+                                     y1: Math.min(edge.bbox.y1, box.y1, edge.bbox.y2, box.y2),
+                                     x2: Math.max(edge.bbox.x1, box.x1, edge.bbox.x2, box.x2),
+                                     y2: Math.max(edge.bbox.y1, box.y1, edge.bbox.y2, box.y2),
                                     };
                     }
                 };
@@ -1233,7 +1232,6 @@
                     width: edge.bbox.x2 - edge.bbox.x1,
                     height: edge.bbox.y2 - edge.bbox.y1
                 });
-                console.log('jumping to edge', edge);
             };
 
             //shrink any components' text boxes so that they fit inside the component
