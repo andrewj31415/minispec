@@ -412,7 +412,7 @@
                     currentSVGViewBox[3] * rescaleFactor,
                 ];
                 svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                displayParts();
+                // displayParts();
             });
 
             /* Allow the user to click to zoom and drag to move
@@ -442,7 +442,7 @@
                         currentSVGViewBox[3],
                     ];
                     svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                    displayParts();
+                    // displayParts();
                 }
             });
             mobileRecalculateSvgDragging = (touches) => {
@@ -931,33 +931,25 @@
                 let componentName = componentData.name;
 
                 component.parts = []
-                component.displayParts = (depth) => {
-                    if (depth == 0) {
-                        if (boxesIntersect({x:absolutePos.x, y:absolutePos.y, width:component.width, height:component.height}, svgViewPort)) {
-                            for (let part of component.parts) {
-                                svgDisplay.appendChild(part);
-                            }
-                            if (component.edges) {
-                                for (edge of component.edges) {
-                                    edge.displayParts();
-                                }
-                            }
-                            let more = (component.parts.length > 0) || (component.edges && component.edges.length > 0);
-                            if (more) {
-                                countOfComponentsPlaced += 1;
-                            }
-                            return more;
-                        } else {
-                            return false;
+                component.displayParts = () => {
+                    if (boxesIntersect({x:absolutePos.x, y:absolutePos.y, width:component.width, height:component.height}, svgViewPort)) {
+                        countOfComponentsPlaced += 1;
+                        for (let part of component.parts) {
+                            svgDisplay.appendChild(part);
                         }
-                    } else {
-                        let more = false;
+                        if (component.edges) {
+                            componentsWithEdgesToPlace.push(component);
+                        }
                         if (component.children) {
                             for (let child of component.children) {
-                                more = child.displayParts(depth - 1) || more;
+                                // skip components that are (heuristically) too small to see
+                                if (child.width * child.height * 300*300 < svgViewPort.width * svgViewPort.height) {
+                                    break;
+                                    // componentsToPlaceNext.push(child);
+                                }
+                                componentsToPlaceNext.push(child);
                             }
                         }
-                        return more;
                     }
                 }
 
@@ -1080,11 +1072,15 @@
                     }
                 }
 
-                //place children and edges
+                // place children and edges
                 if (component.children) {
                     for (child of component.children) {
                         placeComponent(child, absolutePos);
                     }
+                    // sort the children from largest to smallest
+                    component.children.sort((child1, child2) => {
+                        return child2.width * child2.height - child1.width * child1.height;
+                    })
                 }
                 if (component.edges) {
                     for (edge of component.edges) {
@@ -1189,13 +1185,13 @@
                     lineInteract.addEventListener("mouseenter", () => {
                         wireInspectDiv.style.visibility = "";
                         wireInspectDiv.innerHTML = edge.i.mt;
-                        highlightEdge()
+                        highlightEdge();
                         clearHighlightedTokens();
                         highlightAssociatedTokens(edge, tokensToLink);
                     });
                     lineInteract.addEventListener("mouseleave", () => {
                         wireInspectDiv.style.visibility = "hidden";
-                        dehighlightEdge()
+                        dehighlightEdge();
                         clearHighlightedTokens();
                     });
                     lineInteract.addEventListener('dblclick', () => {
@@ -1271,15 +1267,35 @@
                                 height: bottomright.y - topleft.y
                             }
 
-                let cap = 500;
+                countOfComponentsCap = 500;
                 countOfComponentsPlaced = 0;
-                let more = true;
-                let depth = 0;
-                while (more && countOfComponentsPlaced < cap) {
-                    more = topLevel.displayParts(depth);
-                    depth += 1;
+
+                componentsToPlaceNow = [topLevel];
+                componentsToPlaceNext = [];
+                componentsWithEdgesToPlace = [];
+
+                while (componentsToPlaceNow.length != 0) {
+                    for (let component of componentsToPlaceNow) {
+                        component.displayParts();
+                        if (countOfComponentsPlaced >= countOfComponentsCap) {
+                            break;
+                        }
+                    }
+                    if (countOfComponentsPlaced >= countOfComponentsCap) {
+                        break;
+                    }
+                    componentsToPlaceNow = componentsToPlaceNext;
+                    componentsToPlaceNext = [];
                 }
-                console.log('placed', countOfComponentsPlaced);
+                // place edges last so nonhierarchical edges go on top
+                for (component of componentsWithEdgesToPlace) {
+                    for (let edge of component.edges) {
+                        edge.displayParts();
+                        wireInspectDiv.style.visibility = "hidden";
+                        edge.dehighlightEdge();
+                        clearHighlightedTokens();
+                    }
+                }
             };
 
             /* Given a box with x, y, width, and height, moves the svg to show the box with
@@ -1327,7 +1343,21 @@
             while (svgDisplay.firstChild != null) {
                 svgDisplay.removeChild(svgDisplay.firstChild);
             }
-            displayParts();
+
+            // displayParts();
+
+            updateDisplayTick = () => {
+                console.log('updating display');
+                let startTime = performance.now();
+                displayParts();
+                let endTime = performance.now();
+                let timeTaken = endTime - startTime;
+                console.log(`finished update in ${timeTaken} ms`);
+                setTimeout(()=>{
+                    updateDisplayTick();
+                }, timeTaken);
+            }
+            updateDisplayTick();
         </script>
     </body>
 </html>
