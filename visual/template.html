@@ -199,7 +199,6 @@
                 border-style: solid;
                 z-index: 6;
                 pointer-events: none;
-                transform: translate(-100%, -100%); /* position the div by its bottom right corner */
             }
         </style>
     </head>
@@ -357,8 +356,8 @@
             /* Manage the wire inspect div */
             wireInspectDiv.style.visibility = "hidden";
             svgDisplay.addEventListener("mousemove", (event) => {
-                wireInspectDiv.style.left = event.clientX + "px";
-                wireInspectDiv.style.top = event.clientY + "px";
+                wireInspectDiv.style.right = (window.innerWidth - event.clientX + 5) + "px";
+                wireInspectDiv.style.bottom = (window.innerHeight - event.clientY + 5) + "px";
             });
 
             /* Handle showing the help information */
@@ -1067,10 +1066,12 @@
                 let highlightEdge = () => {
                     for (let line of edge.lines) {
                         line.setAttribute("stroke", "green");
+                        line.setAttribute("stroke-width", 3);
                         line.parentElement.appendChild(line);  // bring line to front
                     }
                     for (let circle of edge.circles) {
                         circle.setAttribute("fill", "green");
+                        circle.setAttribute("r", 3);
                         circle.parentElement.appendChild(circle);  // bring circle to front
                     }
                 }
@@ -1078,9 +1079,11 @@
                 let dehighlightEdge = () => {
                     for (let line of edge.lines) {
                         line.setAttribute("stroke", "blue");
+                        line.setAttribute("stroke-width", 1);
                     }
                     for (let circle of edge.circles) {
                         circle.setAttribute("fill", "blue");
+                        circle.setAttribute("r", 2);
                     }
                 }
                 edge.dehighlightEdge = dehighlightEdge;
