@@ -1958,6 +1958,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         expri: 'list[tuple[MValue, MValue]]' = [] # pairs (comparisonStmt, valueToOutput)
         hasDefault = False
         for caseExprItem in ctx.caseExprItem():
+            sourceToken = [(getSourceFilename(caseExprItem), caseExprItem.getSourceInterval()[0])]
             if not caseExprItem.exprPrimary():  # no selection expression, so we have a default expression.
                 hasDefault = True
                 defaultValue = self.visit(caseExprItem.expression())
@@ -1984,7 +1985,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             mux.inputNames = [str(pair[0].value) for pair in expri] + (['default'] if hasDefault else [])
             mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
             mux.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[-1])])
-            wires = [hardware.Wire(expr.value, mux.control)] + [ hardware.Wire(possibleOutputs[i].resolveToNode(self).value, mux.inputs[i]) for i in range(len(possibleOutputs)) ]
+            wires = [hardware.Wire(expr, mux.control)] + [ hardware.Wire(possibleOutputs[i].resolveToNode(self), mux.inputs[i]) for i in range(len(possibleOutputs)) ]
             for component in [mux]:
                 self.globalsHandler.currentComponent.addChild(component)
             return MValue(mux.output)
@@ -2266,7 +2267,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         text = "["
         inNode = hardware.Node()
         inputs = [inNode]
-        wires: 'list[tuple[hardware.Node, hardware.Node]]' = [(toSliceFrom.value, inNode)]
+        wires: 'list[tuple[MValue, hardware.Node]]' = [(toSliceFrom, inNode)]
         if msb.isLiteralValue():
             text += str(msb.value)
         else:
@@ -2274,7 +2275,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             text += '_'
             inNode1 = hardware.Node()
             inputs.append(inNode1)
-            wires.append((msb.value, inNode1))
+            wires.append((msb, inNode1))
         if ctx.lsb:
             text += ':'
             if lsb.isLiteralValue():
@@ -2284,7 +2285,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 text += '_'
                 inNode2 = hardware.Node()
                 inputs.append(inNode2)
-                wires.append((lsb.value, inNode2))
+                wires.append((lsb, inNode2))
         text += "]"
         sliceComponent = hardware.Function(text, inputs)
         for src, dst in wires:
@@ -2503,7 +2504,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Each variety of statement is handled separately. '''
         return self.visitChildren(ctx)
 
-    def runIfStmt(self, condition: 'hardware.Node', ifStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext', elseStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext|None', ctx):
+    def runIfStmt(self, condition: 'MValue', ifStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext', elseStmt: 'build.MinispecPythonParser.MinispecPythonParser.StmtContext|None', ctx):
         ''' Creates hardware corresponding to the if statement
         if (condition)
           ifStmt
@@ -2527,7 +2528,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # TODO source for 'else' token
         self.copyBackIfStmt(originalScope, condition, [ifScope, elseScope], [mtypes.BooleanLiteral(True), mtypes.BooleanLiteral(False)], tokensSourcedFrom)
 
-    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'hardware.Node', childScopes: 'list[Scope]', conditionLiterals: 'list[mtypes.MLiteral]', tokensSourcedFrom = None):
+    def copyBackIfStmt(self, originalScope: 'Scope', condition: 'MValue', childScopes: 'list[Scope]', conditionLiterals: 'list[mtypes.MLiteral]', tokensSourcedFrom = None):
         ''' Given a collection of child scopes, the original scope, and a condition node, copies the variables set in the 
         child scopes back into the original scope with muxes controlled by the condition node.
         conditionLiterals is the list of MLiterals which indicate which child scope would be selected. '''
@@ -2544,17 +2545,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             if tokensSourcedFrom:
                 muxComponent.addSourceTokens(tokensSourcedFrom)
             for i in range(len(values)):
-                hardware.Wire(values[i].resolveToNode(self).value, muxComponent.inputs[i])
+                hardware.Wire(values[i].resolveToNode(self), muxComponent.inputs[i])
             hardware.Wire(condition, muxComponent.control)
             self.globalsHandler.currentComponent.addChild(muxComponent)
             originalScope.set(MValue(muxComponent.output), var)
 
     @decorateForErrorCatching
     def visitIfStmt(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IfStmtContext):
-        condition = self.visit(ctx.expression()).value
-        if mtypes.isMLiteral(condition):
+        condition = self.visit(ctx.expression()).resolveToNodeOrMLiteral(self)
+        if mtypes.isMLiteral(condition.value):
             # we select the appropriate branch
-            if condition == mtypes.BooleanLiteral(True):
+            if condition.value == mtypes.BooleanLiteral(True):
                 self.visit(ctx.stmt(0))
             else:
                 if ctx.stmt(1):
@@ -2587,18 +2588,18 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         elif expr.isLiteralValue() and not exprToMatch.isLiteralValue() and expr.value.__class__ == mtypes.Bool:
             if not expr.value:
                 muxLabels = [mtypes.BooleanLiteral(False), mtypes.BooleanLiteral(True)]
-            condition = exprToMatch.value
+            condition = exprToMatch
         elif not expr.isLiteralValue() and exprToMatch.isLiteralValue() and exprToMatch.value.__class__ == mtypes.Bool:
             if not exprToMatch.value:
                 muxLabels = [mtypes.BooleanLiteral(False), mtypes.BooleanLiteral(True)]
-            condition = expr.resolveToNode(self).value
+            condition = expr.resolveToNode(self)
         else:  # neither are boolean literals
             exprHardware = expr.resolveToNode(self).value
             eqComp = hardware.Function('==', [hardware.Node(), hardware.Node()])
             hardware.Wire(exprHardware, eqComp.inputs[0])
             hardware.Wire(exprToMatch.resolveToNode(self).value, eqComp.inputs[1])
             self.globalsHandler.currentComponent.addChild(eqComp)
-            condition = eqComp.output
+            condition = MValue(eqComp.output)
 
         self.globalsHandler.currentScope = ifScope
         self.visit(ifStmt)
@@ -2708,7 +2709,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 self.visit(ctx.caseStmtDefaultItem().stmt())
             
             tokensSourcedFrom = [(getSourceFilename(ctx), ctx.getSourceInterval()[0]), (getSourceFilename(ctx), ctx.getSourceInterval()[-1])]
-            self.copyBackIfStmt(originalScope, expr.value, scopes, [str(pair[0].value) for pair in expri] + ([] if coversAllCases else ['default']), tokensSourcedFrom)
+            self.copyBackIfStmt(originalScope, expr, scopes, [str(pair[0].value) for pair in expri] + ([] if coversAllCases else ['default']), tokensSourcedFrom)
             return
         # run the case statement as a sequence of if statements.
         self.doCaseStmtStep(expr, expri, 0, ctx.caseStmtDefaultItem())
