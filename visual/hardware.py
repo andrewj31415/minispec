@@ -468,7 +468,8 @@ class Function(Component):
     @property
     def inputs(self):
         '''Returns a copy of the list of input Nodes to this function'''
-        return self._inputList.copy()
+        return [self._inputs[i] for i in range(len(self._inputs))]
+        # return self._inputList.copy()
 
 class Mux(Component):
     __slots__ = '_control', '_inputNames'
@@ -570,6 +571,30 @@ class VectorModule(Module):
         if self.numberedSubmodules[0].__class__ == VectorModule:
             return self.numberedSubmodules[0].isVectorOfRegisters
         return self.numberedSubmodules[0].isRegister()
+
+class Inserter(Function):
+    ''' Represents inserting into part of a value. '''
+    __slots__ = 'varName'
+    def __init__(self, withValue: 'bool', varName: 'str'):
+        ''' withValue: whether or not the value has been initialized
+        varName: the name of the value being changed '''
+        if withValue:
+            Function.__init__(self, "", [Node()])
+        else:
+            Function.__init__(self, "", [])
+        self.varName = varName
+    def addText(self, text: 'str'):
+        self._name += text
+    def addSelector(self, selectionText: 'str'):
+        selector = Node()
+        self.addInput(selector, len(self.inputs))
+        self.addText(selectionText)
+        return selector
+    def setValue(self):
+        value = Node()
+        self.addInput(value, len(self.inputs))
+        return value
+
 
 class Demux(Component):
     # currently unused
@@ -880,7 +905,7 @@ def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', p
     assert item.__class__ != Node, "Use nodeToELK instead"
     assert item.__class__ != Wire, "Use wireToELK instead"
     itemWeightAdjusted = weightAdjust(item.weight())
-    if item.__class__ == Function:
+    if isinstance(item, Function):
         ports = []
         ind = len(item.inputs)
         for i in range(len(item.inputs)):
@@ -896,7 +921,7 @@ def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', p
                     'children': [ toELK(child, componentELKs) for child in item.children ],
                     'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
-        if len(item.children) == 0 or not any(child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
+        if len(item.children) == 0 or not any( child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
             jsonObj['width'] = 15
             jsonObj['height'] = 15
         jsonObj['i'] = {'name': item.name,

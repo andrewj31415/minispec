@@ -239,6 +239,10 @@ class MValue:
             assert tokens.__class__ == list, f"unexpected token class {tokens.__class__}"
             assert all( place.__class__ == tuple for place in tokens ), f"unexpected classes of entries in tokens {[place.__class__ for place in tokens if place.__class__ != tuple]}"
         self._tokensSourcedFrom: 'list[list[tuple[str, int]]]' = tokensSourcedFrom
+        if value.__class__ == hardware.Node:
+            # assert value.parent != None, "Nodes in MValues must be part of a component"
+            if value.parent != None:
+                self._tokensSourcedFrom = value.parent._tokensSourcedFrom + self._tokensSourcedFrom
     @property
     def value(self):
         return self._value
@@ -1820,79 +1824,72 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     pass  # not a module, move on
             except MissingVariableException:
                 pass  # not a module, move on
-        text, nodes, varName, tokensSourcedFrom = self.visit(lvalue)
-        insertComponent = hardware.Function(text, [hardware.Node() for node in nodes] + [hardware.Node()])
-        insertComponent.addSourceTokens(tokensSourcedFrom)
-        for i in range(len(nodes)):
-            hardware.Wire(nodes[i], insertComponent.inputs[i])
-        hardware.Wire(value.value, insertComponent.inputs[len(nodes)])
+        insertComponent: 'hardware.Inserter' = self.visit(lvalue)
+        hardware.Wire(value, insertComponent.setValue())
         self.globalsHandler.currentComponent.addChild(insertComponent)
-        self.globalsHandler.currentScope.set(MValue(insertComponent.output), varName)
+        self.globalsHandler.currentScope.set(MValue(insertComponent.output), insertComponent.varName)
 
     @decorateForErrorCatching
     def visitMemberLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
-        text += '.' + ctx.lowerCaseIdentifier().getText()
-        tokensSourcedFrom.append((getSourceFilename(ctx), ctx.lowerCaseIdentifier().getSourceInterval()[0]))
-        return (text, nodes, varName, tokensSourcedFrom)  # no new selection input nodes since field selection is not dynamic
+        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue())
+        inserter.addText('.' + ctx.lowerCaseIdentifier().getText())
+        inserter.addSourceTokens([(getSourceFilename(ctx), ctx.lowerCaseIdentifier().getSourceInterval()[0])])
+        return inserter
 
     @decorateForErrorCatching
     def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
-        index = self.visit(ctx.index).value
-        text += '['
-        if hardware.isNode(index):
-            nodes += (index,)
-            text += '_'
+        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue())
+        index = self.visit(ctx.index).resolveToNodeOrMLiteral(self)
+        if index.isLiteralValue():
+            inserter.addText('[' + str(index.value) + ']')
         else:
-            text += str(index)
-        text += ']'
-        tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[0]-1))
-        tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[-1]+1))
-        return (text, nodes, varName, tokensSourcedFrom)
+            node = inserter.addSelector('[_]')
+            hardware.Wire(index, node)
+        # tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[0]-1))
+        # tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[-1]+1))
+        return inserter
 
     @decorateForErrorCatching
     def visitSimpleLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        valueFound = self.globalsHandler.currentScope.get(self, ctx.getText()).value
-        if valueFound == None:
-            # value has not yet been initialized
-            return ("", tuple(), ctx.getText(), [])
-        if mtypes.isMLiteral(valueFound):
-            valueFound = MValue(valueFound).getHardware(self.globalsHandler)
-        return ("", (valueFound,), ctx.getText(), [])
+        valueFound = self.globalsHandler.currentScope.get(self, ctx.getText())
+        if valueFound.value != None:
+            valueFound = valueFound.resolveToNode(self)
+        inserter = hardware.Inserter(valueFound.value != None, ctx.getText())
+        if valueFound.value != None:
+            hardware.Wire(valueFound, inserter.inputs[0])
+        return inserter
 
     @decorateForErrorCatching
     def visitSliceLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
-        msb = self.visit(ctx.msb).value
-        lsb = self.visit(ctx.lsb).value
-        text += '['
-        if hardware.isNode(msb):
-            nodes += (msb,)
-            text += '_'
+        # text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
+        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue())
+        msb = self.visit(ctx.msb).resolveToNodeOrMLiteral(self)
+        if msb.isLiteralValue():
+            inserter.addText('[' + str(msb.value))
         else:
-            text += str(msb)
-        text += ':'
-        if hardware.isNode(lsb):
-            nodes += (lsb,)
-            text += '_'
+            node = inserter.addSelector('[_')
+            hardware.Wire(msb, node)
+        inserter.addText(':')
+        lsb = self.visit(ctx.lsb).resolveToNodeOrMLiteral(self)
+        if lsb.isLiteralValue():
+            inserter.addText(str(lsb.value) + ']')
         else:
-            text += str(lsb)
-        text += ']'
+            node = inserter.addSelector('_]')
+            hardware.Wire(lsb, node)
         # TODO source map
-        return (text, nodes, varName, tokensSourcedFrom)
+        return inserter
 
     @decorateForErrorCatching
     def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
@@ -2328,6 +2325,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 functionDef = self.globalsHandler.currentScope.get(self, functionToCall, params).value
                 if functionDef.__class__ == UnsynthesizableComponent:
                     return MValue(UnsynthesizableComponent())
+                assert functionDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext, f"Excepted a function definition, not {functionDef.__class__}."
                 self.globalsHandler.lastParameterLookup = params
                 funcComponent = self.visit(functionDef).value  #synthesize the function internals
             except MissingVariableException as e:
