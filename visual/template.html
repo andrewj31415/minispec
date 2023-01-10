@@ -530,8 +530,14 @@
                 }
             });
 
-            fontShrinkFactor = 0.75; //after we fit the text vertically, we shrink by this factor up to a few times to try to make the text fit horizontally.
-            textNodesToFit = []; //Array<[textBoxNode, element]>
+            referenceCanvas = document.createElement("canvas");
+            referenceContext = referenceCanvas.getContext("2d");
+            getTextWidth = (text, font) => {
+                referenceContext.font = font;
+                let metrics = referenceContext.measureText(text);
+                return metrics.width;
+            }
+
             /* Takes in a line of text and an object with x, y, width, and height attributes.
                                     Fits the text to the box, adds it to the DOM, and returns a reference to the resulting
                                     DOM object.
@@ -576,66 +582,18 @@
                 //short-circuit if the text has length 0
                 if (text !== "") {
                     textBox.font = fontSize + " Consolas";
-                    textNodesToFit.push([textBox, element]);
+                    
+                    let currentSize = element.height;
+                    let font = String(currentSize) + "px Consolas";
+                    if (getTextWidth(text, font) > element.width) {
+                        let bitOfMargin = 0.9;
+                        currentSize = currentSize / getTextWidth(text, font) * element.width * bitOfMargin;
+                        font = String(currentSize) + "px Consolas";
+                    }
+                    fontSize = String(currentSize) + "px";
+                    textBox.setAttribute("font-size", fontSize);
                 }
                 return textBox;
-            };
-
-            fitTextSteps = 0;
-            textNodesUpdated = new Set(); /* The text nodes that have been updated, hence might need to be truncated */
-            referenceCanvas = document.createElement("canvas");
-            referenceContext = referenceCanvas.getContext("2d");
-            getTextWidth = (text, font) => {
-                referenceContext.font = font;
-                let metrics = referenceContext.measureText(text);
-                return metrics.width;
-            }
-            /* Shrinks the text in the [text, element] pairs of textNodesToFit to fit inside element.
-            This is a separate function to improve performance--shrinking all text boxes together is faster. */
-            fitAllText = () => {
-                fitTextSteps += 1;
-                let textNodesToUpdate = [];
-                for (pair of textNodesToFit) {
-                    let textBox = pair[0];
-                    let element = pair[1];
-                    let text = textBox.textContent;
-                    if (getTextWidth(text, textBox.font) > element.width) {
-                        textNodesToUpdate.push(pair);
-                    }
-                }
-                for (pair of textNodesToUpdate) {
-                    let textBox = pair[0];
-                    let element = pair[1];
-                    let currentSize = Number(textBox.getAttribute("font-size").slice(0, -2));
-                    currentSize = currentSize * fontShrinkFactor;
-                    let fontSize = String(currentSize) + "px";
-                    textBox.setAttribute("font-size", String(currentSize) + "px");
-                    textBox.font = fontSize + " Consolas";
-                    textNodesUpdated.add(pair);
-                }
-                textNodesToFit = textNodesToUpdate;
-                if (fitTextSteps < 8) {
-                    // shrink the text more
-                    fitAllText();
-                } else {
-                    // cut off altered text with ellipses if necessary
-                    for (pair of textNodesUpdated) {
-                        let textBox = pair[0];
-                        let element = pair[1];
-                        if (getTextWidth(textBox.textContent, textBox.font) > element.width) {
-                            textBox.textContent += "...";
-                            while (getTextWidth(textBox.textContent, textBox.font) > element.width && textBox.textContent.length > 5) {
-                                //remove the last letter before the ellipses
-                                textBox.textContent = textBox.textContent.slice(0, -4) + "...";
-                            }
-                        }
-                    }
-
-                    //clear the list of text nodes to fit, since we have fit all of the text nodes on the list
-                    textNodesToFit = [];
-                    fitTextSteps = 0;
-                    textNodesUpdated = new Set();
-                }
             };
 
             /* Sources will be stored using sources: Map<filename: string, { tokens: Array<string> }> */
@@ -1375,9 +1333,6 @@
                     height: edge.bbox.y2 - edge.bbox.y1
                 });
             };
-
-            // shrink any components' text boxes so that they fit inside the component
-            fitAllText();
 
             displayParts();
         </script>
