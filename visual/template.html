@@ -1087,7 +1087,9 @@
                 edge.parts = []
                 edge.displayParts = () => {
                     for (let part of edge.parts) {
-                        svgFragment.appendChild(part);
+                        if (boxesIntersect(part.box, svgViewPort)) {
+                            svgFragment.appendChild(part);
+                        }
                     }
                 }
 
@@ -1164,6 +1166,12 @@
                     line.setAttribute("pointer-events", "none");
                     edge.lines.push(line);
                     edge.parts.push(line);
+                    line.box = {
+                        x: parentPos.x + Math.min(segment.start.x, segment.end.x),
+                        y: parentPos.y + Math.min(segment.start.y, segment.end.y),
+                        width: Math.abs(segment.end.x - segment.start.x),
+                        height: Math.abs(segment.end.y - segment.start.y)
+                    };
 
                     let lineInteract = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     lineInteract.setAttribute("x1", parentPos.x + segment.start.x);
@@ -1173,6 +1181,7 @@
                     lineInteract.setAttribute("stroke", "transparent");
                     lineInteract.setAttribute("stroke-width", 5);
                     edge.parts.push(lineInteract);
+                    lineInteract.box = line.box;
 
                     // set the wire inspect div to show the wire type, as well as token highlighting.
                     lineInteract.addEventListener("mouseenter", () => {
@@ -1209,6 +1218,12 @@
                         circle.setAttribute("pointer-events", "none");
                         edge.circles.push(circle);
                         edge.parts.push(circle);
+                        circle.box = {
+                            x: parentPos.x + junction.x - 2,
+                            y: parentPos.y + junction.y - 2,
+                            width: 4,
+                            height: 4
+                        };
                     }
                 }
 
@@ -1229,10 +1244,8 @@
                         && ( box1.y + box1.height >= box2.y && box2.y + box2.height >= box1.y );
             }
             displayParts = () => {
-                // console.log('updating display');
-                // let startTime = performance.now();
-                
                 let box = svgDisplay.getBoundingClientRect();
+                // see https://toruskit.com/blog/how-to-get-element-bounds-without-reflow/ for possible speedup?
                 let pt = svgDisplay.createSVGPoint();
                 pt.x = box.left;
                 pt.y = box.top;
@@ -1249,6 +1262,7 @@
                 topleft and bottomright are {x: Number, y: Number} points wihch represent the top-left-most and 
                 bottom-right-most visible points on the svg. */
 
+                
                 while (svgDisplay.firstChild != null) {
                     svgDisplay.removeChild(svgDisplay.firstChild);
                 }
@@ -1269,14 +1283,22 @@
                 componentsToPlaceNext = [];
                 componentsWithEdgesToPlace = [];
 
+                let startOfPlacement = performance.now();
+
                 while (componentsToPlaceNow.length != 0) {
                     for (let component of componentsToPlaceNow) {
                         component.displayParts();
                         if (countOfComponentsPlaced >= countOfComponentsCap) {
                             break;
                         }
+                        if (performance.now() - startOfPlacement > 16) {
+                            break;
+                        }
                     }
                     if (countOfComponentsPlaced >= countOfComponentsCap) {
+                        break;
+                    }
+                    if (performance.now() - startOfPlacement > 16) {
                         break;
                     }
                     componentsToPlaceNow = componentsToPlaceNext;
@@ -1288,11 +1310,8 @@
                         edge.displayParts();
                     }
                 }
-                svgDisplay.appendChild(svgFragment);
 
-                // let endTime = performance.now();
-                // let timeTaken = endTime - startTime;
-                // console.log(`finished update in ${timeTaken} ms`);
+                svgDisplay.appendChild(svgFragment);
             };
 
             /* Given a box with x, y, width, and height, moves the svg to show the box with
