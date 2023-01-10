@@ -1802,18 +1802,13 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                                     pass
                                 else:
                                     # variable index value, create a mux
-                                    mux = hardware.Mux([hardware.Node(), hardware.Node()])
-                                    mux.inputNames = [str(mtypes.BooleanLiteral(True)), str(mtypes.BooleanLiteral(False))]
-                                    eq = hardware.Function('=', [hardware.Node(), hardware.Node()])
                                     regIndex = regName.split(']')[k].split('[')[1]
-                                    const = MValue(mtypes.IntegerLiteral(int(regIndex))).getHardware(self.globalsHandler)
-                                    hardware.Wire(eq.output, mux.control)
-                                    hardware.Wire(indexValue, eq.inputs[0])
-                                    hardware.Wire(const, eq.inputs[1])
+                                    mux = hardware.Mux([hardware.Node(), hardware.Node()])
+                                    mux.inputNames = [str(mtypes.IntegerLiteral(int(regIndex))), 'default']
+                                    hardware.Wire(indexValue, mux.control)
                                     hardware.Wire(val, mux.inputs[0])
                                     hardware.Wire(oldVal, mux.inputs[1])
-                                    for component in [mux, eq]:
-                                        self.globalsHandler.currentComponent.addChild(component)
+                                    self.globalsHandler.currentComponent.addChild(mux)
                                     val = mux.output
                             self.globalsHandler.currentScope.set(MValue(val), regName + inputName)
 
@@ -2485,17 +2480,12 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 val = vals[i]
                 # variable index value, create a mux
                 mux = hardware.Mux([hardware.Node(), hardware.Node()])
-                # TODO mux inputNames
-                eq = hardware.Function('=', [hardware.Node(), hardware.Node()])
                 regIndex = regName.split(']')[k].split('[')[1]
-                const = MValue(mtypes.IntegerLiteral(int(regIndex))).getHardware(self.globalsHandler)
-                hardware.Wire(eq.output, mux.control)
-                hardware.Wire(indexValue, eq.inputs[0])
-                hardware.Wire(const, eq.inputs[1])
+                mux.inputNames = [str(mtypes.IntegerLiteral(int(regIndex))), 'default']
+                hardware.Wire(indexValue, mux.control)
                 hardware.Wire(val, mux.inputs[0])
                 hardware.Wire(oldVal, mux.inputs[1])
-                for component in [mux, eq]:
-                    self.globalsHandler.currentComponent.addChild(component)
+                self.globalsHandler.currentComponent.addChild(mux)
                 val = mux.output
                 vals[i] = val
         for i in range(len(regsToWrite)):

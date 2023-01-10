@@ -1159,9 +1159,7 @@ def _():
     mo, mo1, mo2 = Mux([Node(), Node()]), Mux([Node(), Node(), Node()]), Mux([Node(), Node(), Node()])
     oComp = [mo, mo1, mo2]
     mi1, mi2 = Mux([Node(), Node()]), Mux([Node(), Node()])
-    eq1, eq2 = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
-    zero, one = Constant(Integer(0)), Constant(Integer(1))
-    iComp = [mi1, mi2, eq1, eq2, zero, one]
+    iComp = [mi1, mi2]
     regs = Module('Regs', {'data': d, 'sel1': s1, 'sel2': s2}, {'out': o}, set([v] + oComp + iComp))
     Wire(s2, mo1.control), Wire(s2, mo2.control), Wire(s1, mo.control)
     Wire(mo.output, o), Wire(mo1.output, mo.inputs[0]), Wire(mo2.output, mo.inputs[1])
@@ -1169,8 +1167,7 @@ def _():
         Wire(r[i].value, mo1.inputs[i])
         Wire(r[3+i].value, mo2.inputs[i])
     Wire(r[0].value, mi1.inputs[1]), Wire(d, mi1.inputs[0]), Wire(r[3].value, mi2.inputs[1]), Wire(d, mi2.inputs[0])
-    Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control), Wire(mi1.output, r[0].input), Wire(mi2.output, r[3].input)
-    Wire(s1, eq1.inputs[0]), Wire(s1, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])
+    Wire(s1, mi1.control), Wire(s1, mi2.control), Wire(mi1.output, r[0].input), Wire(mi2.output, r[3].input)
     for i in (1,2,4,5):
         Wire(r[i].value, r[i].input)
     
@@ -1189,14 +1186,11 @@ def _():
 
     mi1, mi2, mo = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
     oComp = [mo]
-    eq1, eq2 = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
-    zero, one = Constant(Integer(0)), Constant(Integer(1))
-    iComp = [mi1, mi2, eq1, eq2, zero, one]
+    iComp = [mi1, mi2]
     regs = Module('Regs', {'data': d, 'sel': s}, {'getData': gd}, set([v] + oComp + iComp))
     Wire(r1.value, mo.inputs[0]), Wire(r2.value, mo.inputs[1]), Wire(s, mo.control), Wire(mo.output, gd)
     Wire(d, mi1.inputs[0]), Wire(d, mi2.inputs[0]), Wire(r1.value, mi1.inputs[1]), Wire(r2.value, mi2.inputs[1])
-    Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)
-    Wire(s, eq1.inputs[0]), Wire(s, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])
+    Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(s, mi1.control), Wire(s, mi2.control)
 
     expected = regs
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
@@ -1210,14 +1204,11 @@ def _():
 
         mi1, mi2, mo = Mux([Node(), Node()]), Mux([Node(), Node()]), Mux([Node(), Node()])
         oComp = [mo]
-        eq1, eq2 = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
-        zero, one = Constant(Integer(0)), Constant(Integer(1))
-        iComp = [mi1, mi2, eq1, eq2, zero, one]
+        iComp = [mi1, mi2]
         regs = Module('Regs', {'data': d, 'sel': s}, {'getData': gd}, set([v] + oComp + iComp))
         Wire(r1.value, mo.inputs[0]), Wire(r2.value, mo.inputs[1]), Wire(s, mo.control), Wire(mo.output, gd)
         Wire(d, mi1.inputs[0]), Wire(d, mi2.inputs[0]), Wire(r1.value, mi1.inputs[1]), Wire(r2.value, mi2.inputs[1])
-        Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(eq1.output, mi1.control), Wire(eq2.output, mi2.control)
-        Wire(s, eq1.inputs[0]), Wire(s, eq2.inputs[0]), Wire(zero.output, eq1.inputs[1]), Wire(one.output, eq2.inputs[1])
+        Wire(mi1.output, r1.input), Wire(mi2.output, r2.input), Wire(s, mi1.control), Wire(s, mi2.control)
         r.append(regs)
     
     r1, r2 = r
@@ -1225,20 +1216,15 @@ def _():
     d, s1, s2, gd = Node(), Node(), Node(), Node()
     two1d, two2d = Constant(Integer(2)), Constant(Integer(2))
     one1s, one2s = Constant(Integer(1)), Constant(Integer(1))
-    zero1, zero2, one1, one2 = Constant(Integer(0)), Constant(Integer(0)), Constant(Integer(1)), Constant(Integer(1))
     muxr1s, muxr1d = Mux([Node(), Node()]), Mux([Node(), Node()])
     muxr2s, muxr2d = Mux([Node(), Node()]), Mux([Node(), Node()])
-    eq1s, eq1d = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
-    eq2s, eq2d = Function('=', [Node(), Node()]), Function('=', [Node(), Node()])
     muxo = Mux([Node(), Node()])
-    comp = [muxo, one1, two2d, one2, two1d, one1s, one2s, muxr1s, muxr2s, muxr1d, muxr2d, eq1s, eq1d, eq2s, eq2d, zero1, zero2]
+    comp = [muxo, two2d, two1d, one1s, one2s, muxr1s, muxr2s, muxr1d, muxr2d]
     mr = Module('MoreRegs', {'data': d, 'sel1': s1, 'sel2': s2}, {'getData': gd}, set([v] + comp))
     Wire(d, muxr1d.inputs[0]), Wire(d, muxr2d.inputs[0]), Wire(two1d.output, muxr1d.inputs[1]), Wire(two2d.output, muxr2d.inputs[1])
     Wire(s2, muxr1s.inputs[0]), Wire(s2, muxr2s.inputs[0]), Wire(one1s.output, muxr1s.inputs[1]), Wire(one2s.output, muxr2s.inputs[1])
     Wire(muxr1d.output, r1.inputs['data']), Wire(muxr2d.output, r2.inputs['data']), Wire(muxr1s.output, r1.inputs['sel']), Wire(muxr2s.output, r2.inputs['sel'])
-    Wire(eq1d.output, muxr1d.control), Wire(eq2d.output, muxr2d.control), Wire(eq1s.output, muxr1s.control),Wire(eq2s.output, muxr2s.control)
-    Wire(s1, eq1d.inputs[0]), Wire(s1, eq2d.inputs[0]), Wire(s1, eq1s.inputs[0]), Wire(s1, eq2s.inputs[0])
-    Wire(zero1.output, eq1d.inputs[1]), Wire(one1.output, eq2d.inputs[1]), Wire(zero2.output, eq1s.inputs[1]), Wire(one2.output, eq2s.inputs[1])
+    Wire(s1, muxr1d.control), Wire(s1, muxr2d.control), Wire(s1, muxr1s.control), Wire(s1, muxr2s.control)
     Wire(muxo.output, gd), Wire(r1.methods['getData'], muxo.inputs[0])
     Wire(r2.methods['getData'], muxo.inputs[1]), Wire(s1, muxo.control)
 

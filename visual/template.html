@@ -382,11 +382,18 @@
                 }
             });
 
+            /* Returns the viewbox of svgDisplay as an array of four numbers. */
             getSVGViewBox = () =>
                 svgDisplay
                     .getAttribute("viewBox")
                     .split(" ")
-                    .map((item) => Number(item)); //returns the viewbox of svgDisplay as an array of four numbers.
+                    .map((item) => Number(item));
+            /* Given an array values: [x, y, width, height], sets the svg viewbox.
+            Updates which components are displayed. */
+            setSVGViewBox = (values) => {
+                svgDisplay.setAttribute("viewBox", values.join(" "));
+                displayParts();
+            }
             /* Given a mouse event from an event listener, returns {x: number, y: number}
                                         where x and y are the svg coordinates of the click on svgDisplay.
                                         See https://stackoverflow.com/questions/29261304/how-to-get-the-click-coordinates-relative-to-svg-element-holding-the-onclick-lis
@@ -411,8 +418,7 @@
                     currentSVGViewBox[2] * rescaleFactor,
                     currentSVGViewBox[3] * rescaleFactor,
                 ];
-                svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                displayParts();
+                setSVGViewBox(currentSVGViewBox);
             });
 
             /* Allow the user to click to zoom and drag to move
@@ -441,8 +447,7 @@
                         currentSVGViewBox[2],
                         currentSVGViewBox[3],
                     ];
-                    svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                    displayParts();
+                    setSVGViewBox(currentSVGViewBox);
                 }
             });
             mobileRecalculateSvgDragging = (touches) => {
@@ -482,8 +487,7 @@
                             currentSVGViewBox[2],
                             currentSVGViewBox[3],
                         ];
-                        svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                        displayParts();
+                        setSVGViewBox(currentSVGViewBox);
                     } else if (isSVGDragging && event.touches.length === 2) {
                         event.preventDefault(); //prevent the touch from resizing the entire window
                         let newCoords1 = getSVGCoordinates(event.touches[0]);
@@ -503,8 +507,7 @@
                             currentSVGViewBox[2] * rescaleFactor,
                             currentSVGViewBox[3] * rescaleFactor,
                         ];
-                        svgDisplay.setAttribute("viewBox", currentSVGViewBox.join(" "));
-                        displayParts();
+                        setSVGViewBox(currentSVGViewBox);
                     }
                 },
                 { passive: false } //necessary to allow svg dragging to prevent default
@@ -1346,8 +1349,7 @@
                     box.width + 2 * margin,
                     box.height + 2 * margin,
                 ];
-                svgDisplay.setAttribute("viewBox", destinationViewBox.join(" "));
-                displayParts();
+                setSVGViewBox(destinationViewBox);
             }
 
             /* Given a component and its parent component's position,
