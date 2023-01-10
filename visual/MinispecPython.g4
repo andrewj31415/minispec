@@ -127,8 +127,8 @@ varAssign :
 lvalue :
     lowerCaseIdentifier #simpleLvalue
     | lvalue '.' lowerCaseIdentifier #memberLvalue
-    | lvalue '[' index=expression ']' #indexLvalue
-    | lvalue '[' msb=expression ':' lsb=expression ']' #sliceLvalue
+    | lvalue indexLBracket='[' index=expression indexRBracket=']' #indexLvalue
+    | lvalue sliceLBracket='[' msb=expression sliceColon=':' lsb=expression sliceRBracket=']' #sliceLvalue
     ;
 
 expression :

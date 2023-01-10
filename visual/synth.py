@@ -1851,8 +1851,10 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             node = inserter.addSelector('[_]')
             hardware.Wire(index, node)
-        # tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[0]-1))
-        # tokensSourcedFrom.append((getSourceFilename(ctx), ctx.index.getSourceInterval()[-1]+1))
+        inserter.addSourceTokens([
+            (getSourceFilename(ctx), ctx.indexLBracket.tokenIndex),
+            (getSourceFilename(ctx), ctx.indexRBracket.tokenIndex)
+        ])
         return inserter
 
     @decorateForErrorCatching
@@ -1866,6 +1868,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         inserter = hardware.Inserter(valueFound.value != None, ctx.getText())
         if valueFound.value != None:
             hardware.Wire(valueFound, inserter.inputs[0])
+        inserter.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
         return inserter
 
     @decorateForErrorCatching
@@ -1888,7 +1891,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         else:
             node = inserter.addSelector('_]')
             hardware.Wire(lsb, node)
-        # TODO source map
+        inserter.addSourceTokens([
+            (getSourceFilename(ctx), ctx.sliceLBracket.tokenIndex),
+            (getSourceFilename(ctx), ctx.sliceColon.tokenIndex),
+            (getSourceFilename(ctx), ctx.sliceRBracket.tokenIndex)
+        ])
         return inserter
 
     @decorateForErrorCatching

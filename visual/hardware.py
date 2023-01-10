@@ -921,7 +921,7 @@ def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', p
                     'children': [ toELK(child, componentELKs) for child in item.children ],
                     'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
-        if len(item.children) == 0 or not any( child.__class__ == Function for child in item.children): # in case a function has only a wire from input to output
+        if len(item.children) == 0: 
             jsonObj['width'] = 15
             jsonObj['height'] = 15
         jsonObj['i'] = {'name': item.name,
