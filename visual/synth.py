@@ -2135,21 +2135,22 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Bit concatenation is just a function. Returns the function output. '''
         toConcat = []
         for expr in ctx.expression():
-            value = self.visit(expr).resolveToNode(self).value
+            value = self.visit(expr).resolveToNode(self)
             toConcat.append(value)
         inputs = []
-        wires: 'list[tuple[hardware.Node, hardware.Node]]' = []
+        wires: 'list[tuple[MValue, hardware.Node]]' = []
         for node in toConcat:
             inputNode = hardware.Node()
             wires.append((node, inputNode))
             inputs.append(inputNode)
         sliceComponent = hardware.Function('{}', inputs)
-        sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.expression(0).getSourceInterval()[0]-1)])
+        sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.bitConcatOpen.tokenIndex)])
+        for bitConcatComma in ctx.bitConcatComma:
+            sliceComponent.addSourceTokens([(getSourceFilename(ctx), bitConcatComma.tokenIndex)])
+        sliceComponent.addSourceTokens([(getSourceFilename(ctx), ctx.bitConcatClose.tokenIndex)])
+        self.globalsHandler.currentComponent.addChild(sliceComponent)
         for src, dst in wires:
             hardware.Wire(src, dst)
-        for expr in ctx.expression():
-            sliceComponent.addSourceTokens([(getSourceFilename(ctx), expr.getSourceInterval()[-1]+1)])
-        self.globalsHandler.currentComponent.addChild(sliceComponent)
         return MValue(sliceComponent.output)
 
     @decorateForErrorCatching

@@ -166,7 +166,7 @@ exprPrimary :
     | StringLiteral #stringLiteral
     | '?' #undefinedExpr
     | 'return' expression #returnExpr
-    | '{' expression (',' expression)* '}' #bitConcat
+    | bitConcatOpen='{' expression (bitConcatComma+=',' expression)* bitConcatClose='}' #bitConcat
     | array=exprPrimary '[' msb=expression (':' lsb=expression)? ']' #sliceExpr
     | fcn=exprPrimary '(' (expression (',' expression)*)? ')' #callExpr
     | typeName '{' memberBinds '}' #structExpr
