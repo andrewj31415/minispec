@@ -1576,7 +1576,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             returnValue = self.globalsHandler.currentScope.get(self, '-return').resolveMValue(self)
             if returnValue.value.__class__ != UnsynthesizableComponent:
                 returnValue = returnValue.resolveToNode(self)
-                hardware.Wire(returnValue.value, methodOutputNode)
+                hardware.Wire(returnValue, methodOutputNode)
 
         if ctx.argFormals():
             self.globalsHandler.currentComponent = previousComponent  #reset the current component
@@ -1674,7 +1674,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         returnValue = self.globalsHandler.currentScope.get(self, '-return').resolveMValue(self)
         if returnValue.value.__class__ != UnsynthesizableComponent:
             returnValue = returnValue.resolveToNode(self)
-            hardware.Wire(returnValue.value, funcComponent.output)
+            hardware.Wire(returnValue, funcComponent.output)
 
         self.globalsHandler.exitScope()
         self.globalsHandler.currentComponent = previousComponent #reset the current component
@@ -1935,7 +1935,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             muxComponent.inputNames = [str(mtypes.BooleanLiteral(True)), str(mtypes.BooleanLiteral(False))]
             muxComponent.addSourceTokens([(getSourceFilename(ctx), ctx.condQmark.tokenIndex)])
             muxComponent.addSourceTokens([(getSourceFilename(ctx), ctx.condColon.tokenIndex)])
-            hardware.Wire(value1.value, muxComponent.inputs[0]), hardware.Wire(value2.value, muxComponent.inputs[1]), hardware.Wire(condition.value, muxComponent.control)
+            hardware.Wire(value1, muxComponent.inputs[0])
+            hardware.Wire(value2, muxComponent.inputs[1])
+            hardware.Wire(condition, muxComponent.control)
             self.globalsHandler.currentComponent.addChild(muxComponent)
             return MValue(muxComponent.output)
         #TODO go back through ?/if statements and make sure hardware/literal cases are handled properly.
@@ -2021,9 +2023,9 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         valueWires = []
         for i in range(len(expri)):  # create hardware for values
-            valueWires.append(hardware.Wire(expri[i][1].resolveToNode(self).value, muxes[i].inputs[0]))
+            valueWires.append(hardware.Wire(expri[i][1].resolveToNode(self), muxes[i].inputs[0]))
         defaultValue = defaultValue.resolveToNode(self)
-        valueWires.append(hardware.Wire(defaultValue.value, muxes[-1].inputs[1]))
+        valueWires.append(hardware.Wire(defaultValue, muxes[-1].inputs[1]))
         
         controlWires = []
         controlComponents = []
@@ -2374,7 +2376,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 # hook up the methodComponent to the arguments passed in.
                 for i in range(len(functionArgs)):
                     funcInputNode = methodComponent.inputs[i]
-                    hardware.Wire(functionArgs[i].resolveToNode(self).value, funcInputNode)
+                    hardware.Wire(functionArgs[i].resolveToNode(self), funcInputNode)
                 self.globalsHandler.currentComponent.addChild(methodComponent)
                 return MValue(methodComponent.output)
         else:
@@ -2396,7 +2398,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             return MValue(toAccess.value.fieldBinds[field]).appendSourceTokens(toAccess)
         fieldExtractComp = hardware.Function('.'+field, [hardware.Node()])
         fieldExtractComp.addSourceTokens([(getSourceFilename(ctx), ctx.field.getSourceInterval()[0])])
-        hardware.Wire(toAccess.value, fieldExtractComp.inputs[0])
+        hardware.Wire(toAccess, fieldExtractComp.inputs[0])
         self.globalsHandler.currentComponent.addChild(fieldExtractComp)
         return MValue(fieldExtractComp.output)
 

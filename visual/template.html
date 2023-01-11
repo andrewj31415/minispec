@@ -760,8 +760,8 @@
             /* Highlights the given source token. Dehighlights all other source tokens. */
             let currentHighlightedTokens = new Set();
             /* Highlights the given tokens. */
-            highlightAssociatedTokens = (component, tokensToLink) => {
-                for (filenameAndToken of tokensToLink) {
+            highlightAssociatedTokens = (component) => {
+                for (filenameAndToken of component.tokensToLink) {
                     let filenameOfOrigin = filenameAndToken[0];
                     let tokenIndex = filenameAndToken[1];
                     highlightAdditionalToken(filenameOfOrigin, tokenIndex);
@@ -1035,6 +1035,7 @@
                     }
 
                     let tokensToLink = componentData.tokensSourcedFrom;
+                    component.tokensToLink = tokensToLink
                     for (filenameAndToken of tokensToLink) {
                         let filenameOfOrigin = filenameAndToken[0];
                         let tokenIndex = filenameAndToken[1];
@@ -1044,13 +1045,13 @@
                     // highlight the associated tokens upon entering the box
                     overRect.addEventListener("mouseenter", () => {
                         clearHighlightedTokens();
-                        highlightAssociatedTokens(component, tokensToLink);
+                        highlightAssociatedTokens(component);
                         spotlightComponent(component);
                     });
                     for (let portRect of component.portRects) {
                         portRect.addEventListener("mouseenter", () => {
                             clearHighlightedTokens();
-                            highlightAssociatedTokens(component, tokensToLink);
+                            highlightAssociatedTokens(component);
                             spotlightComponent(component);
                         });
                     }
@@ -1082,6 +1083,11 @@
                 }
             };
 
+            /* Maps node id's to the set of edges coming from that node. 
+            Used when highlighting all edges that are under the mouse (since edges
+            from the same node may share segments). */
+            edgesFromNode = new Map();
+
             /* edge: an elk edge. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeEdge = (edge, parentPos) => {
                 edge.parts = []
@@ -1093,7 +1099,14 @@
                     }
                 }
 
+                let startNodeID = edge.sources[0];
+                if (!edgesFromNode.has(startNodeID)) {
+                    edgesFromNode.set(startNodeID, new Set())
+                }
+                edgesFromNode.get(startNodeID).add(edge);
+
                 let tokensToLink = edge.i.ts;
+                edge.tokensToLink = tokensToLink;
                 edge.lines = [];
                 edge.circles = [];
                 let highlightEdge = () => {
@@ -1182,12 +1195,25 @@
                     lineInteract.setAttribute("stroke-width", 5);
                     edge.parts.push(lineInteract);
                     lineInteract.box = line.box;
+                    lineInteract.edge = edge;
 
                     // set the wire inspect div to show the wire type, as well as token highlighting.
-                    lineInteract.addEventListener("mouseenter", () => {
-                        spotlightEdge(edge);
+                    lineInteract.addEventListener("mousemove", (event) => {
+                        // see https://stackoverflow.com/questions/29377443/detecting-mouse-events-on-multiple-overlapping-svg-elements
+                        let overlappingElements = document.elementsFromPoint(event.pageX, event.pageY);
+                        overlappingElements = overlappingElements
+                                                .filter((element) => element.edge != undefined)
+                                                .map((element) => element.edge)
+                                                .filter((otherEdge) => edgesFromNode.get(startNodeID).has(otherEdge));
+                        let allEdges = new Set(overlappingElements);
                         clearHighlightedTokens();
-                        highlightAssociatedTokens(edge, tokensToLink);
+                        highlightAssociatedTokens(edge);
+                        spotlightEdge(edge);
+                        for (let otherEdge of allEdges) {
+                            highlightAssociatedTokens(otherEdge);
+                            currentHighlightedEdges.add(otherEdge);
+                            otherEdge.highlightEdge();
+                        }
                     });
                     lineInteract.addEventListener("mouseleave", () => {
                         clearHighlightedComponents();
@@ -1195,7 +1221,7 @@
                     });
                     lineInteract.addEventListener('dblclick', () => {
                         clearHighlightedTokens();
-                        highlightAssociatedTokens(edge, tokensToLink);
+                        highlightAssociatedTokens(edge);
                         jumpThroughSource(edge, tokensToLink);
                     });
 
