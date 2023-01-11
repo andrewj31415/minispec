@@ -242,7 +242,8 @@ class MValue:
         if value.__class__ == hardware.Node:
             # assert value.parent != None, "Nodes in MValues must be part of a component"
             if value.parent != None:
-                self._tokensSourcedFrom = value.parent._tokensSourcedFrom + self._tokensSourcedFrom
+                if not value._isInput:
+                    self._tokensSourcedFrom = value.parent._tokensSourcedFrom + self._tokensSourcedFrom
     @property
     def value(self):
         return self._value
