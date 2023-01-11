@@ -384,10 +384,8 @@ def Struct(name: 'str', fields: 'dict[str, MType]'):
     return StructType
 
 class Any(MLiteral):
-    '''An unknown type'''
-    _name = "Any"
-    def __str__(self):
-        return "Any"
+    ''' An unknown type. This type has no instances. '''
+    _name = "<i>unknown</i>"
 
 class Integer(MLiteral):
     '''An integer type. Has value value.'''

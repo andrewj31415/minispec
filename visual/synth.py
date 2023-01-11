@@ -1048,7 +1048,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
     def visitRegister(self, mtype: 'mtypes.MType'):
         ''' Visiting the built-in moduleDef of a register. Return the synthesized register. '''
-        registerComponent = hardware.Register('Reg#(' + str(mtype) + ')')
+        registerComponent = hardware.Register('Reg#(' + str(mtype) + ')', mtype)
         registerInputsWithDefault = {'input': None}  # the register default input will actually be its own value, but there is no corresponding ctx node so we put None here.
         registerMethodsWithArguments = {}  # registers have no methods with arguments
         moduleWithMetadata: ModuleWithMetadata = ModuleWithMetadata(self, registerComponent, registerInputsWithDefault, registerMethodsWithArguments)

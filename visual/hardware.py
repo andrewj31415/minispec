@@ -456,7 +456,7 @@ class Component:
         return 1 + sum([c.weight() for c in self._children])
 
 class Function(Component):
-    __slots__ = '_inputList', 'inputNames'
+    __slots__ = 'inputNames'
     def __init__(self, name: 'str', inputs: 'list[Node]' = None, output: 'Node' = None, children: 'set[Component]' = None):
         if inputs == None:
             inputs = []
@@ -466,13 +466,23 @@ class Function(Component):
         if children == None:
             children = set()
         Component.__init__(self, name, {i : inputs[i] for i in range(len(inputs))}, {0: output}, None, children)
-        self._inputList: 'list[Node]' = inputs
         self.inputNames = []
     @property
     def inputs(self):
         '''Returns a copy of the list of input Nodes to this function'''
         return [self._inputs[i] for i in range(len(self._inputs))]
-        # return self._inputList.copy()
+    def updateTypes(self):
+        nodesUpdated = set()
+        if self.name == 'fromMaybe':
+            assert len(self.inputs) == 2, "Expected two inputs"
+        elif self.name == '&&' or self.name == '||':
+            assert len(self.inputs) == 2, "Expected two inputs"
+            for node in self.inputs + [self.output]:
+                correctType = mtypes.mergeEqualTypes(mtypes.Bool, node._mtype)
+                if node._mtype != correctType:
+                    nodesUpdated.add(node)
+                    node._mtype = correctType
+        return nodesUpdated
 
 class Mux(Component):
     __slots__ = '_control', '_inputNames'
@@ -545,8 +555,8 @@ class Module(Component):
 
 class Register(Module):
     __slots__ = ()
-    def __init__(self, name: 'str'):
-        Module.__init__(self, name, {'_input':Node('input')}, {'_value':Node('value')})
+    def __init__(self, name: 'str', mtype: 'mtypes.MType' = mtypes.Any):
+        Module.__init__(self, name, {'_input':Node('input', mtype)}, {'_value':Node('value', mtype)})
     def isRegister(self):
         return True
     @property
@@ -563,6 +573,18 @@ class Register(Module):
     @value.setter
     def value(self, value: 'Node'):
         raise Exception("Can't directly modify this property")
+    def updateTypes(self):
+        updatedNodes = set()
+        myType = mtypes.Any
+        myType = mtypes.mergeEqualTypes(self.input._mtype, myType)
+        myType = mtypes.mergeEqualTypes(self.value._mtype, myType)
+        if myType != self.input._mtype:
+            self.input._mtype = myType
+            updatedNodes.add(self.input)
+        if myType != self.value._mtype:
+            self.value._mtype = myType
+            updatedNodes.add(self.value)
+        return updatedNodes
 
 class VectorModule(Module):
     __slots__ = 'numberedSubmodules'
@@ -713,21 +735,6 @@ def setWiresTypesFromNode(node: 'Node'):
     nodesUpdated = node.parent.updateTypes()
     for otherNode in nodesUpdated:
         setWiresTypesFromNode(otherNode)
-    # if node._mtype != mtypes.Any:
-    #     for wire in node.inWires:
-    #         wire._mtype = node._mtype
-    #         if wire.src._mtype == mtypes.Any:
-    #             wire.src._mtype = node._mtype
-    #             setWiresTypesFromNode(wire.src)
-    #     for wire in node.outWires:
-    #         wire._mtype = node._mtype
-    #         if wire.dst._mtype == mtypes.Any:
-    #             wire.dst._mtype = node._mtype
-    #             setWiresTypesFromNode(wire.dst)
-    # nodesUpdated = node.parent.updateTypes()
-    # for otherNode in nodesUpdated:
-    #     setWiresTypesFromNode(otherNode)
-
 
 '''
 Vector module vacuum.
@@ -929,6 +936,8 @@ def wireToELK(item: 'Wire'):
     assert item in item.src.outWires, "Expected Wire to be in the outWires of its src"
     jsonObj['i'] = {'mt': str(item._mtype),  # minispec type
                     'ts': item.getSourceTokens()}  # source tokens
+    if str(item._mtype) == 'Integer':
+        jsonObj['i']['mt'] = 'Bit#(<i>unknown</i>)'
     if len(item.src.outWires) == 1:
         jsonObj['properties'] = {}
         jsonObj['properties']['org.eclipse.elk.layered.priority.direction'] = 10

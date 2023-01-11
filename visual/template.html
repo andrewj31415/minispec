@@ -895,7 +895,7 @@
             spotlightEdge = (edge) => {
                 clearHighlightedComponents();
                 wireInspectDiv.style.visibility = "";
-                wireInspectDiv.innerHTML = edge.i.mt;
+                wireInspectDiv.innerHTML = "Type: " + edge.i.mt;
                 currentHighlightedEdges.add(edge);
                 edge.highlightEdge();
             }
