@@ -44,7 +44,7 @@ def decorateForErrorCatching(func):
                 if hasattr(e, 'add_note'):  # we are in Python 3.11 and can add notes to error messages
                     e.add_note(errorText)
                 else:
-                    print(errorText)
+                    e.___note = errorText
                 # TODO look into printing just the current line (+ file name) instead of the full ctx.
                 e.___already_caught = True  # mark in the error that we have already caught it at least once
             raise e
@@ -2817,26 +2817,33 @@ function Bool _();
 endfunction
 '''
 
-    topLevelParseTree = getParseTree(topLevel)
-    ctxOfNote = topLevelParseTree.packageStmt(0).functionDef().stmt(0).exprPrimary().expression().binopExpr().unopExpr().exprPrimary()
-    outputDef = synthesizer.visit(ctxOfNote).value  # follow the call to the function and get back the functionDef/moduleDef.
-    if outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
-        moduleArgs = []
-        moduleParams = globalsHandler.lastParameterLookup  # TODO refactor to handle multiple layers of parameters
-        output = synthesizer.visitModuleDef(outputDef, moduleParams, moduleArgs).module  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
-    elif outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext:
-        output = synthesizer.visit(outputDef).value  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
-    else:
-        raise Exception(f"Expected module or function, not {outputDef.__class__}")
+    try:
+
+        topLevelParseTree = getParseTree(topLevel)
+        ctxOfNote = topLevelParseTree.packageStmt(0).functionDef().stmt(0).exprPrimary().expression().binopExpr().unopExpr().exprPrimary()
+        outputDef = synthesizer.visit(ctxOfNote).value  # follow the call to the function and get back the functionDef/moduleDef.
+        if outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.ModuleDefContext:
+            moduleArgs = []
+            moduleParams = globalsHandler.lastParameterLookup  # TODO refactor to handle multiple layers of parameters
+            output = synthesizer.visitModuleDef(outputDef, moduleParams, moduleArgs).module  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+        elif outputDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext:
+            output = synthesizer.visit(outputDef).value  # visit the functionDef/moduleDef in the given file and synthesize it. store the result in 'output'
+        else:
+            raise Exception(f"Expected module or function, not {outputDef.__class__}")
 
 
-    # for scope in globalsHandler.allScopes:
-    #     print(scope)
+        # for scope in globalsHandler.allScopes:
+        #     print(scope)
 
-    # output.prune() #remove unused components
-    output._persistent = True
+        # output.prune() #remove unused components
+        output._persistent = True
 
-    return output
+        return output
+
+    except Exception as e:
+        if hasattr(e, '___note'):
+            print(e.___note)
+        raise e
 
 
 def tokensAndWhitespace(text: 'str') -> 'list[str]':
