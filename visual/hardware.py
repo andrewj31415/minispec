@@ -153,7 +153,14 @@ class Wire:
         self._tokensSourcedFrom.append(tokens)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
         ''' Returns the source tokens of self, flattened '''
-        return sum(self._tokensSourcedFrom, [])
+        tokens = sum(self._tokensSourcedFrom, [])
+        tokensFound = set()
+        output = []
+        for token in tokens:
+            if token not in tokensFound:
+                output.append(token)
+            tokensFound.add(token)
+        return output
     def weight(self):
         ''' Returns an estimate of how large a Component is. '''
         return 1
@@ -437,7 +444,14 @@ class Component:
         self._tokensSourcedFrom.append(tokens)
     def getSourceTokens(self) -> 'list[tuple[str, int]]':
         ''' Returns the source tokens of self, flattened '''
-        return sum(self._tokensSourcedFrom, [])
+        tokens = sum(self._tokensSourcedFrom, [])
+        tokensFound = set()
+        output = []
+        for token in tokens:
+            if token not in tokensFound:
+                output.append(token)
+            tokensFound.add(token)
+        return output
     def getAllWires(self) -> 'set[Wire]':
         ''' Returns the set of all wires in the data structure. '''
         wires = set()
