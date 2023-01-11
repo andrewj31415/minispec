@@ -724,14 +724,25 @@ We run a depth-first search through the graph from each node with type and assig
 '''
 
 def setWireTypes(comp: 'Component'):
-    for nodeKey, node in comp._inputs.items():
-        setWiresTypesFromNode(node)
-    for nodeKey, node in comp._outputs.items():
-        setWiresTypesFromNode(node)
-    for child in comp.children:
-        setWireTypes(child)
+    nodesToUpdate: 'set[Node]' = set()
+    getAllNodes(comp, nodesToUpdate)
+    nextNodes: 'set[Node]' = set()
+    while len(nodesToUpdate) != 0:
+        for node in nodesToUpdate:
+            setWiresTypesFromNode(node, nextNodes)
+        nodesToUpdate = nextNodes
+        nextNodes = set()
 
-def setWiresTypesFromNode(node: 'Node'):
+
+def getAllNodes(comp: 'Component', nodes: 'set[Node]'):
+    for nodeKey, node in comp._inputs.items():
+        nodes.add(node)
+    for nodeKey, node in comp._outputs.items():
+        nodes.add(node)
+    for child in comp.children:
+        getAllNodes(child, nodes)
+
+def setWiresTypesFromNode(node: 'Node', nextNodes: 'set[Node]'):
     sharedType = node._mtype
     for wire in node.inWires:
         sharedType = mtypes.mergeEqualTypes(wire._mtype, sharedType)
@@ -741,14 +752,14 @@ def setWiresTypesFromNode(node: 'Node'):
     for wire in node.inWires:
         if wire._mtype != sharedType:
             wire._mtype = sharedType
-            setWiresTypesFromNode(wire.src)
+            nextNodes.add(wire.src)
     for wire in node.outWires:
         if wire._mtype != sharedType:
             wire._mtype = sharedType
-            setWiresTypesFromNode(wire.dst)
+            nextNodes.add(wire.dst)
     nodesUpdated = node.parent.updateTypes()
     for otherNode in nodesUpdated:
-        setWiresTypesFromNode(otherNode)
+        nextNodes.add(otherNode)
 
 '''
 Vector module vacuum.

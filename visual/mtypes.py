@@ -687,9 +687,11 @@ class DontCareLiteral(MLiteral):
     def neg(self):
         raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
 
-
+strangelyDifferentTypes = []
+strangelyDifferentTypeMessages = set()
 def mergeEqualTypes(type1: 'MType', type2: 'MType') -> 'MType':
     ''' Given two types, returns a type eqivalent to both which should be regared as more specific. '''
+    # print(type1, type2, type1 == type2)
     if type1 == DontCareLiteral:
         return type2
     if type2 == DontCareLiteral:
@@ -709,7 +711,36 @@ def mergeEqualTypes(type1: 'MType', type2: 'MType') -> 'MType':
         if type1._constructor == Maybe:
             return type1
     if type1 != type2:
-        print('strangely different types', type1, type2)
+        message = f'strangely different types {type1} {type2}'
+        if message not in strangelyDifferentTypeMessages:
+            print(message)
+        strangelyDifferentTypeMessages.add(message)
+        # to avoid circular dependecies on types, we dynamically create an implicit ordering.
+        # we prefer types that appear earlier in strangelyDifferentTypes.
+        indx1 = -1
+        for i in range(len(strangelyDifferentTypes)):
+            if type1 == strangelyDifferentTypes[i]:
+                indx1 = i
+            break
+        indx2 = -1
+        for i in range(len(strangelyDifferentTypes)):
+            if type2 == strangelyDifferentTypes[i]:
+                indx2 = i
+            break
+        if indx1 == -1 and indx2 == -1:
+            strangelyDifferentTypes.append(type1)
+            strangelyDifferentTypes.append(type2)
+            return type1
+        if indx1 == -1:
+            strangelyDifferentTypes.append(type1)
+            return type2
+        if indx2 == -1:
+            strangelyDifferentTypes.append(type2)
+            return type1
+        assert indx1 != indx2, f"Broke transitivity of equality with {type1}, {type2}, and {strangelyDifferentTypes[indx1]}"
+        if indx1 < indx2:
+            return type1
+        return type2
     return type1
 
 if __name__ == '__main__':
