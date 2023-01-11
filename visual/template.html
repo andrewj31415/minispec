@@ -391,8 +391,23 @@
             /* Given an array values: [x, y, width, height], sets the svg viewbox.
             Updates which components are displayed. */
             setSVGViewBox = (values) => {
-                svgDisplay.setAttribute("viewBox", values.join(" "));
-                displayParts();
+                let x = values[0];
+                let y = values[1];
+                let width = values[2];
+                let height = values[3];
+                // prevent the user from zooming too far out
+                width = Math.min(3 * topLevelWidth, width);
+                height = Math.min(3 * topLevelHeight, height);
+                x = Math.max(topLevelX - topLevelWidth, x);
+                y = Math.max(topLevelY - topLevelHeight, y);
+                x = Math.min(topLevelX + 2*topLevelWidth - width, x);
+                y = Math.min(topLevelY + 2*topLevelHeight - height, y);
+                let nextViewBox = [x, y, width, height].join(" ");
+                let oldViewBox = svgDisplay.getAttribute("viewBox");
+                if (nextViewBox != oldViewBox) {
+                    svgDisplay.setAttribute("viewBox", nextViewBox);
+                    displayParts();
+                }
             }
             /* Given a mouse event from an event listener, returns {x: number, y: number}
                                         where x and y are the svg coordinates of the click on svgDisplay.
@@ -893,6 +908,11 @@
             console.log(elementsToPlace);
 
             topLevel = elementsToPlace.children[0];
+
+            topLevelX = topLevel.x;
+            topLevelY = topLevel.y;
+            topLevelWidth = topLevel.width;
+            topLevelHeight = topLevel.height;
 
             /* component: an elk node. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
             placeComponent = (component, parentPos) => {
