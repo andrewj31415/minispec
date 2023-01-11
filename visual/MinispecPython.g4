@@ -167,7 +167,7 @@ exprPrimary :
     | '?' #undefinedExpr
     | 'return' expression #returnExpr
     | bitConcatOpen='{' expression (bitConcatComma+=',' expression)* bitConcatClose='}' #bitConcat
-    | array=exprPrimary '[' msb=expression (':' lsb=expression)? ']' #sliceExpr
+    | array=exprPrimary slicePart+='[' msb=expression (slicePart+=':' lsb=expression)? slicePart+=']' #sliceExpr
     | fcn=exprPrimary '(' (expression (',' expression)*)? ')' #callExpr
     | typeName '{' memberBinds '}' #structExpr
     ;
