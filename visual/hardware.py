@@ -237,6 +237,9 @@ class Component:
     def parent(self) -> 'Component|None':
         ''' The parent of the component. '''
         return self._parent
+    def updateTypes(self) -> 'set[Node]':
+        ''' Updates the types of self via inference. Returns the set of nodes whose types changed. '''
+        return set()
     def match(self, other: 'Component|None') -> bool:
         ''' Returns true if self and other represent the same hardware. '''
         assert self != other, "cannot compare a component to itself"
@@ -498,6 +501,17 @@ class Mux(Component):
     def inputNames(self, inputNames: 'list[str]'):
         assert(len(inputNames) == len(self._inputs) - 1), f"Wrong number of mux input labels--expected {len(self._inputs) - 1}, got {len(inputNames)}"
         self._inputNames = inputNames
+    def updateTypes(self):
+        nodesUpdated = set()
+        nodesThatShouldMatch = set(self.inputs + [self.output])
+        typeToUse = mtypes.Any
+        for node in nodesThatShouldMatch:
+            typeToUse = mtypes.mergeEqualTypes(node._mtype, typeToUse)
+        for node in nodesThatShouldMatch:
+            if node._mtype != typeToUse:
+                node._mtype = typeToUse
+                nodesUpdated.add(node)
+        return nodesUpdated
 
 class Constant(Component):
     __slots__ = '_value'
@@ -682,11 +696,37 @@ def setWireTypes(comp: 'Component'):
         setWireTypes(child)
 
 def setWiresTypesFromNode(node: 'Node'):
-    if node._mtype != mtypes.Any:
-        for wire in node._inWires:
-            wire._mtype = node._mtype
-        for wire in node._outWires:
-            wire._mtype = node._mtype
+    sharedType = node._mtype
+    for wire in node.inWires:
+        sharedType = mtypes.mergeEqualTypes(wire._mtype, sharedType)
+    for wire in node.outWires:
+        sharedType = mtypes.mergeEqualTypes(wire._mtype, sharedType)
+    node._mtype = sharedType
+    for wire in node.inWires:
+        if wire._mtype != sharedType:
+            wire._mtype = sharedType
+            setWiresTypesFromNode(wire.src)
+    for wire in node.outWires:
+        if wire._mtype != sharedType:
+            wire._mtype = sharedType
+            setWiresTypesFromNode(wire.dst)
+    nodesUpdated = node.parent.updateTypes()
+    for otherNode in nodesUpdated:
+        setWiresTypesFromNode(otherNode)
+    # if node._mtype != mtypes.Any:
+    #     for wire in node.inWires:
+    #         wire._mtype = node._mtype
+    #         if wire.src._mtype == mtypes.Any:
+    #             wire.src._mtype = node._mtype
+    #             setWiresTypesFromNode(wire.src)
+    #     for wire in node.outWires:
+    #         wire._mtype = node._mtype
+    #         if wire.dst._mtype == mtypes.Any:
+    #             wire.dst._mtype = node._mtype
+    #             setWiresTypesFromNode(wire.dst)
+    # nodesUpdated = node.parent.updateTypes()
+    # for otherNode in nodesUpdated:
+    #     setWiresTypesFromNode(otherNode)
 
 
 '''

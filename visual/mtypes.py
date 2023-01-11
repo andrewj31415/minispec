@@ -654,9 +654,7 @@ def Maybe(mtype: 'MType'):
             return Bool(self.value == other.value)
         @classmethod
         def sameType(self, other):
-            return True
-            # TODO handle Any values
-            # return self._mtype == other._mtype
+            return self._mtype == other._mtype
 
     return MaybeType
 
@@ -690,6 +688,31 @@ class DontCareLiteral(MLiteral):
         raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
     def neg(self):
         raise Exception("Arithmetic with don't care literals is not implemented due to entanglement")
+
+
+def mergeEqualTypes(type1: 'MType', type2: 'MType') -> 'MType':
+    ''' Given two types, returns a type eqivalent to both which should be regared as more specific. '''
+    if type1 == DontCareLiteral:
+        return type2
+    if type2 == DontCareLiteral:
+        return type1
+    if type1 == Any:
+        return type2
+    if type2 == Any:
+        return type1
+    if type1 == Integer and type2.isBitLiteral(None):
+        return type2
+    if type2 == Integer and type1.isBitLiteral(None):
+        return type1
+    if type1 == Maybe(Any):
+        if type2._constructor == Maybe:
+            return type2
+    if type2 == Maybe(Any):
+        if type1._constructor == Maybe:
+            return type1
+    if type1 != type2:
+        print('strangely different types', type1, type2)
+    return type1
 
 if __name__ == '__main__':
     # #Create a synonym of Bit#(32). For testing purposes.
