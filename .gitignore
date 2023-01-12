@@ -19,6 +19,7 @@ synth/yosys
 
 # Visual
 visual/antlr4
+!visual/build
 visual/sample.html
 visual/elk/elkInput.txt
 visual/elk/elkOutput.txt
