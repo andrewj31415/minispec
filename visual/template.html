@@ -860,9 +860,6 @@
             }
             dehighlightComponent = (component) => {
                 component.overRect.setAttribute("fill", "white");
-                if (component.i.tokensSourcedFrom.length == 0) {
-                    component.overRect.setAttribute("fill", "orange");
-                }
                 for (let portRect of component.portRects) {
                     portRect.setAttribute("fill", "white");
                 }
@@ -894,11 +891,21 @@
             spotlightComponent = (component) => {
                 clearHighlightedComponents();
                 highlightComponent(component);
+                if (component.tokensToLink.length == 0) {
+                    wireInspectDiv.style.visibility = "";
+                    wireInspectDiv.innerHTML = "<span style='font-size: 10pt;'>Source tracking for this particular component<br>has not yet been implemented, so double-clicking<br>on it will not do anything right now.<br>The source will be added soon.</span>"
+                }
             }
             spotlightEdge = (edge) => {
                 clearHighlightedComponents();
                 wireInspectDiv.style.visibility = "";
                 wireInspectDiv.innerHTML = "Type: " + edge.i.mt;
+                if (edge.i.mt == '<i>unknown</i>') {
+                    wireInspectDiv.innerHTML += "<br><span style='font-size: 10pt;'>The type of this wire is unknown<br>since not all built-in type signatures<br>havebeen implemented.</span>"
+                }
+                if (edge.tokensToLink.length == 0) {
+                    wireInspectDiv.innerHTML += "<br><span style='font-size: 10pt;'>Source tracking for this particular edge<br>has not yet been implemented, so double-clicking<br>on it will not do anything right now.<br>The source will be added soon.</span>"
+                }
                 currentHighlightedEdges.add(edge);
                 edge.highlightEdge();
             }
@@ -981,9 +988,6 @@
                 overRect.setAttribute("stroke", "black");
                 overRect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
                 overRect.setAttribute("fill", "white");
-                if (componentData.tokensSourcedFrom.length == 0) {
-                    overRect.setAttribute("fill", "orange");
-                }
                 component.overRect = overRect;
                 component.parts.push(overRect);
                 let overName = undefined;
@@ -1150,10 +1154,6 @@
                     for (let line of edge.lines) {
                         line.setAttribute("stroke", "blue");
                         line.setAttribute("stroke-width", 1);
-                        if (tokensToLink.length == 0) {
-                            line.setAttribute("stroke", "orange");
-                            line.setAttribute("stroke-width", 3);
-                        }
                     }
                     for (let circle of edge.circles) {
                         circle.setAttribute("fill", "blue");
@@ -1204,10 +1204,6 @@
                     // line.setAttribute("stroke", "black");
                     line.setAttribute("stroke", "blue");
                     line.setAttribute("stroke-width", 1);
-                    if (tokensToLink.length == 0) {
-                        line.setAttribute("stroke", "orange");
-                        line.setAttribute("stroke-width", 3);
-                    }
                     line.setAttribute("pointer-events", "none");
                     edge.lines.push(line);
                     edge.parts.push(line);
