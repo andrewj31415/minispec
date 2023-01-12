@@ -860,6 +860,9 @@
             }
             dehighlightComponent = (component) => {
                 component.overRect.setAttribute("fill", "white");
+                if (component.i.tokensSourcedFrom.length == 0) {
+                    component.overRect.setAttribute("fill", "orange");
+                }
                 for (let portRect of component.portRects) {
                     portRect.setAttribute("fill", "white");
                 }
@@ -975,10 +978,11 @@
                     overRect.setAttribute("width", component.width);
                     overRect.setAttribute("height", component.height);
                 }
-                for (let rect of [overRect]) {
-                    rect.setAttribute("stroke", "black");
-                    rect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
-                    rect.setAttribute("fill", "white");
+                overRect.setAttribute("stroke", "black");
+                overRect.setAttribute("stroke-width", Math.sqrt(component.height / 200)); //make the thickness proportional to the height so that it does not cover the under text
+                overRect.setAttribute("fill", "white");
+                if (componentData.tokensSourcedFrom.length == 0) {
+                    overRect.setAttribute("fill", "orange");
                 }
                 component.overRect = overRect;
                 component.parts.push(overRect);
@@ -1146,6 +1150,10 @@
                     for (let line of edge.lines) {
                         line.setAttribute("stroke", "blue");
                         line.setAttribute("stroke-width", 1);
+                        if (tokensToLink.length == 0) {
+                            line.setAttribute("stroke", "orange");
+                            line.setAttribute("stroke-width", 3);
+                        }
                     }
                     for (let circle of edge.circles) {
                         circle.setAttribute("fill", "blue");
@@ -1196,6 +1204,10 @@
                     // line.setAttribute("stroke", "black");
                     line.setAttribute("stroke", "blue");
                     line.setAttribute("stroke-width", 1);
+                    if (tokensToLink.length == 0) {
+                        line.setAttribute("stroke", "orange");
+                        line.setAttribute("stroke-width", 3);
+                    }
                     line.setAttribute("pointer-events", "none");
                     edge.lines.push(line);
                     edge.parts.push(line);

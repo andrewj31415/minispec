@@ -532,33 +532,32 @@ class ModuleWithMetadata:
     def __init__(self, visitor: 'SynthesizerVisitor', module: 'hardware.Module', inputsWithDefaults: 'dict[str, None|"build.MinispecPythonParser.MinispecPythonParser.ExpressionContext"]', methodsWithArguments: 'dict[str, tuple[build.MinispecPythonParser.MinispecPythonParser.MethodDefContext, Scope]]'):
         '''hey'''
         self.module: 'hardware.Module' = module
-        self.inputValues: 'dict[str, hardware.Node|mtypes.MLiteral|None]' = {}
+        self.inputValues: 'dict[str, MValue]' = {}
 
         # save submodule inputs with default values
         for inputName in inputsWithDefaults:
             defaultCtxOrNone = inputsWithDefaults[inputName]
             # evaluate default input if it is not None
             if defaultCtxOrNone:
-                self.inputValues[inputName] = visitor.visit(defaultCtxOrNone).value
+                self.inputValues[inputName] = visitor.visit(defaultCtxOrNone)
             elif self.module.isRegister():
                 # a register's default value is its own value
-                self.inputValues[inputName] = self.module.value
+                self.inputValues[inputName] = MValue(self.module.value)
             else:
-                self.inputValues[inputName] = None
+                self.inputValues[inputName] = MValue(None)
 
         self.methodsWithArguments = methodsWithArguments
         # TODO methodsWithArguments must keep track of scopes as well so that references to identical modules do not get mixed up.
 
-    def synthesizeInputs(self, globalsHandler: 'GlobalsHandler'):
+    def synthesizeInputs(self, visitor: 'SynthesizerVisitor'):
         ''' Synthesizes the connections between the input values to the module (in inputsWithDefaults)
         and the actual module inputs of self.module.
         Called during visitModuleDef after synthesizing all submodules and rules of the parent modules. '''
         submoduleName = self.module.name
         for inputName in self.inputValues:
             value = self.inputValues[inputName]
-            assert value != None, f"All submodule inputs must be assigned--missing input {inputName} on {submoduleName}"
-            if mtypes.isMLiteral(value):
-                value = MValue(value).getHardware(globalsHandler)
+            assert value.value != None, f"All submodule inputs must be assigned--missing input {inputName} on {submoduleName}"
+            value = value.resolveToNode(visitor)
             if hasattr(self.module, 'isRegister') and self.module.isRegister():
                 inputNode = self.module.input
             else:
@@ -568,9 +567,9 @@ class ModuleWithMetadata:
         if self.module.__class__ == hardware.VectorModule:
             # synthesize inputs for vectors of submodules, too
             for module in self.module.numberedSubmodules:
-                module.metadata.synthesizeInputs(globalsHandler)
+                module.metadata.synthesizeInputs(visitor)
 
-    def setInput(self, inputName: 'str', newValue: 'mtypes.MLiteral|hardware.Node|None'):
+    def setInput(self, inputName: 'str', newValue: 'MValue'):
         ''' Given the name of an input and the value to assign, assigns that value. '''
         if self.module.__class__ == hardware.VectorModule:
             if inputName[0] == "[":
@@ -582,8 +581,8 @@ class ModuleWithMetadata:
         assert inputName in self.inputValues, "All inputs should be known at initialization."
         self.inputValues[inputName] = newValue
 
-    def getInput(self, inputName: 'str') -> 'mtypes.MLiteral|hardware.Node|None':
-        ''' Given the name of an input, returns the corresponding value. '''
+    def getInput(self, inputName: 'str') -> 'MValue':
+        ''' Given the name of an input, returns the currently assigned value. '''
         if self.module.__class__ == hardware.VectorModule:
             if inputName[0] == "[":
                 inputIndex = int(inputName.split(']')[0][1:])
@@ -646,8 +645,8 @@ class PartiallyIndexedModule:
             visitor.globalsHandler.currentComponent.addChild(mux)
             return mux.output
         return PartiallyIndexedModule(self.module, allIndices, allSources)
-    def getInput(self, visitor: 'SynthesizerVisitor', inputName: 'str') -> 'hardware.Node|mtypes.MLiteral':
-        ''' Returns the corresponding input. '''
+    def getMethodField(self, visitor: 'SynthesizerVisitor', inputName: 'str') -> 'hardware.Node|mtypes.MLiteral':
+        ''' Returns the corresponding method. '''
         assert len(self.indexes) == self.module.depth(), "Must have enough indices to select a nonvector submodule"
         muxInputs = []
         for submodule in self.module.numberedSubmodules:
@@ -677,14 +676,14 @@ class BluespecModuleWithMetadata:
     def __init__(self, module: 'hardware.Module', homeScope: 'Scope'):
         self.module: hardware.Module = module
         self.homeScope = homeScope  # the scope in which this module was created. used for creating module inputs.
-        self.inputValues: 'dict[str, hardware.Node|mtypes.MLiteral|None]' = {}
+        self.inputValues: 'dict[str, MValue]' = {}
     def getMethod(self, fieldToAccess: 'str'):
         ''' Given the name of a method, returns the corresponding node.
         Dynamically creates the node if it does not exist. '''
         if (fieldToAccess not in self.module.methods):
             self.module.addMethod(hardware.Node(), fieldToAccess)
         return self.module.methods[fieldToAccess]
-    def getMethodWithArguments(self, visitor: 'SynthesizerVisitor', fieldToAccess: 'str', functionArgs: 'list[hardware.Node|mtypes.MLiteral]', ctx):
+    def getMethodWithArguments(self, visitor: 'SynthesizerVisitor', fieldToAccess: 'str', functionArgs: 'list[MValue]', ctx):
         ''' Given the name of a method with arguments, as well as the arguments themselves,
         creates the corresponding hardware and returns the output node.
         fieldToAccess is the name of the method, functionArgs is a list of input nodes/literals.'''
@@ -694,11 +693,7 @@ class BluespecModuleWithMetadata:
         methodComponent.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
         methodComponent._persistent = True
         for i in range(len(functionArgs)):
-            exprValue = functionArgs[i]
-            if mtypes.isMLiteral(exprValue):
-                exprNode = MValue(exprValue).resolveToNode(visitor).value
-            else:
-                exprNode = exprValue
+            exprNode = functionArgs[i].resolveToNode(visitor)
             funcInputNode = methodComponent.inputs[i]
             hardware.Wire(exprNode, funcInputNode)
         funcInputNode = methodComponent.inputs[-1]
@@ -713,7 +708,7 @@ class BluespecModuleWithMetadata:
             # TODO replace the DontCareLiteral with something representing an 'unknown' literal, since
             # this value represents an unknown default input.
             self.homeScope.setPermanent(MValue(mtypes.DontCareLiteral()), nameOfSubodule + '.' + fieldToAccess)
-            self.inputValues[fieldToAccess] = mtypes.DontCareLiteral()
+            self.inputValues[fieldToAccess] = MValue(mtypes.DontCareLiteral())
     def setInput(self, inputName: 'str', newValue: 'mtypes.MLiteral|hardware.Node|None'):
         ''' Given the name of an input and the value to assign, assigns that value. '''
         assert inputName in self.inputValues, "Inputs must have been created before they can be set"
@@ -724,11 +719,9 @@ class BluespecModuleWithMetadata:
         which may be used as 'inputName' for getInput and setInput. '''
         allInputs = set(self.inputValues)
         return allInputs
-    def synthesizeInputs(self, globalsHandler: 'GlobalsHandler'):
+    def synthesizeInputs(self, visitor: 'SynthesizerVisitor'):
         for inputName in self.inputValues:
-            value = self.inputValues[inputName]
-            if mtypes.isMLiteral(value):
-                value = value.getHardware(globalsHandler)
+            value = self.inputValues[inputName].resolveToNode(visitor)
             inputNode = self.module.inputs[inputName]
             hardware.Wire(value, inputNode)
 
@@ -1418,7 +1411,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # We can't wire in submodule inputs during the rules, since an input with a default input will confuse the first rule (since the input may or may not be set in a later rule).
         for submoduleName in submodules:
             submoduleWithMetadata: ModuleWithMetadata = submodules[submoduleName]
-            submoduleWithMetadata.synthesizeInputs(self.globalsHandler)
+            submoduleWithMetadata.synthesizeInputs(self)
 
         self.globalsHandler.currentComponent = previousComponent #reset the current component/scope
         self.globalsHandler.exitScope()
@@ -1576,7 +1569,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         # there are no arguments, so we synthesize the method inside the current module.
         if ctx.expression():
             # the method is a single-line expression.
-            value = self.visit(ctx.expression()).resolveToNode(self).value
+            value = self.visit(ctx.expression()).resolveToNode(self)
             hardware.Wire(value, methodOutputNode)
         else:
             # the method is a multi-line sequence of statements with a return statement at the end.
@@ -1613,28 +1606,26 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             for inputName in submodules[submoduleName].getAllInputs():
                 fullInputName = submoduleName + '.' + inputName
                 value = submodules[submoduleName].getInput(inputName)
-                # if value != None:  # don't need this since none values should never by referenced
                 ruleScope.setPermanent(None, fullInputName)
-                ruleScope.set(MValue(value), fullInputName)
+                ruleScope.set(value, fullInputName)
         for submoduleName in sharedSubmodules:
             for inputName in sharedSubmodules[submoduleName].getAllInputs():
                 fullInputName = submoduleName + '.' + inputName
                 value = sharedSubmodules[submoduleName].getInput(inputName)
-                # if value != None:  # don't need this since none values should never by referenced
                 ruleScope.setPermanent(None, fullInputName)
-                ruleScope.set(MValue(value), fullInputName)
+                ruleScope.set(value, fullInputName)
         for stmt in ctx.stmt():
             self.visit(stmt)
         # find any submodule input assignments, including register writes
         for submoduleName in submodules:
             for inputName in submodules[submoduleName].getAllInputs():
                 fullInputName = submoduleName + '.' + inputName
-                newValue = ruleScope.get(self, fullInputName).value
+                newValue = ruleScope.get(self, fullInputName)
                 submodules[submoduleName].setInput(inputName, newValue)
         for submoduleName in sharedSubmodules:
             for inputName in sharedSubmodules[submoduleName].getAllInputs():
                 fullInputName = submoduleName + '.' + inputName
-                newValue = ruleScope.get(self, fullInputName).value
+                newValue = ruleScope.get(self, fullInputName)
                 sharedSubmodules[submoduleName].setInput(inputName, newValue)
         self.globalsHandler.exitScope()
 
@@ -2372,7 +2363,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 if len(functionArgs) == 0:
                     # this is actually just an ordinary method of the bluespec module, being called as `module.method()` instead of `module.method`.
                     return MValue(toAccess.metadata.getMethod(fieldToAccess))
-                return MValue(toAccess.metadata.getMethodWithArguments(self, fieldToAccess, [mvalue.value for mvalue in functionArgs], ctx.fcn.field))
+                return MValue(toAccess.metadata.getMethodWithArguments(self, fieldToAccess, functionArgs, ctx.fcn.field))
             else:
                 if len(functionArgs) == 0:
                     # this might be just an ordinary method of the module, being called as `module.method()` instead of `module.method`.
@@ -2397,7 +2388,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         toAccess = self.visit(ctx.exprPrimary())
         field = ctx.field.getText()
         if toAccess.value.__class__ == PartiallyIndexedModule:
-            return MValue(toAccess.value.getInput(self, field))
+            return MValue(toAccess.value.getMethodField(self, field))
         if toAccess.value.__class__ == hardware.Module:
             field = ctx.field.getText()
             if toAccess.value.metadata.__class__ == BluespecModuleWithMetadata:
