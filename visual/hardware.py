@@ -1063,6 +1063,8 @@ def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', p
                         'weight':weightAdjust(item.weight()),
                         'numSubcomponents': item.weight(),
                         'tokensSourcedFrom':item.getSourceTokens()}
+        if len(item.children) == 0:
+            jsonObj['i']['hasTriangle'] = True
     else:
         raise Exception(f"Unrecognized class {item.__class__} of item {item}.")
     componentELKs[item] = jsonObj

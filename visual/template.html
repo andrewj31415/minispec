@@ -978,6 +978,11 @@
                     let muxHeightOffset = 5/2;
                     let points = `${absolutePos.x},${absolutePos.y-muxHeightOffset} ${absolutePos.x+component.width},${absolutePos.y+muxHeightOffset} ${absolutePos.x+component.width},${absolutePos.y+component.height-muxHeightOffset} ${absolutePos.x},${absolutePos.y+component.height+muxHeightOffset}`;
                     overRect.setAttribute("points", points);
+                } else if (componentData.hasTriangle) {
+                    overRect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    let triangle = `${absolutePos.x},${absolutePos.y + 5/8*component.height} ${absolutePos.x + 1/8*component.height},${absolutePos.y + 6/8*component.height} ${absolutePos.x},${absolutePos.y + 7/8*component.height}`;
+                    let points = `${triangle} ${absolutePos.x},${absolutePos.y} ${absolutePos.x+component.width},${absolutePos.y} ${absolutePos.x+component.width},${absolutePos.y+component.height} ${absolutePos.x},${absolutePos.y+component.height}`;
+                    overRect.setAttribute("points", points);
                 } else {
                     overRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
                     overRect.setAttribute("x", absolutePos.x);
