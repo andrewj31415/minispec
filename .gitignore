@@ -18,7 +18,7 @@ msc
 synth/yosys
 
 # Visual
-visual/antlr4
+!visual/antlr4
 !visual/build
 visual/sample.html
 visual/elk/elkInput.txt
