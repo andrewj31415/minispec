@@ -607,9 +607,9 @@ class PartiallyIndexedModule:
     if we feed M[a][b].in into the interpreter, the interpreter will turn M[a] into
     PartiallyIndexedModule(M, (a,)) and will recursively turn M[a][b] into PartiallyIndexedModule(M, (a,b)).
     Finally, accessing .in will generate the relevant hardware components. '''
-    def __init__(self, module: 'hardware.VectorModule', indexes: 'tuple[MValue]' = tuple(), sliceSources: 'tuple[list[tuple[str, int]]]' = tuple()):
-        assert module.__class__ == hardware.VectorModule, "Can only index into a vector of submodules"
-        self.module = module
+    def __init__(self, module: 'MValue', indexes: 'tuple[MValue]' = tuple(), sliceSources: 'tuple[list[tuple[str, int]]]' = tuple()):
+        assert module.value.__class__ == hardware.VectorModule, "Can only index into a vector of submodules"
+        self.module: 'MValue' = module
         for index in indexes:
             assert index.__class__ == MValue, f'Expected MValue, not {index.__class__}'
         self.indexes: 'tuple[MValue]' = indexes
@@ -621,16 +621,16 @@ class PartiallyIndexedModule:
         indx = indx.resolveToNodeOrMLiteral(visitor)
         allIndices = self.indexes + (indx,)
         allSources = self.sliceSources + (source,)
-        if self.module.isVectorOfRegisters() and len(self.indexes) + 1 == self.module.depth():
+        if self.module.value.isVectorOfRegisters() and len(self.indexes) + 1 == self.module.value.depth():
             # we have picked out a register value; generate the corresponding hardware.
             muxInputs = []
-            for submodule in self.module.numberedSubmodules:
+            for submodule in self.module.value.numberedSubmodules:
                 if submodule.__class__ == hardware.Register:
                     # self is a vector of registers
                     muxInputs.append(submodule.value)
                 else:
                     # self is a vector of vectors
-                    currentLevel = PartiallyIndexedModule(submodule)
+                    currentLevel = PartiallyIndexedModule(MValue(submodule))
                     for i in range(1, len(allIndices)):
                         tempIndex = allIndices[i]
                         tempSource = allSources[i]
@@ -640,16 +640,16 @@ class PartiallyIndexedModule:
             mux.inputNames = [str(i) for i in range(len(muxInputs))]
             mux.addSourceTokens(allSources[0])
             for i in range(len(muxInputs)):
-                hardware.Wire(muxInputs[i], mux.inputs[i])
+                hardware.Wire(MValue(muxInputs[i]).appendSourceTokens(self.module), mux.inputs[i])
             hardware.Wire(allIndices[0], mux.control)
             visitor.globalsHandler.currentComponent.addChild(mux)
             return mux.output
         return PartiallyIndexedModule(self.module, allIndices, allSources)
     def getMethodField(self, visitor: 'SynthesizerVisitor', inputName: 'str') -> 'hardware.Node|mtypes.MLiteral':
         ''' Returns the corresponding method. '''
-        assert len(self.indexes) == self.module.depth(), "Must have enough indices to select a nonvector submodule"
+        assert len(self.indexes) == self.module.value.depth(), "Must have enough indices to select a nonvector submodule"
         muxInputs = []
-        for submodule in self.module.numberedSubmodules:
+        for submodule in self.module.value.numberedSubmodules:
             if submodule.__class__ == hardware.Module:
                 # self is a vector of ordinary modules
                 muxInputs.append(submodule.methods[inputName])
@@ -2259,7 +2259,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if toSliceFrom.value.__class__ == hardware.VectorModule:
             # slicing into a vector of modules
             if not msb.isLiteralValue():
-                return MValue(PartiallyIndexedModule(toSliceFrom.value).indexFurther(self, msb, sliceSource))
+                return MValue(PartiallyIndexedModule(toSliceFrom).indexFurther(self, msb, sliceSource))
             return MValue(toSliceFrom.value.getNumberedSubmodule(msb.value.value))
         toSliceFrom = toSliceFrom.resolveToNodeOrMLiteral(self)
         if ctx.lsb:
