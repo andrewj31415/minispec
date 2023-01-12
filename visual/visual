@@ -29,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("--java", "-jv", default=False, action="store_true", help="Use the java version of elk")
     parser.add_argument("--canvas", "-c", default=False, action="store_true", help="Use the canvas element instead of the svg approach")
     parser.add_argument("--no_garbage_collection", "-ng", default=False, action="store_true", help="Do not remove unused hardware")
+    parser.add_argument("--fixed_file", "-f", default=False, action="store_true", help="Generate an html document instead of launching a webserver")
     args = parser.parse_args()
 
     if not os.path.exists(args.visualdir):
@@ -69,13 +70,14 @@ if __name__ == '__main__':
 
     componentJson: 'dict[str, Any]' = hardware.getELK(synthesizedComponent)
 
+    absoluteFilePath = pathlib.Path(__file__).resolve()
+
     if args.all:
         # Hardcode locations of all components recursively via ELKJS at compile time.
 
         # input/output files for elk
         pythonToJSFile = visualDir.joinpath("elkInput.txt")
         JSToPythonFile = visualDir.joinpath("elkOutput.txt")
-        absoluteFilePath = pathlib.Path(__file__).resolve()
         ELKcaller = absoluteFilePath.with_name("elk").joinpath("place.js")
         ELKJavacaller = absoluteFilePath.with_name("elkJava").joinpath("target/gs-maven-0.1.0.jar")
 
@@ -194,3 +196,7 @@ if __name__ == '__main__':
     output.open("w").write(template)
 
     print(f"Total time elapsed: {time.time() - total_start_time} seconds")
+
+    if not args.fixed_file:
+        serverCaller = absoluteFilePath.with_name("server.js")
+        os.system(f'node {serverCaller} {output}')
