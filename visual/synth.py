@@ -2463,7 +2463,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             regName = ctx.lhs.getText()
             self.globalsHandler.currentScope.set(value, regName + ".input")
             return
-        value = value.value
         # writing to a vector of registers
         # TODO test this more thoroughly and make sure it works
         indexes = []
@@ -2475,6 +2474,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         assert currentlvalue.__class__ == build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext, "Unrecognized format for assignment to vector of registers"
         regName = currentlvalue.getText()
         outermostVector = self.globalsHandler.currentScope.get(self, regName).value
+        if outermostVector.__class__ != hardware.VectorModule:
+            # assigning to part of a register
+            insertComponent = self.visit(ctx.lhs).value
+            value = value.resolveToNode(self)
+            hardware.Wire(value, insertComponent.setValue())
+            self.globalsHandler.currentComponent.addChild(insertComponent)
+            self.globalsHandler.currentScope.set(MValue(insertComponent.output), insertComponent.varName)
+            return
+        value = value.value
         regName += "."
         regsToWrite = [regName]
         # collect the register names to write to
