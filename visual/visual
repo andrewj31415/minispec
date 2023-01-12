@@ -59,6 +59,7 @@ if __name__ == '__main__':
     topLevel = args.target
     sourceFilesCollect = []
     print('Synthesizing to hardware representation ...')
+    synth.folding_constants_through_function_defs = True
     synthesizedComponent = synth.parseAndSynth(targetText, topLevel, sourceFilename, pullTextFromImport, sourceFilesCollect)
     if not args.no_garbage_collection:
         hardware.garbageCollection1(synthesizedComponent)

@@ -106,13 +106,13 @@ def numericalBinaryOperation(left: 'MLiteral', right: 'MLiteral', op: 'str') -> 
     elif op == '!=':
         return Bool(leftVal != rightVal)
     elif op == '&':
-        raise Exception("Not implemented")
+        value = leftVal & rightVal
     elif op == '^':
-        raise Exception("Not implemented")
+        value = leftVal ^ rightVal
     elif op == '^~' or op == '~^':
         raise Exception("Not implemented")
     elif op == '|':
-        raise Exception("Not implemented")
+        value = leftVal | rightVal
     else:
         raise Exception(f"Unrecognized binary operation {op}")
     

@@ -10,6 +10,8 @@ import hardware
 import mtypes
 from typing import Any
 
+folding_constants_through_function_defs = False
+
 #sets up parser for use in debugging:
 #now ctx.toStringTree(recog=parser) will work properly.
 data = antlr4.InputStream("")
@@ -1028,14 +1030,22 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
     nodes of type exprPrimary return the node corresponding to their value.
     stmt do not return anything; they mutate the current scope and the current hardware.'''
 
+    def __init__(self, globalsHandler: 'GlobalsHandler') -> None:
+        self.globalsHandler = globalsHandler
+        self.args = None
+        self.kwargs = None
+
     # @decorateForErrorCatching
-    def visit(self, ctx) -> 'MValue':
+    def visit(self, ctx, *args, **kwargs) -> 'MValue':
+        # args and kwargs can be accessed from inside ctx
+        oldArgs = self.args
+        oldKwargs = self.kwargs
+        self.args = args
+        self.kwargs = kwargs
         value = ctx.accept(self)
-        if ctx.__class__ != build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext:
-            if ctx.__class__ != build.MinispecPythonParser.MinispecPythonParser.MemberLvalueContext:
-                if ctx.__class__ != build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext:
-                    if ctx.__class__ != build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext:
-                        assert value.__class__ == MValue or value == None, f"Visited {ctx.__class__} and unexpectedly received value of type {value.__class__}"
+        self.args = oldArgs
+        self.kwargs = oldKwargs
+        assert value.__class__ == MValue or value == None, f"Visited {ctx.__class__} and unexpectedly received value of type {value.__class__}"
         return value
 
     def visitModuleForSynth(self, moduleCtx, params: 'list[mtypes.MLiteral|mtypes.MType]', args: 'list[mtypes.MLiteral|hardware.Module]') -> 'ModuleWithMetadata':
@@ -1094,9 +1104,6 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         vectorComp.metadata = moduleWithMetadata
 
         return moduleWithMetadata
-
-    def __init__(self, globalsHandler: 'GlobalsHandler') -> None:
-        self.globalsHandler = globalsHandler
     
     @decorateForErrorCatching
     def visitLowerCaseIdentifier(self, ctx: build.MinispecPythonParser.MinispecPythonParser.LowerCaseIdentifierContext):
@@ -1652,7 +1659,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if ctx.argFormals():
             # a function with no arguments is still meaningful--if it is defined in a
             # module, it still has access to the module registers/inputs.
-            for arg in ctx.argFormals().argFormal():
+            for i in range(len(ctx.argFormals().argFormal())):
+                arg = ctx.argFormals().argFormal(i)
                 argType = self.visit(arg.typeName()).value # typeName parse tree node
                 argName = arg.argName.getText() # name of the variable
                 argNode = hardware.Node(argName, argType)
@@ -1660,6 +1668,20 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                 functionScope.set(argValue, argName)
                 inputNodes.append(argNode)
                 inputNames.append(argName)
+                if argType == mtypes.Integer:
+                    functionArgs: 'list[MValue]' = self.kwargs['functionArgs']
+                    argValue = functionArgs[i]
+                    assert argValue.isLiteralValue(), "Must constant fold integer parameters"
+                    functionScope.set(argValue, argName)
+        # if folding_constants_through_function_defs:
+        #     if 'functionArgs' in self.kwargs:
+        #         # constant-fold constants through the function
+        #         functionArgs: 'list[MValue]' = self.kwargs['functionArgs']
+        #         assert len(functionArgs) == len(inputNodes), "Expected one function argument for each input node"
+        #         for i in range(len(functionArgs)):
+        #             if functionArgs[i].isLiteralValue:
+        #                 argName = inputNames[i]
+        #                 functionScope.set(functionArgs[i], argName)
         outputType = self.visit(ctx.typeName()).value
         outputNode = hardware.Node("_func_output", outputType)
         funcComponent = hardware.Function(functionName, inputNodes, outputNode)
@@ -1675,6 +1697,8 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
 
         returnValue = self.globalsHandler.currentScope.get(self, '-return').resolveMValue(self)
         if returnValue.value.__class__ != UnsynthesizableComponent:
+            # if returnValue.isLiteralValue():
+            #     return returnValue
             returnValue = returnValue.resolveToNode(self)
             hardware.Wire(returnValue, funcComponent.output)
 
@@ -1826,7 +1850,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     pass  # not a module, move on
             except MissingVariableException:
                 pass  # not a module, move on
-        insertComponent: 'hardware.Inserter' = self.visit(lvalue)
+        insertComponent: 'hardware.Inserter' = self.visit(lvalue).value
         hardware.Wire(value, insertComponent.setValue())
         self.globalsHandler.currentComponent.addChild(insertComponent)
         self.globalsHandler.currentScope.set(MValue(insertComponent.output), insertComponent.varName)
@@ -1836,17 +1860,17 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue())
+        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue()).value
         inserter.addText('.' + ctx.lowerCaseIdentifier().getText())
         inserter.addSourceTokens([(getSourceFilename(ctx), ctx.lowerCaseIdentifier().getSourceInterval()[0])])
-        return inserter
+        return MValue(inserter)
 
     @decorateForErrorCatching
     def visitIndexLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.IndexLvalueContext):
         ''' Returns a tuple ( str, tuple[Node], str, tokensSourcedFrom ) where str is the slicing text interpreted so far,
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
-        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue())
+        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue()).value
         index = self.visit(ctx.index).resolveToNodeOrMLiteral(self)
         if index.isLiteralValue():
             inserter.addText('[' + str(index.value) + ']')
@@ -1857,7 +1881,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             (getSourceFilename(ctx), ctx.indexLBracket.tokenIndex),
             (getSourceFilename(ctx), ctx.indexRBracket.tokenIndex)
         ])
-        return inserter
+        return MValue(inserter)
 
     @decorateForErrorCatching
     def visitSimpleLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SimpleLvalueContext):
@@ -1871,7 +1895,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         if valueFound.value != None:
             hardware.Wire(valueFound, inserter.inputs[0])
         inserter.addSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
-        return inserter
+        return MValue(inserter)
 
     @decorateForErrorCatching
     def visitSliceLvalue(self, ctx: build.MinispecPythonParser.MinispecPythonParser.SliceLvalueContext):
@@ -1879,7 +1903,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
         tuple[Node] is the tuple of nodes corresponding to variable input (including the variable being updated),
         and the last str is varName, the name of the variable being updated. '''
         # text, nodes, varName, tokensSourcedFrom = self.visit(ctx.lvalue())
-        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue())
+        inserter: 'hardware.Inserter' = self.visit(ctx.lvalue()).value
         msb = self.visit(ctx.msb).resolveToNodeOrMLiteral(self)
         if msb.isLiteralValue():
             inserter.addText('[' + str(msb.value))
@@ -1898,7 +1922,7 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             (getSourceFilename(ctx), ctx.sliceColon.tokenIndex),
             (getSourceFilename(ctx), ctx.sliceRBracket.tokenIndex)
         ])
-        return inserter
+        return MValue(inserter)
 
     @decorateForErrorCatching
     def visitOperatorExpr(self, ctx: build.MinispecPythonParser.MinispecPythonParser.OperatorExprContext):
@@ -2336,7 +2360,11 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
                     return MValue(UnsynthesizableComponent())
                 assert functionDef.__class__ == build.MinispecPythonParser.MinispecPythonParser.FunctionDefContext, f"Excepted a function definition, not {functionDef.__class__}."
                 self.globalsHandler.lastParameterLookup = params
-                funcComponent = self.visit(functionDef).value  #synthesize the function internals
+                funcComponent = self.visit(functionDef, functionArgs=functionArgs)
+                # if funcComponent.isLiteralValue():
+                #     # function got constant folded
+                #     return funcComponent.withSourceTokens([(getSourceFilename(ctx), ctx.getSourceInterval()[0])])
+                funcComponent = funcComponent.value  #synthesize the function internals
             except MissingVariableException as e:
                 # we have an unknown bluespec built-in function
                 functionName = functionToCall
