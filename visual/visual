@@ -15,6 +15,7 @@ import time
 import synth
 import hardware
 from hardware import *
+from mtypes import *
 import json
 
 if __name__ == '__main__':

@@ -684,7 +684,7 @@ class BluespecModuleWithMetadata:
         if (fieldToAccess not in self.module.methods):
             self.module.addMethod(hardware.Node(), fieldToAccess)
         return self.module.methods[fieldToAccess]
-    def getMethodWithArguments(self, globalsHandler: 'GlobalsHandler', fieldToAccess: 'str', functionArgs: 'list[hardware.Node|mtypes.MLiteral]', ctx):
+    def getMethodWithArguments(self, visitor: 'SynthesizerVisitor', fieldToAccess: 'str', functionArgs: 'list[hardware.Node|mtypes.MLiteral]', ctx):
         ''' Given the name of a method with arguments, as well as the arguments themselves,
         creates the corresponding hardware and returns the output node.
         fieldToAccess is the name of the method, functionArgs is a list of input nodes/literals.'''
@@ -696,14 +696,14 @@ class BluespecModuleWithMetadata:
         for i in range(len(functionArgs)):
             exprValue = functionArgs[i]
             if mtypes.isMLiteral(exprValue):
-                exprNode = exprValue.getHardware(globalsHandler)
+                exprNode = MValue(exprValue).resolveToNode(visitor).value
             else:
                 exprNode = exprValue
             funcInputNode = methodComponent.inputs[i]
             hardware.Wire(exprNode, funcInputNode)
         funcInputNode = methodComponent.inputs[-1]
         hardware.Wire(self.module.methods['_'+fieldToAccess], funcInputNode)
-        globalsHandler.currentComponent.addChild(methodComponent)
+        visitor.globalsHandler.currentComponent.addChild(methodComponent)
         return methodComponent.output
     def createInput(self, fieldToAccess: 'str', nameOfSubodule: 'str'):
         ''' Given the name of an input and the local name of the module, creates the corresponding input.
@@ -2370,14 +2370,15 @@ class SynthesizerVisitor(build.MinispecPythonVisitor.MinispecPythonVisitor):
             fieldToAccess = ctx.fcn.field.getText()
             if toAccess.metadata.__class__ == BluespecModuleWithMetadata:
                 if len(functionArgs) == 0:
-                    # this is actually just an ordinary method of the module, being called as `module.method()` instead of `module.method`.
-                    raise Exception("Not implemented")
-                return MValue(toAccess.metadata.getMethodWithArguments(self.globalsHandler, fieldToAccess, [mvalue.value for mvalue in functionArgs], ctx.fcn.field))
+                    # this is actually just an ordinary method of the bluespec module, being called as `module.method()` instead of `module.method`.
+                    return MValue(toAccess.metadata.getMethod(fieldToAccess))
+                return MValue(toAccess.metadata.getMethodWithArguments(self, fieldToAccess, [mvalue.value for mvalue in functionArgs], ctx.fcn.field))
             else:
                 if len(functionArgs) == 0:
-                    # this is actually just an ordinary method of the module, being called as `module.method()` instead of `module.method`.
+                    # this might be just an ordinary method of the module, being called as `module.method()` instead of `module.method`.
                     # TODO make sure methods with no arguments are properly registered, etc.
-                    return MValue(toAccess.methods[fieldToAccess])
+                    if fieldToAccess in toAccess.methods:
+                        return MValue(toAccess.methods[fieldToAccess])
                 moduleWithMetadata: ModuleWithMetadata = toAccess.metadata
                 methodDef, parentScope = moduleWithMetadata.methodsWithArguments[fieldToAccess]
                 methodComponent = self.visitMethodDef(methodDef, parentScope).value

@@ -1317,6 +1317,37 @@ def _():
     expected = outer
     assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
 
+@it('''Handles bluespec module imports''')
+def _():
+    text = pull('moduleBluespec')
+
+    om1, om2, om3, om4 = Node(), Node(), Node(), Node()
+    o1, o4 = Node(), Node()
+    oi = Node()
+    i1, i2 = Node(), Node()
+    sm1, sm2, sm3, sm4 = Node(), Node(), Node(), Node()
+    smf3, smf4 = Function('someMethod3', [Node(), Node()]), Function('someMethod4', [Node(), Node()])
+    of2, of3 = Function('o2'), Function('o3', [Node()], None, {smf3})
+    nine, six, five, one = Constant(Integer(9)), Constant(Integer(6)), Constant(Integer(5)), Constant(Integer(1))
+    inner = Module('MysteryBluespec', {'someInput1': i1, 'someInput2': i2}, {'someMethod1': sm1, 'someMethod2': sm2, '_someMethod3': sm3, '_someMethod4': sm4}, set())
+    outer = Module('Outer', {'i': oi}, {'o1': o1, 'o4': o4}, {inner, smf4, six, five})
+    outermost = Module('OuterMost', {}, {'o1': om1, 'o2': om2, 'o3': om3, 'o4': om4}, {outer, of2, of3, nine, one})
+    Wire(one.output, oi)
+    Wire(oi, i1), Wire(five.output, i2)
+    Wire(six.output, smf4.inputs[0]), Wire(sm4, smf4.inputs[1])
+    Wire(sm1, o1), Wire(smf4.output, o4)
+    Wire(nine.output, of3.inputs[0]), Wire(of3.inputs[0], smf3.inputs[0]), Wire(sm3, smf3.inputs[1])
+    Wire(sm2, of2.output)
+    Wire(o1, om1), Wire(of2.output, om2), Wire(of3.output, om3), Wire(o4, om4)
+    Wire(smf3.output, of3.output)
+
+
+    output = synth.parseAndSynth(text, 'OuterMost')
+    expected = outermost
+    assert output.match(expected), f"Gave incorrect hardware description.\nReceived: {output.__repr__()}\nExpected: {expected.__repr__()}"
+
+
+
 describe('''Handles built-ins''')
 
 @it('''Handles log2''')
