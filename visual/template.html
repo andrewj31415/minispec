@@ -924,8 +924,55 @@
             topLevelWidth = topLevel.width;
             topLevelHeight = topLevel.height;
 
-            /* component: an elk node. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
-            placeComponent = (component, parentPos) => {
+            jsonWalkComponent = (walker, component, componentArgs) => {
+                let nextArgs = walker.component(component, componentArgs);
+                if (component.children) {
+                    for (let child of component.children) {
+                        jsonWalkComponent(walker, child, nextArgs.componentArgs);
+                    }
+                }
+                if (component.edges) {
+                    for (let edges of component.edges) {
+                        jsonWalkEdge(walker, edges, nextArgs.edgeArgs);
+                    }
+                }
+            };
+            jsonWalkEdge = (walker, edge, edgeArgs) => {
+                walker.edge(edge, edgeArgs);
+            }
+
+            let markParentPointers = {
+                component: (component, componentArgs) => {
+                    component.parent = componentArgs;
+                    return {
+                        componentArgs: component,
+                        edgeArgs: component
+                    };
+                },
+                edge: (edge, edgeArgs) => {
+                    edge.parent = edgeArgs.parent;
+                },
+            };
+            jsonWalkComponent(markParentPointers, topLevel, {});
+
+            let markAbsolutePosition = {
+                component: (component, componentArgs) => {
+                    let parentPos = componentArgs;
+                    let nextAbsolutePos = {x: parentPos.x + component.x, y: parentPos.y + component.y}
+                    component.absolutePos = nextAbsolutePos;
+                    return {
+                        componentArgs: nextAbsolutePos,
+                        edgeArgs: nextAbsolutePos
+                    };
+                },
+                edge: (edge, edgeArgs) => {
+                    edge.absolutePos = edgeArgs;
+                },
+            };
+            jsonWalkComponent(markAbsolutePosition, topLevel, {x: 0, y: 0});
+
+            /* component: an elk node. */
+            placeComponent = (component) => {
                 if (component.width === undefined) {
                     console.log("Unexpected missing width", component);
                 }
@@ -939,12 +986,8 @@
                     console.log("Unexpected missing y value", component);
                 }
 
-                let absolutePos = { x: parentPos.x + component.x, y: parentPos.y + component.y }; // The absolute position of the componenet in the svg
-                let componentData = {};
-                if (component.i) {
-                    componentData = component.i;
-                }
-                component.componentData = componentData;
+                let absolutePos = component.absolutePos;  // The absolute position of the componenet in the svg, since ELK give coordinates relative to the parent component
+                let componentData = component.i;
                 let componentName = componentData.name;
 
                 component.parts = []
@@ -1073,7 +1116,7 @@
                         let filenameOfOrigin = filenameAndToken[0];
                         let tokenIndex = filenameAndToken[1];
                         let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
-                        tokenSpan.linkComponent(component, parentPos);
+                        tokenSpan.linkComponent(component, component.parent.absolutePos);
                     }
                     // highlight the associated tokens upon entering the box
                     overRect.addEventListener("mouseenter", () => {
@@ -1102,7 +1145,7 @@
                 // place children and edges
                 if (component.children) {
                     for (child of component.children) {
-                        placeComponent(child, absolutePos);
+                        placeComponent(child);
                     }
                     // sort the children from largest to smallest
                     component.children.sort((child1, child2) => {
@@ -1111,7 +1154,7 @@
                 }
                 if (component.edges) {
                     for (edge of component.edges) {
-                        placeEdge(edge, absolutePos);
+                        placeEdge(edge);
                     }
                 }
             };
@@ -1121,8 +1164,9 @@
             from the same node may share segments). */
             edgesFromNode = new Map();
 
-            /* edge: an elk edge. parentPos: {x:number, y:number} since elk coordinates are relative to the parent component */
-            placeEdge = (edge, parentPos) => {
+            /* edge: an elk edge. */
+            placeEdge = (edge) => {
+                parentPos = edge.absolutePos;
                 edge.parts = []
                 edge.displayParts = () => {
                     for (let part of edge.parts) {
@@ -1296,7 +1340,7 @@
             };
 
             //place the top level component
-            placeComponent(topLevel, { x: 0, y: 0 });
+            placeComponent(topLevel);
 
             boxesIntersect = (box1, box2) => {
                 return ( box1.x + box1.width >= box2.x && box2.x + box2.width >= box1.x )

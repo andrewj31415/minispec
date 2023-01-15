@@ -899,23 +899,6 @@ def getELK(component: 'Component') -> 'dict[str, Any]':
             elk["edges"] = []
         elk["edges"].append(edge)
 
-    # # Removes nodes corresponding to vectors of submodules/registers, dumping their children and edges into the outer modules.
-    # def eliminateVectorModules(componentELK, parentELK):
-    #     if "children" in componentELK:
-    #         for child in componentELK["children"].copy():  # copy since the children may mutate componentELK's child list
-    #             eliminateVectorModules(child, componentELK)
-    #     if 'isVectorModule' in componentELK:
-    #         if componentELK['isVectorModule'] and parentELK != None:
-    #             if 'ports' not in componentELK or len(componentELK['ports']) == 0:
-    #                 parentELK["children"].remove(componentELK)
-    #                 # lift children and edges
-    #                 if "children" in componentELK:
-    #                     parentELK["children"] += componentELK["children"]
-    #                 if "edges" in componentELK:
-    #                     parentELK["edges"] += componentELK["edges"]
-    # eliminateVectorModules(componentELK, None)
-
-
     # perhaps see https://snyk.io/advisor/npm-package/elkjs/example
 
     return { 'id': 'root',
@@ -968,17 +951,21 @@ def wireToELK(item: 'Wire'):
         jsonObj['properties']['org.eclipse.elk.layered.priority.direction'] = 10
     return jsonObj
 
-def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', properties: 'dict[str, Any]' = None) -> 'dict[str, Any]':
+def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]') -> 'dict[str, Any]':
     ''' Converts the node or component into the ELK JSON format as a python object. 
     See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html 
     See https://github.com/kieler/elkjs/issues/27 for some examples.
     See https://www.eclipse.org/elk/documentation/tooldevelopers/graphdatastructure/coordinatesystem.html
     for information about the ELK coordinate system. '''
-    if not properties:
-        properties = {}
     assert item.__class__ != Node, "Use nodeToELK instead"
     assert item.__class__ != Wire, "Use wireToELK instead"
     itemWeightAdjusted = weightAdjust(item.weight())
+    jsonObj = {}
+    jsonObj['id'] = elkID(item)
+    jsonObj['i'] = {}  # holds non-layout-related information
+    jsonObj['i']['weight'] = itemWeightAdjusted
+    jsonObj['i']['numSubcomponents'] = item.weight()
+    jsonObj['i']['tokensSourcedFrom'] = item.getSourceTokens()
     if isinstance(item, Function):
         ports = []
         ind = len(item.inputs)
@@ -990,28 +977,20 @@ def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', p
             ports.append(nodeELK)
             ind -= 1  # elk indexes nodes clockwise from the top, so the index decrements.
         ports.append( nodeToELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
-        jsonObj = { 'id': elkID(item),
-                    'ports': ports,
-                    'children': [ toELK(child, componentELKs) for child in item.children ],
-                    'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+        jsonObj['ports'] = ports
+        jsonObj['children'] = [ toELK(child, componentELKs) for child in item.children ]
+        jsonObj['properties'] = { 'portConstraints': 'FIXED_ORDER' }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0: 
             jsonObj['width'] = 15
             jsonObj['height'] = 15
-        jsonObj['i'] = {'name': item.name,
-                        'weight': weightAdjust(item.weight()),
-                        'numSubcomponents': item.weight(),
-                        'tokensSourcedFrom': item.getSourceTokens()}
+        jsonObj['i']['name'] = item.name
     elif item.__class__ == Constant:
-        jsonObj = { 'id': elkID(item),
-                    'ports': [ nodeToELK(item.output, {'port.side': 'EAST'}) ],
-                    'properties': { 'portConstraints': 'FIXED_SIDE' },
-                    'width': 15,
-                    'height': 15 }
-        jsonObj['i'] = {'name': str(item.value),
-                        'weight':weightAdjust(item.weight()),
-                        'numSubcomponents': item.weight(),
-                        'tokensSourcedFrom':item.getSourceTokens()}
+        jsonObj['ports'] = [ nodeToELK(item.output, {'port.side': 'EAST'}) ]
+        jsonObj['properties'] = { 'portConstraints': 'FIXED_SIDE' }
+        jsonObj['width'] = 15
+        jsonObj['height'] = 15
+        jsonObj['i']['name'] = str(item.value)
     elif item.__class__ == Mux:
         ports = []
         ind = len(item.inputs)+1
@@ -1024,17 +1003,13 @@ def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', p
             ind -= 1  # elk indexes nodes clockwise from the top, so the index decrements.
         ports.append( nodeToELK(item.control, {'port.side': 'SOUTH', 'port.index': 1}) )
         ports.append( nodeToELK(item.output, {'port.side': 'EAST', 'port.index': 0}) )
-        jsonObj = { 'id': elkID(item),
-                    'ports': ports,
-                    'width': 10,
-                    'height': 10 * len(item.inputs),
-                    'properties': { 'portConstraints': 'FIXED_ORDER' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+        jsonObj['ports'] = ports
+        jsonObj['width'] = 10
+        jsonObj['height'] = 10 * len(item.inputs)
+        jsonObj['properties'] = { 'portConstraints': 'FIXED_ORDER' } # info on layout options: https://www.eclipse.org/elk/reference/options.html
         jsonObj['isMux'] = True
-        jsonObj['i'] = {'name': '',
-                        'weight': weightAdjust(item.weight()),
-                        'numSubcomponents': item.weight(),
-                        'isMux': True,
-                        'tokensSourcedFrom':item.getSourceTokens()}
+        jsonObj['i']['name'] = ''
+        jsonObj['i']['isMux'] = True
     elif item.__class__ == Module or item.__class__ == Register or item.__class__ == VectorModule:
         ports = []
         for nodeName in item.inputs:
@@ -1049,20 +1024,14 @@ def toELK(item: 'Component', componentELKs: 'dict[Component, dict[str, Any]]', p
             if item.__class__ == Module:
                 setPortLabel(nodeELK, nodeName, itemWeightAdjusted, 0.5*itemWeightAdjusted)
             ports.append(nodeELK)
-        jsonObj = { 'id': elkID(item),
-                    'ports': ports,
-                    'children': [ toELK(child, componentELKs) for child in item.children ],
-                    'properties': { 'portConstraints': 'FIXED_SIDE' } }  # info on layout options: https://www.eclipse.org/elk/reference/options.html
+        jsonObj['ports'] = ports
+        jsonObj['children'] = [ toELK(child, componentELKs) for child in item.children ]
+        jsonObj['properties'] = { 'portConstraints': 'FIXED_SIDE' } # info on layout options: https://www.eclipse.org/elk/reference/options.html
         setName(jsonObj, item.name, itemWeightAdjusted)
         if len(item.children) == 0:
             jsonObj['width'] = 15
             jsonObj['height'] = 15
-        if item.__class__ == VectorModule:
-            jsonObj['isVectorModule'] = True
-        jsonObj['i'] = {'name':item.name,
-                        'weight':weightAdjust(item.weight()),
-                        'numSubcomponents': item.weight(),
-                        'tokensSourcedFrom':item.getSourceTokens()}
+        jsonObj['i']['name'] = item.name
         if len(item.children) == 0:
             jsonObj['i']['hasTriangle'] = True
     else:
