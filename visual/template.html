@@ -619,8 +619,8 @@
             sourceDivs = new Map(); //each of these maps filenames to DOM elements.
             sourceTitleDivs = new Map();
             /* Both of the below have type Map<filename: string, { tokens: Array<HTMLSpanElement> }> 
-            The span elements of each array also have an additional attribute, .components: Array<[{},{}]>
-            which contains the objects with the data of the associated components and the parent positions. */
+            The span elements of each array also have an additional attribute, .components: Array<{}>
+            which contains the objects with the data of the associated components. */
             sourceTokenAndWhitespaceSpanArrays = new Map(); //these map filenames to an array of DOM elements.
             sourceTokenSpanArrays = new Map(); //the ith span in this array represents the ith ANTLR4 token.
 
@@ -698,16 +698,15 @@
                     tokenSpan.style.color = getTokenColor(token);
                     tokenSpan.components = [];  // The arrays of component objects that have source including this token.
                     tokenSpan.edges = [];
-                    tokenSpan.linkComponent = (component, parentPos) => {
-                        tokenSpan.components.push([component, parentPos]);
+                    tokenSpan.linkComponent = (component) => {
+                        tokenSpan.components.push(component);
                         // tokenSpan.style.backgroundColor = "yellow";
                         tokenSpan.style.border = "1.5px solid black";
                         tokenSpan.style.borderRadius = "5px";
                         tokenSpan.style.cursor = "pointer";
                     };
-                    tokenSpan.linkEdge = (edge, parentPos) => {
-                        tokenSpan.edges.push([edge, parentPos]);
-                        // tokenSpan.style.backgroundColor = "yellow";
+                    tokenSpan.linkEdge = (edge) => {
+                        tokenSpan.edges.push(edge);
                         tokenSpan.style.border = "1.5px solid black";
                         tokenSpan.style.borderRadius = "5px";
                         tokenSpan.style.cursor = "pointer";
@@ -832,9 +831,8 @@
                         currentIndexTokenToJumpTo = 0;
                     }
                     currentTokenToJumpTo = tokenSpan;
-                    let edge = tokenSpan.edges[currentIndexTokenToJumpTo][0];
-                    let parentPos = tokenSpan.edges[currentIndexTokenToJumpTo][1];
-                    jumpToEdge(edge, parentPos);
+                    let edge = tokenSpan.edges[currentIndexTokenToJumpTo];
+                    jumpToEdge(edge);
                     return;
                 }
                 if (currentTokenToJumpTo && currentTokenToJumpTo == tokenSpan) {
@@ -843,9 +841,8 @@
                     currentIndexTokenToJumpTo = 0;
                 }
                 currentTokenToJumpTo = tokenSpan;
-                let component = tokenSpan.components[currentIndexTokenToJumpTo][0];
-                let parentPos = tokenSpan.components[currentIndexTokenToJumpTo][1];
-                jumpToComponent(component, parentPos);
+                let component = tokenSpan.components[currentIndexTokenToJumpTo];
+                jumpToComponent(component);
             };
 
             let currentHighlightedComponents = new Set();  // Stores the components currently being highlighted.
@@ -878,12 +875,10 @@
             /* Called by a token on mouse enter. Highlights the corresponding components. */
             highlightAssociatedComponents = (tokenSpan) => {
                 clearHighlightedComponents();
-                for (let componentAndParentPos of tokenSpan.components) {
-                    let component = componentAndParentPos[0];
+                for (let component of tokenSpan.components) {
                     highlightComponent(component);
                 }
-                for (let edgeAndParentPos of tokenSpan.edges) {
-                    let edge = edgeAndParentPos[0];
+                for (let edge of tokenSpan.edges) {
                     currentHighlightedEdges.add(edge);
                     edge.highlightEdge();
                 }
@@ -928,12 +923,12 @@
                 let nextArgs = walker.component(component, componentArgs);
                 if (component.children) {
                     for (let child of component.children) {
-                        jsonWalkComponent(walker, child, nextArgs.componentArgs);
+                        jsonWalkComponent(walker, child, nextArgs !== undefined ? nextArgs.componentArgs : undefined);
                     }
                 }
                 if (component.edges) {
                     for (let edges of component.edges) {
-                        jsonWalkEdge(walker, edges, nextArgs.edgeArgs);
+                        jsonWalkEdge(walker, edges, nextArgs !== undefined ? nextArgs.edgeArgs : undefined);
                     }
                 }
             };
@@ -970,6 +965,26 @@
                 },
             };
             jsonWalkComponent(markAbsolutePosition, topLevel, {x: 0, y: 0});
+
+            let linkTokens = {
+                component: (component) => {
+                    for (filenameAndToken of component.i.tokensSourcedFrom) {
+                        let filenameOfOrigin = filenameAndToken[0];
+                        let tokenIndex = filenameAndToken[1];
+                        let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
+                        tokenSpan.linkComponent(component);
+                    }
+                },
+                edge: (edge) => {
+                    for (filenameAndToken of edge.i.ts) {
+                        let filenameOfOrigin = filenameAndToken[0];
+                        let tokenIndex = filenameAndToken[1];
+                        let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
+                        tokenSpan.linkEdge(edge);
+                    }
+                },
+            };
+            jsonWalkComponent(linkTokens, topLevel);
 
             /* component: an elk node. */
             placeComponent = (component) => {
@@ -1112,12 +1127,6 @@
 
                     let tokensToLink = componentData.tokensSourcedFrom;
                     component.tokensToLink = tokensToLink
-                    for (filenameAndToken of tokensToLink) {
-                        let filenameOfOrigin = filenameAndToken[0];
-                        let tokenIndex = filenameAndToken[1];
-                        let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
-                        tokenSpan.linkComponent(component, component.parent.absolutePos);
-                    }
                     // highlight the associated tokens upon entering the box
                     overRect.addEventListener("mouseenter", () => {
                         clearHighlightedTokens();
@@ -1329,14 +1338,6 @@
                         };
                     }
                 }
-
-                //link the corresponding tokens
-                for (filenameAndToken of tokensToLink) {
-                    let filenameOfOrigin = filenameAndToken[0];
-                    let tokenIndex = filenameAndToken[1];
-                    let tokenSpan = sourceTokenAndWhitespaceSpanArrays.get(filenameOfOrigin)[tokenIndex];
-                    tokenSpan.linkEdge(edge, parentPos);
-                }
             };
 
             //place the top level component
@@ -1434,20 +1435,20 @@
 
             /* Given a component and its parent component's position,
             moves the svg view window to focus on the component. */
-            jumpToComponent = (component, parentPos) => {
-                showOffBox({x: component.x + parentPos.x,
-                            y: component.y + parentPos.y,
+            jumpToComponent = (component) => {
+                showOffBox({x: component.absolutePos.x,
+                            y: component.absolutePos.y,
                             width: component.width,
                             height: component.height
                         });
             };
             //set up the reset zoom button
-            jumpToComponent(topLevel, { x: 0, y: 0 });
+            jumpToComponent(topLevel);
             document.getElementById("button-resetzoom-click-div").addEventListener("click", () => {
-                jumpToComponent(topLevel, { x: 0, y: 0 });
+                jumpToComponent(topLevel);
             });
 
-            jumpToEdge = (edge, parentPos) => {
+            jumpToEdge = (edge) => {
                 showOffBox({
                     x: edge.bbox.x1,
                     y: edge.bbox.y1,
