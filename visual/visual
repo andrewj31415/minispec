@@ -9,7 +9,7 @@
 # in case of a JavaScript heap out-of-memory error.
 # See https://stackoverflow.com/questions/38558989/node-js-heap-out-of-memory for more info.
 
-import argparse, os, pathlib
+import argparse, os, pathlib, subprocess
 import time
 
 import synth
@@ -24,26 +24,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Minispec(.ms) file containing the function or module to view")
     parser.add_argument("target", help="Name of the function or module to synthesize")
-    parser.add_argument("--visualdir", "-s", default="visualDir", help="Folder for intermediate visual files")
     parser.add_argument("--all", "-a", default=False, action="store_true", help="Layout all components recursively")
     parser.add_argument("--java", "-jv", default=False, action="store_true", help="Use the java version of elk")
     parser.add_argument("--canvas", "-c", default=False, action="store_true", help="Use the canvas element instead of the svg approach")
     parser.add_argument("--no_garbage_collection", "-ng", default=False, action="store_true", help="Do not remove unused hardware")
     parser.add_argument("--fixed_file", "-f", default=False, action="store_true", help="Generate an html document instead of launching a webserver")
+    parser.add_argument("--max_heap_size", "-m", type=int, help="The maximum size of the layouting library heap, in gigabytes")
     args = parser.parse_args()
 
-    if not os.path.exists(args.visualdir):
-        print("Creating synthesis directory")
-        os.makedirs(args.visualdir)
-    else:
-        # Clean up all files, as multi-module builds sometimes get stale data otherwise
-        #run("rm -rf %s/*" % (args.visualdir,))
-        pass #TODO erase files (currently not needed)
+    if args.max_heap_size != None:
+        print(f"Using max heap size {args.max_heap_size}gb for layouting library")
 
     currentPathString = os.getcwd()
     currentPath = pathlib.Path(currentPathString)
     targetFile = currentPath.joinpath(args.file)
-    visualDir = pathlib.Path(args.visualdir)
 
     synthesisStartTime = time.time()
 
@@ -72,14 +66,9 @@ if __name__ == '__main__':
 
     absoluteFilePath = pathlib.Path(__file__).resolve()
 
+    args.all = True  # TODO implement case when args.all is false
     if args.all:
         # Hardcode locations of all components recursively via ELKJS at compile time.
-
-        # input/output files for elk
-        pythonToJSFile = visualDir.joinpath("elkInput.txt")
-        JSToPythonFile = visualDir.joinpath("elkOutput.txt")
-        ELKcaller = absoluteFilePath.with_name("elk").joinpath("place.js")
-        ELKJavacaller = absoluteFilePath.with_name("elkJava").joinpath("target/gs-maven-0.1.0.jar")
 
         # separate non-layout data before sending to library
         iFieldValues: 'dict[str, dict]' = {}  # maps element id's to python dictionaries
@@ -98,28 +87,31 @@ if __name__ == '__main__':
 
         layoutStartTime = time.time()
 
-        
         componentJsonString: 'str' = json.dumps(componentJson, separators=(',', ':'))
-        with pythonToJSFile.open('w') as fp: # write to a file to give to elk
-            fp.write(componentJsonString)
-        # TODO investigate using a pipe to pass data around: https://stackoverflow.com/questions/29112324/piping-input-from-python-to-java
 
         if not args.java:
             # Use ELKJS to calculate the layout
+            ELKcaller = absoluteFilePath.with_name("elk").joinpath("place.js")
             print("elkcaller", ELKcaller)
             print("Calculating layout ...")
-            setJSHeapSize = 'export NODE_OPTIONS=--max_old_space_size=8192'  # otherwise we may run out of memory for large diagrams
-            os.system(f"cd {visualDir} && {setJSHeapSize} && node {ELKcaller}")
+            if args.max_heap_size:
+                setJSHeapSize = f'--max_old_space_size={args.max_heap_size * 1024}'  # otherwise we may run out of memory for large diagrams
+            p = subprocess.Popen(['node', *([setJSHeapSize] if args.max_heap_size else []), ELKcaller], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            jsOutput, jsError = p.communicate(componentJsonString.encode())
             print(f"Layout complete. Time: {time.time() - layoutStartTime} seconds")
+            elkOutput = jsOutput
         else:
             # Use the java version of ELK to calculate the layout
+            ELKJavacaller = absoluteFilePath.with_name("elkJava").joinpath("target/gs-maven-0.1.0.jar")
             print("elkcaller", ELKJavacaller)
             print("Calculating layout ...")
-            setJavaHeapSize = '-Xmx16g'  # otherwise we may run out of memory for large diagrams
-            os.system(f"cd {visualDir} && java {setJavaHeapSize} -jar {ELKJavacaller}")
+            setJavaHeapSize = f'-Xmx{args.max_heap_size}g'  # otherwise we may run out of memory for large diagrams
+            # see https://stackoverflow.com/questions/28823052/stdout-from-python-to-stdin-java
+            p = subprocess.Popen(['java', *([setJavaHeapSize] if args.max_heap_size else []), '-jar', ELKJavacaller], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            javaOutput, javaError = p.communicate(componentJsonString.encode())
             print(f"Layout complete. Time: {time.time() - layoutStartTime} seconds")
+            elkOutput = javaOutput
 
-        elkOutput = JSToPythonFile.read_text() # the output from elk
 
         elkOutputJson = json.loads(elkOutput)
         def stripExtraInfo(jsonObj):

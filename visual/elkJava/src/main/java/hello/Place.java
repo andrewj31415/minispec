@@ -30,12 +30,11 @@ import java.io.IOException;
 
 public class Place {
 	public static void main(String[] args) throws IOException {
-		long heapMaxSize = Runtime.getRuntime().maxMemory();
-		System.out.println("Heap max size: " + heapMaxSize);
+		// long heapMaxSize = Runtime.getRuntime().maxMemory();
+		// System.out.println("Heap max size: " + heapMaxSize);
 
 		// see https://devqa.io/java-read-files/
-		String file = "./elkInput.txt";
-		Scanner scanner = new Scanner(new File(file));
+		Scanner scanner = new Scanner(System.in);
 		scanner.useDelimiter("\\Z");
 		String inputJSON = scanner.next();
 		scanner.close();
@@ -64,10 +63,6 @@ public class Place {
                           .prettyPrint(false)
                           .toJson();
 
-		FileWriter myWriter = new FileWriter("./elkOutput.txt");
-		myWriter.write(jsonOutput);
-		myWriter.close();
-
-		System.out.println("Finished running ELK");
+		System.out.println(jsonOutput);
 	}
 }
